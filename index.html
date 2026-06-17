@@ -1,3 +1,28 @@
+<!--
+╔══════════════════════════════════════════════════════════╗
+║           PRIME CNC — index.html STRUCTURE MAP           ║
+║                    v1.0.2 | Jun 2026                     ╠
+╠══════════════════════════════════════════════════════════╣
+║  1.  HEAD / META                          ~line 1        ║
+║  2.  CSS STYLES                           ~line 20       ║
+║  3.  BODY — AUTH SCREEN                   ~line 1783     ║
+║  4.  AUTH MODALS                          ~line 1993     ║
+║  5.  GLOBAL UI (toast, confirm modal)     ~line 2035     ║
+║  6.  CUSTOMER LIST POPUP                  ~line 2047     ║
+║  7.  OLD LOGIN SCREEN (legacy)            ~line 2075     ║
+║  8.  USER BAR / HEADER                   ~line 2155     ║
+║  9.  PROFILE MODAL                        ~line 2189     ║
+║  10. OFFLINE BANNER                       ~line 2432     ║
+║  11. MAIN APP SHELL                       ~line 2436     ║
+║  12. POST-APP MODALS                      ~line 4315     ║
+║  13. MAIN SCRIPT BLOCK (~15,900 lines)    ~line 4367     ║
+║  14. POST-MAIN-SCRIPT MODALS              ~line 20280    ║
+║  15. PENDING BILLS SCRIPT                 ~line 20408    ║
+║  16. MOBILE BOTTOM NAV                    ~line 23279    ║
+║  17. AUTH SYSTEM SCRIPT                   ~line 23465    ║
+║  18. ADDITIVE PATCH SCRIPTS               ~line 25480    ║
+╚══════════════════════════════════════════════════════════╝
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -17,6 +42,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Prime CNC">
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 2 — CSS STYLES                            ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <style>
 @font-face {
   font-family: 'JameelNooriNastaliq';
@@ -1780,6 +1808,9 @@ body {
 .msp-grey   { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
 </style>
 </head>
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 3 — BODY: AUTH SCREEN                     ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <body>
 
 <!-- ══ AUTH OVERLAY ═══════════════════════════════════════════════
@@ -1990,6 +2021,9 @@ body {
 
 </div><!-- #authOverlay -->
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 4 — AUTH MODALS                           ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <!-- ══ MY PROFILE MODAL ══════════════════════════════════════════ -->
 <div class="auth-modal-overlay" id="authProfileModal">
   <div class="auth-modal-box">
@@ -2032,6 +2066,9 @@ body {
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 5 — GLOBAL UI (toast, confirm modal)      ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
@@ -2044,6 +2081,9 @@ body {
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 6 — CUSTOMER LIST POPUP                   ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <!-- CUSTOMER LIST POPUP (Remaining / Bad Debt drill-down) -->
 <div id="custListOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:600;align-items:flex-start;justify-content:center;padding:0;overflow-y:auto;overflow-x:hidden;">
   <div style="background:#fff;border-radius:0;width:100%;max-width:100%;margin:0 auto;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.5);min-height:100vh;">
@@ -2072,6 +2112,9 @@ body {
 </div>
 
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 7 — OLD LOGIN SCREEN (legacy, keep)       ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <div id="loginScreen">
   <div class="login-box">
 
@@ -2152,6 +2195,9 @@ body {
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 8 — USER BAR / HEADER                     ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <div id="userBar">
   <div id="_ubBrand"><span id="_ubBrandText">⚙️ Complete Shop System</span><span id="_appVersionLabel" style="font-size:0.6rem;font-weight:700;color:#f59e0b;font-family:Montserrat,sans-serif;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:middle;">v1.0.2-STAGING</span></div>
   <div id="topShopName"></div>
@@ -2186,6 +2232,9 @@ body {
   </span>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 9 — PROFILE MODAL                         ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <!-- ════ PROFILE MODAL ═══════════════════════════════════════════ -->
 <div id="_ubModalOverlay" onclick="_ubCloseModal()">
   <div id="_ubModal" onclick="event.stopPropagation()">
@@ -2428,11 +2477,17 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
 })();
 </script>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 10 — OFFLINE BANNER                       ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <!-- ── OFFLINE SUPPORT: Global sticky offline banner ── -->
 <div id="offlineBanner" style="display:none;position:sticky;top:0;z-index:9999;background:#92400e;color:#fef3c7;padding:8px 16px;font-family:'Montserrat',sans-serif;font-size:0.82rem;font-weight:600;text-align:center;border-bottom:2px solid #b45309;letter-spacing:0.3px;box-sizing:border-box;width:100%;">
   📵 Offline Mode — Data shown as of <span id="offlineBannerTime"></span> &nbsp;·&nbsp; Connect internet to sync latest data
 </div>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 11 — MAIN APP SHELL                       ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <div class="app">
 
 
@@ -4312,6 +4367,9 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
   </div><!-- /main-layout -->
 
 </div><!-- /app -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 12 — POST-APP MODALS                      ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <!-- PRINT PREVIEW MODAL -->
 <div id="printPreviewModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.7);z-index:9900;backdrop-filter:blur(4px);overflow-y:auto;padding:20px 0;">
   <div style="max-width:900px;margin:0 auto;background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.4);overflow:hidden;">
@@ -4364,6 +4422,9 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 13 — MAIN SCRIPT BLOCK (~15,900 lines)    ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <script>
 // -- Urdu font loaded from local file (JameelNooriNastaleeq.ttf) --
 (function(){
@@ -8797,7 +8858,7 @@ function _printHeaderHtml(s, rightHtml) {
     var fontFallback = (t.font==='JameelNooriNastaliq') ? '"JameelNooriNastaliq"' : '"'+t.font+'",sans-serif';
     var shadow = t.shadowBlur>0 ? 'text-shadow:0 0 '+t.shadowBlur+'px currentColor;' : '';
     return 'color:'+(t.color||ac)+';font-size:'+t.size+'rem;font-family:'+fontFallback+';'
-      +'font-weight:'+(t.bold?700:400)+';font-style:'+(t.italic?'italic':'normal')+';text-align:'+t.align+';'
+      +'font-weight:'+(t.bold?700:400)+';font-style:'+(t.italic?'italic':'normal')+';text-align:'+t.align+';width:100%;'
       +'letter-spacing:'+t.letterSpacing+'px;line-height:'+t.lineHeight+';opacity:'+t.opacity+';'
       +'padding-top:'+t.padTop+'px;padding-bottom:'+t.padBottom+'px;'
       +shadow+(extra||'');
@@ -8812,11 +8873,11 @@ function _printHeaderHtml(s, rightHtml) {
   var middleHtml = '';
   ord.forEach(function(key){
     if(hid.indexOf(key)>-1) return;
-    if(key==='urdu'     && s.urdu)     middleHtml+='<div class="ph-urdu" style="'+elStyle('urdu','direction:rtl;line-height:1.5;margin-bottom:6px;')+'">'+s.urdu+'</div>';
-    if(key==='en')                     middleHtml+='<div style="'+elStyle('en','margin-bottom:4px;')+'">'+s.en+'</div>';
-    if(key==='tagline'  && s.tagline)  middleHtml+='<div style="'+elStyle('tagline','margin-bottom:4px;')+'">'+s.tagline+'</div>';
-    if(key==='contacts' && contactsHtml) middleHtml+='<div style="'+elStyle('contacts','display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px 12px;margin-bottom:4px;')+'">'+contactsHtml+'</div>';
-    if(key==='address'  && s.address)  middleHtml+='<div style="'+elStyle('address','margin-top:2px;')+'">&#128205;&nbsp;'+s.address+'</div>';
+    if(key==='urdu'     && s.urdu)     middleHtml+='<div data-hdr-key="urdu" class="ph-urdu" style="'+elStyle('urdu','direction:rtl;line-height:1.5;margin-bottom:6px;')+'">'+s.urdu+'</div>';
+    if(key==='en')                     middleHtml+='<div data-hdr-key="en" style="'+elStyle('en','margin-bottom:4px;')+'">'+s.en+'</div>';
+    if(key==='tagline'  && s.tagline)  middleHtml+='<div data-hdr-key="tagline" style="'+elStyle('tagline','margin-bottom:4px;')+'">'+s.tagline+'</div>';
+    if(key==='contacts' && contactsHtml) middleHtml+='<div data-hdr-key="contacts" style="'+elStyle('contacts','display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px 12px;margin-bottom:4px;')+'">'+contactsHtml+'</div>';
+    if(key==='address'  && s.address)  middleHtml+='<div data-hdr-key="address" style="'+elStyle('address','margin-top:2px;')+'">&#128205;&nbsp;'+s.address+'</div>';
   });
 
   var rightSt = elSt('right');
@@ -8828,7 +8889,7 @@ function _printHeaderHtml(s, rightHtml) {
     +  '<img id="printLogo" '+(s.logo?'src="'+s.logo+'"':'')+' style="max-width:90%;max-height:90%;object-fit:contain;display:'+(s.logo?'block':'none')+';" alt="Logo">'
     +  (!s.logo?'<div class="ph-logo-ph"><span>&#127981;</span>'+s.en+'</div>':'')
     +'</div>'
-    +'<div style="padding:12px 18px 14px;min-width:0;display:flex;flex-direction:column;justify-content:center;align-items:center;">'
+    +'<div style="padding:12px 18px 14px;min-width:0;display:flex;flex-direction:column;justify-content:center;align-items:stretch;">'
     +  middleHtml
     +'</div>'
     +'<div style="padding:14px 16px;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;gap:4px;border-left:1px solid rgba(201,168,76,0.15);'+rightStyle+'">'+rightHtml+'</div>'
@@ -13087,7 +13148,7 @@ function ctrlLoad(skipCloudSync) {
   try { var _es=localStorage.getItem('inv_hdr_el_styles'); if(_es) _hdrElStyles=JSON.parse(_es); } catch(e){}
   if(!_hdrElStyles.urdu) _hdrElStyles.urdu={}; if(!_hdrElStyles.urdu.font) _hdrElStyles.urdu.font='JameelNooriNastaliq';
   try { var _ec=localStorage.getItem('inv_hdr_cols');       if(_ec) _hdrCols=JSON.parse(_ec);     } catch(e){}
-  try { var _eo=localStorage.getItem('inv_hdr_order');      if(_eo) _hdrOrder=JSON.parse(_eo);    } catch(e){}
+  try { var _eo=localStorage.getItem('inv_hdr_order'); if(_eo){ var _eop=JSON.parse(_eo); if(_eop && _eop.length>0) _hdrOrder=_eop; } } catch(e){}
   try { var _eh=localStorage.getItem('inv_hdr_hidden');     if(_eh) _hdrHidden=JSON.parse(_eh);   } catch(e){}
   // Load logo
   _ctrlLogo = '';
@@ -13149,7 +13210,7 @@ function ctrlLoad(skipCloudSync) {
       Object.keys(ls).forEach(function(k) { if (ls[k] != null) localStorage.setItem(k, ls[k]); });
       if (map['inv_hdr_el_styles'] != null) localStorage.setItem('inv_hdr_el_styles', map['inv_hdr_el_styles']);
       if (map['inv_hdr_cols']      != null) localStorage.setItem('inv_hdr_cols',      map['inv_hdr_cols']);
-      if (map['inv_hdr_order']     != null) localStorage.setItem('inv_hdr_order',     map['inv_hdr_order']);
+      (function(){ var _v=map['inv_hdr_order']; try{ var _p=JSON.parse(_v); if(_p && _p.length>0) localStorage.setItem('inv_hdr_order',_v); } catch(e){} })();
       if (map['inv_hdr_hidden']    != null) localStorage.setItem('inv_hdr_hidden',    map['inv_hdr_hidden']);
       // ── load synced profile / partner / category / invoice-settings keys ──
       var _pSess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
@@ -13650,10 +13711,10 @@ function ctrlReset() {
 
 // On startup: sync settings from Supabase into localStorage
 async function ctrlBootSync() {
-  if (typeof sb === 'undefined' || !sb) return;
+  if (typeof sb === 'undefined' || !sb) { window._ctrlBootSyncDone = true; return; }
   try {
     var res = await sb.from('shop_settings').select('key,value');
-    if (res.error || !res.data || !res.data.length) return;
+    if (res.error || !res.data || !res.data.length) { window._ctrlBootSyncDone = true; return; }
     var map = {};
     res.data.forEach(function(r) { map[r.key] = r.value; });
     var ls = {
@@ -13674,9 +13735,10 @@ async function ctrlBootSync() {
       inv_en_name_font:  map.inv_en_name_font
     };
     Object.keys(ls).forEach(function(k) { if (ls[k] != null) localStorage.setItem(k, ls[k]); });
+    window._ctrlBootSyncDone = true;
     if (map['inv_hdr_el_styles'] != null) localStorage.setItem('inv_hdr_el_styles', map['inv_hdr_el_styles']);
     if (map['inv_hdr_cols']      != null) localStorage.setItem('inv_hdr_cols',      map['inv_hdr_cols']);
-    if (map['inv_hdr_order']     != null) localStorage.setItem('inv_hdr_order',     map['inv_hdr_order']);
+    (function(){ var _v=map['inv_hdr_order']; try{ var _p=JSON.parse(_v); if(_p && _p.length>0) localStorage.setItem('inv_hdr_order',_v); } catch(e){} })();
     if (map['inv_hdr_hidden']    != null) localStorage.setItem('inv_hdr_hidden',    map['inv_hdr_hidden']);
     // ── load synced profile / partner / category / invoice-settings keys ──
     var _pSess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
@@ -13733,7 +13795,7 @@ async function ctrlBootSync() {
       if(_eh)_hn+='<span style="font-family:\'Playfair Display\',serif;font-size:0.78rem;color:#fff;font-weight:700;display:block;text-align:center;">'+_eh+'</span>';
       _topEl.innerHTML=_hn;
     }
-  } catch(e) { console.warn('[ctrlBootSync]', e); }
+  } catch(e) { console.warn('[ctrlBootSync]', e); window._ctrlBootSyncDone = true; }
 }
 
 // ══════════════════════════════════════════════
@@ -20277,6 +20339,9 @@ function showPastDayEntries(date){
 
 </script>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 14 — POST-MAIN-SCRIPT MODALS              ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <!-- ☁️ Migrate to Cloud Modal — at body level so position:fixed works regardless of tab state -->
 <div id="migrateModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)closeMigrateModal()">
   <div style="background:#fff;border-radius:18px;width:100%;max-width:560px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.4);font-family:'Montserrat',sans-serif;">
@@ -20405,6 +20470,9 @@ function showPastDayEntries(date){
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 15 — PENDING BILLS SCRIPT                 ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <script>
 // ═══════════════ PENDING BILLS SYSTEM ═══════════════
 var _pbData        = [];
@@ -21551,6 +21619,7 @@ document.addEventListener('keydown', function(e) {
 var _dragElStylesTemp = null;
 var _dragBgTemp       = null;
 var _dragTextTemp     = null;
+window._ctrlBootSyncDone = false;
 var _dragCanvasMode   = 'header'; // 'header' or 'footer'
 
 function _initDragStaging() {
@@ -21592,12 +21661,14 @@ function _buildDragSettings() {
   // Fall back to ctrl_ inputs only when staging hasn't been initialized yet.
   var tx = _dragTextTemp;
   var tv = function(key, ctrlId, def) {
-    if (tx && key in tx) return tx[key];          // staging exists — use exactly what's there (even '')
-    return gv(ctrlId) || def || '';               // staging not ready — fall back to ctrl_ input
+    if (tx && key in tx && tx[key] !== '' && tx[key] !== null) return tx[key];
+    var cv = gv(ctrlId);
+    if (cv) return cv;
+    return def || '';
   };
   return {
     urdu:    tv('urdu',    'ctrl_urdu',    ''),
-    en:      tv('en',      'ctrl_en',      ''),
+    en:      tv('en',      'ctrl_en',      'Your Shop Name'),
     tagline: tv('tagline', 'ctrl_tagline', ''),
     phone:   tv('phone',   'ctrl_phone',   ''),
     whatsapp:tv('whatsapp','ctrl_whatsapp',''),
@@ -22164,6 +22235,14 @@ async function dragEditorApply() {
 function initDragEditor() {
   // Only init staging on first open per session — preserves unsaved/saved changes across tab switches
   if (!_dragElStylesTemp || !_dragBgTemp || !_dragTextTemp) {
+    if (!window._ctrlBootSyncDone) {
+      if (!window._dragEditorRetryCount) window._dragEditorRetryCount = 0;
+      window._dragEditorRetryCount++;
+      if (window._dragEditorRetryCount < 15) {
+        setTimeout(function(){ initDragEditor(); }, 300);
+        return;
+      }
+    }
     _initDragStaging();
   }
   var tog = document.getElementById('dragModeToggle'); if(tog) tog.checked=_dragFreeModeOn;
@@ -22320,22 +22399,18 @@ function _applyExtendedStylesToCanvas(canvas, s) {
   if (logoEl) logoEl.style.background = lb;
 
   // Right panel inherits .ph background; no separate bg needed
-  var infoDiv = canvas.querySelector('.ph > div:nth-child(2)');
-  if (!infoDiv) return;
-  var children = Array.prototype.slice.call(infoDiv.children);
-  var idx = 0;
   (s.hdrOrder || []).forEach(function(key) {
     if ((s.hdrHidden || []).indexOf(key) > -1) return;
-    var el = children[idx]; if (!el) { idx++; return; }
+    var el = canvas.querySelector('[data-hdr-key="' + key + '"]');
+    if (!el) return;
     var u = es[key] || {};
     var d = HDR_EL_DEFAULTS[key] || {};
     // Font size
     var sz = u.size !== undefined ? u.size : (d.size || 1.0);
     el.style.fontSize = sz + 'rem';
     // Text color — null means "inherit accent"; treat null same as undefined
-    var ac = s.accent || '#f59e0b';
-    var rawColor = (u.color != null) ? u.color : d.color;   // null from either → fall through
-    el.style.color = (rawColor != null) ? rawColor : ac;    // final fallback is accent
+    var rawColor = (u.color != null) ? u.color : d.color;
+    el.style.color = (rawColor != null) ? rawColor : acc;
     // Always force Jameel Noori Nastaleeq on Urdu element
     if (key === 'urdu') {
       el.style.fontFamily = "'JameelNooriNastaliq'";
@@ -22352,6 +22427,7 @@ function _applyExtendedStylesToCanvas(canvas, s) {
     var align = u.align !== undefined ? u.align : (d.align || 'center');
     el.style.fontWeight = bold ? '700' : '400';
     el.style.textAlign  = align;
+    el.style.width = '100%';
     // Highlight selected element (only on live canvas, not preview)
     if (canvas.id === 'dragEditorCanvas') {
       el.style.outline       = (_selDragEl === key) ? '2px dashed rgba(99,102,241,0.7)' : 'none';
@@ -22359,7 +22435,6 @@ function _applyExtendedStylesToCanvas(canvas, s) {
     } else {
       el.style.outline = 'none';
     }
-    idx++;
   });
 }
 function _applyFreePositions(canvas, s) {
@@ -23280,6 +23355,9 @@ setInterval(function() {
      PWA — MOBILE BOTTOM NAVIGATION BAR
      Calls existing switchTab() via _mobSwitchTab() wrapper below.
      ═══════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 16 — MOBILE BOTTOM NAV                    ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <div id="mobSyncStrip">
   <span id="mobSyncPill" class="msp-grey">— Checking...</span>
 </div>
@@ -23462,6 +23540,9 @@ if ('serviceWorker' in navigator) {
 })();
 </script>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 17 — AUTH SYSTEM SCRIPT                   ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <!-- ════════════════════════════════════════════════════════════
      AUTH SYSTEM — Prime CNC Invoice
      All new code. Zero modifications to existing logic.
@@ -25477,6 +25558,9 @@ window.addEventListener('online', async function() {
 })(); // end IIFE
 </script>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 18 — ADDITIVE PATCH SCRIPTS               ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <script>
 /* ─── GLOBAL SYNC BAR — purely additive patches, no existing logic changed ─── */
 (function() {
