@@ -23500,6 +23500,13 @@ window._forceAppRefresh = async function() {
   }, 300);
 };
 
+// Unregister all service workers on every load to prevent caching issues
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(function(registrations) {
+    registrations.forEach(function(reg) { reg.unregister(); });
+  });
+}
+
 /* 3. Service worker registration for offline support */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
