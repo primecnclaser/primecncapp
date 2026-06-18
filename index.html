@@ -18062,14 +18062,11 @@ async function exportLedgerCSV() {
       var ordered = ['entry_date','entry_type','category','note','amount','source','ref_id'];
 
       var totalIncome = 0, totalExpense = 0;
-      var byType = {};
       mRows.forEach(function(r) {
         var amt = parseFloat(r.amount) || 0;
-        var type = (r.entry_type || 'other').toLowerCase();
-        if (type === 'income' || type === 'invoice_income') totalIncome += amt;
+        var type = (r.entry_type || r.type || 'other').toLowerCase();
+        if (type === 'income' || type === 'credit' || type === 'invoice_income') totalIncome += amt;
         else totalExpense += amt;
-        if (!byType[r.entry_type || 'Other']) byType[r.entry_type || 'Other'] = 0;
-        byType[r.entry_type || 'Other'] += amt;
       });
       var net = totalIncome - totalExpense;
       var numCols = ordered.length;
@@ -18098,14 +18095,6 @@ async function exportLedgerCSV() {
       expRow[numCols-1] = { v: totalExpense, s: expenseStyle };
       wsData.push(expRow);
       rowIdx++;
-
-      Object.keys(byType).forEach(function(t) {
-        var tRow = Array(numCols).fill({ v: '' });
-        tRow[0] = { v: '  ' + t, s: { font: { sz: 9, italic: true } } };
-        tRow[numCols-1] = { v: byType[t], s: { font: { sz: 9 }, alignment: { horizontal: 'right' }, numFmt: '#,##0.00' } };
-        wsData.push(tRow);
-        rowIdx++;
-      });
 
       var netRow = Array(numCols).fill({ v: '' });
       netRow[0] = { v: 'Net Balance', s: { font: { bold: true, sz: 11 } } };
@@ -18159,8 +18148,8 @@ async function exportLedgerCSV() {
       var inc = 0, exp = 0;
       mRows.forEach(function(r) {
         var amt = parseFloat(r.amount)||0;
-        var type = (r.entry_type||'').toLowerCase();
-        if (type==='income'||type==='invoice_income') inc+=amt; else exp+=amt;
+        var type = (r.entry_type||r.type||'').toLowerCase();
+        if (type==='income'||type==='credit'||type==='invoice_income') inc+=amt; else exp+=amt;
       });
       grandIncome += inc; grandExpense += exp;
       var net = inc - exp;
