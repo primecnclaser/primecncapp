@@ -20441,7 +20441,19 @@ async function exportFullBackup() {
     for (var i = 0; i < tables.length; i++) {
       var data = allData[tables[i].label];
       if (!data || data.length === 0) continue;
-      var ws = XLSX.utils.json_to_sheet(data);
+      var cleanData = data.map(function(row) {
+        var clean = {};
+        Object.keys(row).forEach(function(key) {
+          var val = row[key];
+          if (typeof val === 'string' && val.length > 32000) {
+            clean[key] = '[TRUNCATED - ' + val.length + ' chars]';
+          } else {
+            clean[key] = val;
+          }
+        });
+        return clean;
+      });
+      var ws = XLSX.utils.json_to_sheet(cleanData);
       var wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, tables[i].label.slice(0,31));
       var wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
