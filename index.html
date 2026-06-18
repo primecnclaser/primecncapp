@@ -3056,7 +3056,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         <div style="flex:1;min-width:200px;">
           <label style="font-size:0.78rem;font-weight:700;color:#a8dfc0;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:8px;">🧾 By Invoice Number</label>
           <input type="text" id="searchInv" placeholder="🔢 Invoice #..."
-            oninput="this.value=this.value.replace(/[^0-9]/g,'');onSearchInv(this.value)"
+            oninput="onSearchInv(this.value)"
             style="width:100%;padding:11px 16px;background:rgba(255,255,255,0.09);border:1.5px solid rgba(46,204,113,0.4);border-radius:10px;color:#fff;font-family:Montserrat, sans-serif;font-size:0.94rem;outline:none;transition:border .2s;letter-spacing:0.5px;"
             onfocus="this.style.borderColor='#2ecc71';this.style.background='rgba(255,255,255,0.13)'"
             onblur="this.style.borderColor='rgba(46,204,113,0.4)';this.style.background='rgba(255,255,255,0.09)'">
@@ -14395,7 +14395,7 @@ async function _renderSearchByInv(invNum) {
       if (res2.data) res2.data.forEach(function(r) {
         if (!matchedInvoices.find(function(m){ return m.invNum === r.order_num; })) {
           matchedInvoices.push({
-            date: r.date||'', invNum: r.order_num||'—',
+            date: r.date||'', invNum: normalizeOrderNum(r.order_num)||'—',
             custName: r.customer_name||'', phone: r.phone||'',
             bill: parseFloat(r.total_bill)||0, disc: parseFloat(r.discount)||0,
             recv: parseFloat(r.received)||0, r1sum: 0,
