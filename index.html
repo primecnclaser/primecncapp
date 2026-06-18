@@ -12846,11 +12846,42 @@ async function exportInvoicesCSV() {
     var r1 = await sb.from('invoices').select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,received1,remaining,bad_debt,created_at,received1_entries,edited_at,is_advance,extra_charges,extra_charges_label');
     var r2 = await sb.from('excel_invoices').select('*');
 
-    var inv1 = (r1.data || []).map(function(r) { return Object.assign({ source: 'App' }, r); });
+    var inv1 = (r1.data || []).map(function(r) {
+      var d = r.date ? new Date(r.date) : null;
+      var dateStr = d && !isNaN(d) ? d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : (r.date || '');
+      return Object.assign({}, r, {
+        source: 'App',
+        inv_num: r.inv_num || '',
+        date: dateStr
+      });
+    });
+
     var inv2 = (r2.data || []).map(function(r) {
-      var clean = Object.assign({ source: 'Imported' }, r);
-      delete clean.action;
-      return clean;
+      var d = r.date ? new Date(r.date) : null;
+      var dateStr = d && !isNaN(d) ? d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : (r.date || '');
+      return {
+        source: 'Imported',
+        inv_num: r.order_num || '',
+        date: dateStr,
+        cust_name: r.customer_name || '',
+        phone: r.phone || '',
+        area: '',
+        del_date: '',
+        sub_total: r.total_bill || 0,
+        discount: r.discount || 0,
+        extra_charges: r.extra_charges || 0,
+        extra_charges_label: r.extra_charges_label || '',
+        total: r.total_bill || 0,
+        received: r.received || 0,
+        received1: r.received1 || 0,
+        remaining: r.remaining || 0,
+        bad_debt: r.bad_debt || 0,
+        is_advance: false,
+        received1_entries: r.received_entries || '',
+        created_at: r.created_at || '',
+        edited_at: '',
+        id: r.id || ''
+      };
     });
 
     var all = inv1.concat(inv2);
@@ -12980,7 +13011,7 @@ async function exportInvoicesCSV() {
         if (val === null || val === undefined || val === '') return { v: '', s: baseStyle };
         if (col.key === 'is_advance') return { v: val ? 'Yes' : 'No', s: baseStyle };
         if (isNum) return { v: parseFloat(val) || 0, s: Object.assign({}, baseStyle, numStyle) };
-        if (col.key === 'created_at') return { v: new Date(val).toLocaleDateString(), s: baseStyle };
+        if (col.key === 'created_at') { var cd = new Date(val); return { v: !isNaN(cd) ? cd.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : String(val), s: baseStyle }; }
         return { v: String(val), s: baseStyle };
       });
 
