@@ -4738,7 +4738,9 @@ function normalizeDate(d) {
 function normalizeOrderNum(num) {
   if (!num) return '';
   var s = String(num).trim();
-  return s.startsWith('INV-') ? s : 'INV-' + s;
+  var pfx = localStorage.getItem('inv_num_prefix') || 'INV-';
+  var raw = s.replace(/^[A-Z]+-/i, '');
+  return pfx + raw;
 }
 
 // ── INVOICE AGE — generic days-old check for any invoice/row date ──
@@ -5482,7 +5484,7 @@ function setInvoiceNumber() {
   // Also include imported excel invoices
   if (Array.isArray(_excelDBCache)) {
     _excelDBCache.forEach(r => {
-      const n = parseInt(r.order_num);
+      const n = parseInt(String(r.order_num).replace(/^INV-/i, ''));
       if (Number.isFinite(n) && n > 0 && n < 100000) allNums.push(n);
     });
   }
@@ -5496,7 +5498,8 @@ function setInvoiceNumber() {
   var _allMax = Math.max(maxUsed, _advNums.length ? Math.max.apply(null, _advNums) : 0);
   invoiceCounter = Math.max(_allMax + 1, 1001);
   localStorage.setItem('inv_counter', invoiceCounter);
-  var _n = document.getElementById('invNumber'); if (_n) _n.textContent = 'INV-' + invoiceCounter;
+  var _pfx = localStorage.getItem('inv_num_prefix') || 'INV-';
+  var _n = document.getElementById('invNumber'); if (_n) _n.textContent = _pfx + invoiceCounter;
   var _ho = document.getElementById('histOrder'); if (_ho) _ho.value = invoiceCounter;
 
   // Also query Supabase directly to guarantee counter is correct even if
@@ -14423,11 +14426,7 @@ async function _renderSearchByInv(invNum) {
     var bg = (i%2===0)?'#fff':'#f8fafc';
     var dateD = fmtDateDisplay(r.date);
     var discH = r.disc > 0 ? 'Rs.'+Math.round(r.disc).toLocaleString('en-PK') : '—';
-    var srcBadge = r.source === 'excel'
-      ? '<span style="background:#0f766e;color:#fff;font-size:0.5rem;font-weight:700;padding:1px 4px;border-radius:3px;margin-left:4px;">IMP</span>'
-      : (r.source === 'supabase'
-        ? '<span style="background:#4f46e5;color:#fff;font-size:0.5rem;font-weight:700;padding:1px 4px;border-radius:3px;margin-left:4px;">CLOUD</span>'
-        : '<span style="background:#0ea5e9;color:#fff;font-size:0.5rem;font-weight:700;padding:1px 4px;border-radius:3px;margin-left:4px;">NEW</span>');
+    var srcBadge = '';
     var remColor = r.remaining > 0 ? '#dc2626' : r.remaining < 0 ? '#8e44ad' : '#059669';
     return '<tr style="background:'+bg+';border-bottom:1px solid #f1f5f9;">'
       + '<td style="'+tdS+'text-align:center;color:#94a3b8;">'+(i+1)+'</td>'
