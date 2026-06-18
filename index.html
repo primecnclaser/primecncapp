@@ -6798,7 +6798,7 @@ function renderDB() {
       date:        r.date || '',
       custName:    r.customer_name || '—',
       phone:       r.phone || '—',
-      invNum:      r.order_num || '—',
+      invNum: (function(n){ if (!n) return '—'; var pfx = localStorage.getItem('inv_num_prefix') || 'INV-'; var raw = String(n).replace(/^[A-Za-z]+-/i, ''); return pfx + raw; })(r.order_num),
       total:       parseFloat(r.total_bill) || 0,
       received:    parseFloat(r.received)   || 0,
       received1:   parseFloat(r.received1)  || 0,
