@@ -8857,7 +8857,7 @@ function _printHeaderHtml(s, rightHtml) {
     try {
       var t=elSt(key);
       if(key==='urdu') console.log('elStyle urdu t:', JSON.stringify(t));
-      var fontFallback = (t.font==='JameelNooriNastaliq') ? '"JameelNooriNastaliq"' : '"'+t.font+'",sans-serif';
+      var fontFallback = (t.font==='JameelNooriNastaliq') ? 'JameelNooriNastaliq' : '\''+t.font+'\',sans-serif';
       var shadow = t.shadowBlur>0 ? 'text-shadow:0 0 '+t.shadowBlur+'px currentColor;' : '';
       var _align = t.align;
       return 'color:'+(t.color||ac)+';font-size:'+t.size+'rem;font-family:'+fontFallback+';'
