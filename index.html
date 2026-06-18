@@ -12826,32 +12826,185 @@ async function saveInvoiceSettings() {
 
 // ── Invoices CSV export (for Data & Sync tab) ──
 async function exportInvoicesCSV() {
-  toast('📥 Exporting invoices...');
-  var allRows = [];
-  if (database && database.length) {
-    database.forEach(function(inv) {
-      allRows.push({source:'app', invNum:inv.invNum||'', customer:inv.customerName||'', date:inv.date||'', total:inv.total||0, paid:inv.paid||0, remaining:(inv.total||0)-(inv.paid||0), notes:inv.notes||''});
+  var btn = event && event.target ? event.target : document.querySelector('[onclick="exportInvoicesCSV()"]');
+  var origText = btn ? btn.textContent : '';
+  if (btn) { btn.textContent = '⏳ Preparing...'; btn.disabled = true; }
+
+  try {
+    if (!window.XLSX) {
+      if (btn) btn.textContent = '⏳ Loading...';
+      await new Promise(function(res, rej) {
+        var s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+
+    if (btn) btn.textContent = '⏳ Fetching invoices...';
+
+    var r1 = await sb.from('invoices').select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,received1,remaining,bad_debt,created_at,received1_entries,edited_at,is_advance,extra_charges,extra_charges_label');
+    var r2 = await sb.from('excel_invoices').select('*');
+
+    var inv1 = (r1.data || []).map(function(r) { return Object.assign({ source: 'App' }, r); });
+    var inv2 = (r2.data || []).map(function(r) {
+      var clean = Object.assign({ source: 'Imported' }, r);
+      delete clean.action;
+      return clean;
     });
+
+    var all = inv1.concat(inv2);
+
+    if (all.length === 0) { alert('No invoices found.'); if (btn) { btn.textContent = origText; btn.disabled = false; } return; }
+
+    all.sort(function(a, b) {
+      var na = (a.cust_name || '').toLowerCase().trim();
+      var nb = (b.cust_name || '').toLowerCase().trim();
+      return na.localeCompare(nb);
+    });
+
+    var XLSX = window.XLSX;
+    var wb = XLSX.utils.book_new();
+    var today = new Date().toISOString().slice(0,10);
+
+    var columns = [
+      { key: 'cust_name',           label: 'Customer Name',      width: 22 },
+      { key: 'inv_num',             label: 'Invoice #',           width: 12 },
+      { key: 'date',                label: 'Date',                width: 13 },
+      { key: 'phone',               label: 'Phone',               width: 14 },
+      { key: 'area',                label: 'Area',                width: 16 },
+      { key: 'del_date',            label: 'Delivery Date',       width: 14 },
+      { key: 'sub_total',           label: 'Sub Total',           width: 12 },
+      { key: 'discount',            label: 'Discount',            width: 11 },
+      { key: 'extra_charges',       label: 'Extra Charges',       width: 13 },
+      { key: 'extra_charges_label', label: 'Extra Label',         width: 14 },
+      { key: 'total',               label: 'Total',               width: 12 },
+      { key: 'received',            label: 'Received',            width: 12 },
+      { key: 'received1',           label: 'Received 2',          width: 12 },
+      { key: 'remaining',           label: 'Remaining',           width: 12 },
+      { key: 'bad_debt',            label: 'Bad Debt',            width: 11 },
+      { key: 'is_advance',          label: 'Advance?',            width: 10 },
+      { key: 'received1_entries',   label: 'Payment Entries',     width: 25 },
+      { key: 'created_at',          label: 'Created At',          width: 18 },
+      { key: 'edited_at',           label: 'Edited At',           width: 18 },
+      { key: 'source',              label: 'Source',              width: 11 },
+      { key: 'id',                  label: 'ID',                  width: 14 }
+    ];
+
+    var numericCols = ['sub_total','discount','extra_charges','total','received','received1','remaining','bad_debt'];
+
+    var hdrStyle = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center', wrapText: true }, border: { bottom: { style: 'thin', color: { rgb: '2E75B6' } } } };
+    var custStyle = { font: { bold: true, sz: 10, color: { rgb: '1E3A5F' } }, fill: { fgColor: { rgb: 'D5E8F0' } }, alignment: { wrapText: true, vertical: 'top' } };
+    var evenStyle = { fill: { fgColor: { rgb: 'FFFFFF' } }, alignment: { wrapText: true, vertical: 'top' } };
+    var oddStyle  = { fill: { fgColor: { rgb: 'F8FAFC' } }, alignment: { wrapText: true, vertical: 'top' } };
+    var numStyle  = { alignment: { horizontal: 'right', vertical: 'top' }, numFmt: '#,##0.00' };
+    var titleStyle = { font: { bold: true, sz: 14, color: { rgb: '1E3A5F' } } };
+    var subStyle   = { font: { sz: 10, italic: true, color: { rgb: '64748b' } } };
+    var totalHdrStyle = { font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1D6A35' } }, alignment: { horizontal: 'right' } };
+    var totalValStyle = { font: { bold: true, sz: 10, color: { rgb: '1D6A35' } }, fill: { fgColor: { rgb: 'D1FAE5' } }, alignment: { horizontal: 'right' }, numFmt: '#,##0.00' };
+    var remainRedStyle = { font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: 'C00000' } }, alignment: { horizontal: 'right' }, numFmt: '#,##0.00' };
+
+    var wsData = [];
+    var mergeCells = [];
+    var rowIdx = 0;
+    var numCols = columns.length;
+
+    var titleRow = [{ v: 'Prime CNC Laser — Invoices Report', s: titleStyle }];
+    for (var c = 1; c < numCols; c++) titleRow.push({ v: '' });
+    wsData.push(titleRow);
+    mergeCells.push({ s: { r: rowIdx, c: 0 }, e: { r: rowIdx, c: numCols-1 } });
+    rowIdx++;
+
+    var subRow = [{ v: 'Generated: ' + new Date().toLocaleString() + '  |  Total Invoices: ' + all.length, s: subStyle }];
+    for (var c = 1; c < numCols; c++) subRow.push({ v: '' });
+    wsData.push(subRow);
+    mergeCells.push({ s: { r: rowIdx, c: 0 }, e: { r: rowIdx, c: numCols-1 } });
+    rowIdx++;
+
+    var grandTotal = 0, grandReceived = 0, grandRemaining = 0, grandBadDebt = 0;
+    all.forEach(function(r) {
+      grandTotal     += parseFloat(r.total)     || 0;
+      grandReceived  += parseFloat(r.received)  || 0;
+      grandRemaining += parseFloat(r.remaining) || 0;
+      grandBadDebt   += parseFloat(r.bad_debt)  || 0;
+    });
+
+    wsData.push(Array(numCols).fill({ v: '' }));
+    rowIdx++;
+
+    var sumLabelRow = Array(numCols).fill({ v: '' });
+    sumLabelRow[0] = { v: 'GRAND TOTALS', s: { font: { bold: true, sz: 11, color: { rgb: '1E3A5F' } } } };
+    wsData.push(sumLabelRow);
+    mergeCells.push({ s: { r: rowIdx, c: 0 }, e: { r: rowIdx, c: 3 } });
+    rowIdx++;
+
+    var totalIdx     = columns.findIndex(function(c) { return c.key === 'total'; });
+    var receivedIdx  = columns.findIndex(function(c) { return c.key === 'received'; });
+    var remainingIdx = columns.findIndex(function(c) { return c.key === 'remaining'; });
+    var badDebtIdx   = columns.findIndex(function(c) { return c.key === 'bad_debt'; });
+
+    var sumRow = Array(numCols).fill({ v: '' });
+    sumRow[totalIdx]     = { v: 'Total Billed',     s: totalHdrStyle };
+    sumRow[receivedIdx]  = { v: 'Total Received',   s: totalHdrStyle };
+    sumRow[remainingIdx] = { v: 'Total Remaining',  s: remainRedStyle };
+    sumRow[badDebtIdx]   = { v: 'Bad Debt',         s: totalHdrStyle };
+    wsData.push(sumRow);
+    rowIdx++;
+
+    var sumValRow = Array(numCols).fill({ v: '' });
+    sumValRow[totalIdx]     = { v: grandTotal,     s: totalValStyle };
+    sumValRow[receivedIdx]  = { v: grandReceived,  s: totalValStyle };
+    sumValRow[remainingIdx] = { v: grandRemaining, s: remainRedStyle };
+    sumValRow[badDebtIdx]   = { v: grandBadDebt,   s: totalValStyle };
+    wsData.push(sumValRow);
+    rowIdx++;
+
+    wsData.push(Array(numCols).fill({ v: '' }));
+    rowIdx++;
+
+    var colHdrRow = columns.map(function(col) { return { v: col.label, s: hdrStyle }; });
+    wsData.push(colHdrRow);
+    rowIdx++;
+
+    var currentCust = null;
+    var rowCounter = 0;
+    all.forEach(function(row) {
+      var isNewCust = row.cust_name !== currentCust;
+      if (isNewCust) currentCust = row.cust_name;
+
+      var dataRow = columns.map(function(col) {
+        var val = row[col.key];
+        var isNum = numericCols.indexOf(col.key) !== -1;
+        var baseStyle = isNewCust && col.key === 'cust_name' ? custStyle : (rowCounter % 2 === 0 ? evenStyle : oddStyle);
+
+        if (val === null || val === undefined || val === '') return { v: '', s: baseStyle };
+        if (col.key === 'is_advance') return { v: val ? 'Yes' : 'No', s: baseStyle };
+        if (isNum) return { v: parseFloat(val) || 0, s: Object.assign({}, baseStyle, numStyle) };
+        if (col.key === 'created_at') return { v: new Date(val).toLocaleDateString(), s: baseStyle };
+        return { v: String(val), s: baseStyle };
+      });
+
+      wsData.push(dataRow);
+      rowIdx++;
+      rowCounter++;
+    });
+
+    var ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws['!merges'] = mergeCells;
+    ws['!cols'] = columns.map(function(col) { return { wch: col.width }; });
+
+    XLSX.utils.book_append_sheet(wb, ws, 'All Invoices');
+    XLSX.writeFile(wb, 'PrimeCNC_Invoices_' + today + '.xlsx');
+
+    if (btn) { btn.textContent = origText; btn.disabled = false; }
+    if (typeof toast === 'function') toast('✅ Invoices exported!');
+
+  } catch(err) {
+    console.error('Invoice export error:', err);
+    if (typeof Sentry !== 'undefined') Sentry.captureException(err);
+    alert('Export failed: ' + (err.message || err));
+    if (btn) { btn.textContent = origText; btn.disabled = false; }
   }
-  if (typeof sb !== 'undefined' && sb) {
-    try {
-      var res = await sb.from('excel_invoices').select('*');
-      if (res.data && res.data.length) {
-        res.data.forEach(function(inv) {
-          allRows.push({source:'imported', invNum:inv.inv_num||inv.invoice_num||'', customer:inv.customer_name||inv.name||'', date:inv.date||'', total:inv.total_bill||0, paid:(parseFloat(inv.received)||0)+(parseFloat(inv.received1)||0), remaining:inv.remaining||0, notes:''});
-        });
-      }
-    } catch(e) { console.warn('excel_invoices fetch failed:', e); }
-  }
-  if (!allRows.length) { toast('No invoices to export'); return; }
-  var rows = [['Source','Invoice #','Customer','Date','Total','Paid','Remaining','Notes']];
-  allRows.forEach(function(r) { rows.push([r.source, r.invNum, r.customer, r.date, r.total, r.paid, r.remaining, r.notes]); });
-  var csv = rows.map(function(r){ return r.map(function(v){ return '"'+String(v).replace(/"/g,'""')+'"'; }).join(','); }).join('\n');
-  var a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-  a.download = 'PrimeCNC_Invoices_' + new Date().toISOString().slice(0,10) + '.csv';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  toast('✅ Invoices exported');
 }
 
 // ═══════════════════════════════════════════════════
