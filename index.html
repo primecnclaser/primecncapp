@@ -12863,7 +12863,7 @@ async function exportInvoicesCSV() {
       var dateStr = d && !isNaN(d) ? d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : (r.date || '');
       return {
         source: 'Imported',
-        inv_num: r.order_num ? 'INV-' + r.order_num : '',
+        inv_num: normalizeOrderNum(r.order_num),
         date: dateStr,
         cust_name: r.customer_name || '',
         phone: r.phone || '',
