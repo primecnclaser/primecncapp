@@ -3600,13 +3600,6 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
                 <button onclick="sCatReset()" style="padding:8px 14px;border:1.5px solid #fde68a;background:#fffbeb;color:#92400e;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;text-align:left;">↩ Reset Categories to Defaults</button>
               </div>
             </div>
-            <div style="background:#fff;border:1.5px solid #bbf7d0;border-radius:12px;padding:16px;">
-              <div style="font-size:0.72rem;font-weight:700;color:#065f46;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">🔄 Sync &amp; Repair</div>
-              <div style="display:flex;flex-direction:column;gap:8px;">
-                <button onclick="refreshOfflineCache&&refreshOfflineCache()" style="padding:8px 14px;border:1.5px solid #6ee7b7;background:#f0fdf4;color:#065f46;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;text-align:left;">☁ Refresh Offline Cache from Cloud</button>
-                <button onclick="fixMay2026LedgerDates&&fixMay2026LedgerDates()" style="padding:8px 14px;border:1.5px solid #cbd5e1;background:#f8fafc;color:#475569;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;text-align:left;">🔧 Fix May 2026 Ledger Dates</button>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -12832,15 +12825,33 @@ async function saveInvoiceSettings() {
 }
 
 // ── Invoices CSV export (for Data & Sync tab) ──
-function exportInvoicesCSV() {
-  if (!database || !database.length) { toast('No invoices to export'); return; }
-  const rows = [['Invoice #','Customer','Date','Total','Paid','Remaining','Notes']];
-  database.forEach(inv => {
-    rows.push([inv.invNum||'',inv.customerName||'',inv.date||'',inv.total||0,inv.paid||0,(inv.total||0)-(inv.paid||0),inv.notes||'']);
-  });
-  const csv = rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
-  const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-  a.download='invoices-export.csv'; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+async function exportInvoicesCSV() {
+  toast('📥 Exporting invoices...');
+  var allRows = [];
+  if (database && database.length) {
+    database.forEach(function(inv) {
+      allRows.push({source:'app', invNum:inv.invNum||'', customer:inv.customerName||'', date:inv.date||'', total:inv.total||0, paid:inv.paid||0, remaining:(inv.total||0)-(inv.paid||0), notes:inv.notes||''});
+    });
+  }
+  if (typeof sb !== 'undefined' && sb) {
+    try {
+      var res = await sb.from('excel_invoices').select('*');
+      if (res.data && res.data.length) {
+        res.data.forEach(function(inv) {
+          allRows.push({source:'imported', invNum:inv.inv_num||inv.invoice_num||'', customer:inv.customer_name||inv.name||'', date:inv.date||'', total:inv.total_bill||0, paid:(parseFloat(inv.received)||0)+(parseFloat(inv.received1)||0), remaining:inv.remaining||0, notes:''});
+        });
+      }
+    } catch(e) { console.warn('excel_invoices fetch failed:', e); }
+  }
+  if (!allRows.length) { toast('No invoices to export'); return; }
+  var rows = [['Source','Invoice #','Customer','Date','Total','Paid','Remaining','Notes']];
+  allRows.forEach(function(r) { rows.push([r.source, r.invNum, r.customer, r.date, r.total, r.paid, r.remaining, r.notes]); });
+  var csv = rows.map(function(r){ return r.map(function(v){ return '"'+String(v).replace(/"/g,'""')+'"'; }).join(','); }).join('\n');
+  var a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'PrimeCNC_Invoices_' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  toast('✅ Invoices exported');
 }
 
 // ═══════════════════════════════════════════════════
@@ -17992,17 +18003,204 @@ async function deleteLocalLedgerEntry(localId, date, type, cat, btnEl) {
   await renderLedger();
 }
 
-function exportLedgerCSV() {
-  toast('📥 Exporting ledger...');
-  fetchFinanceEntries().then(entries => {
-    const rows = [['Date','Type','Category','Note','Amount','Source']];
-    entries.forEach(e => rows.push([e.entry_date, TYPE_LABELS[e.entry_type]||e.entry_type, e.category, e.note||'', e.amount, e.source]));
-    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
-    const a = document.createElement('a');
-    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-    a.download = 'PrimeCNC_Ledger_' + new Date().toISOString().slice(0,10) + '.csv';
-    a.click();
-  });
+async function exportLedgerCSV() {
+  var btn = event && event.target ? event.target : document.querySelector('[onclick="exportLedgerCSV()"]');
+  var origText = btn ? btn.textContent : '';
+  if (btn) { btn.textContent = '⏳ Preparing...'; btn.disabled = true; }
+
+  try {
+    if (!window.XLSX) {
+      if (btn) btn.textContent = '⏳ Loading...';
+      await new Promise(function(res, rej) {
+        var s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+
+    if (btn) btn.textContent = '⏳ Fetching data...';
+
+    var res = await sb.from('finance_ledger').select('*').order('entry_date', { ascending: true });
+    var rows = res.data || [];
+
+    if (rows.length === 0) { alert('No finance data found.'); if (btn) { btn.textContent = origText; btn.disabled = false; } return; }
+
+    var monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    var shortMonths = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var months = {};
+    rows.forEach(function(row) {
+      var d = row.entry_date || '';
+      var parts = d.split('-');
+      var yr = parts[0] || '0000';
+      var mo = parseInt(parts[1],10) || 1;
+      var key = yr + '-' + String(mo).padStart(2,'0');
+      var label = monthNames[mo-1] + ' ' + yr;
+      if (!months[key]) months[key] = { label: label, short: shortMonths[mo-1] + ' ' + yr, rows: [] };
+      months[key].rows.push(row);
+    });
+
+    var XLSX = window.XLSX;
+    var wb = XLSX.utils.book_new();
+    var today = new Date().toISOString().slice(0,10);
+
+    var hdrStyle = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center', wrapText: true } };
+    var summaryTitleStyle = { font: { bold: true, sz: 12, color: { rgb: '1E3A5F' } }, fill: { fgColor: { rgb: 'D5E8F0' } }, alignment: { horizontal: 'left' } };
+    var summaryLabelStyle = { font: { bold: true, sz: 10 }, fill: { fgColor: { rgb: 'F2F2F2' } }, alignment: { horizontal: 'left' } };
+    var incomeStyle = { font: { bold: true, color: { rgb: '065F46' }, sz: 10 }, fill: { fgColor: { rgb: 'D1FAE5' } }, alignment: { horizontal: 'right' }, numFmt: '#,##0.00' };
+    var expenseStyle = { font: { bold: true, color: { rgb: '991B1B' }, sz: 10 }, fill: { fgColor: { rgb: 'FEE2E2' } }, alignment: { horizontal: 'right' }, numFmt: '#,##0.00' };
+    var netPosStyle = { font: { bold: true, color: { rgb: '065F46' }, sz: 11 }, fill: { fgColor: { rgb: 'A7F3D0' } }, alignment: { horizontal: 'right' }, numFmt: '#,##0.00' };
+    var netNegStyle = { font: { bold: true, color: { rgb: '991B1B' }, sz: 11 }, fill: { fgColor: { rgb: 'FECACA' } }, alignment: { horizontal: 'right' }, numFmt: '#,##0.00' };
+    var amountCellStyle = { alignment: { horizontal: 'right' }, numFmt: '#,##0.00' };
+
+    var sortedKeys = Object.keys(months).sort();
+
+    sortedKeys.forEach(function(key) {
+      var month = months[key];
+      var mRows = month.rows;
+
+      var ordered = ['entry_date','entry_type','category','note','amount','source','ref_id'];
+
+      var totalIncome = 0, totalExpense = 0;
+      var byType = {};
+      mRows.forEach(function(r) {
+        var amt = parseFloat(r.amount) || 0;
+        var type = (r.entry_type || 'other').toLowerCase();
+        if (type === 'income' || type === 'invoice_income') totalIncome += amt;
+        else totalExpense += amt;
+        if (!byType[r.entry_type || 'Other']) byType[r.entry_type || 'Other'] = 0;
+        byType[r.entry_type || 'Other'] += amt;
+      });
+      var net = totalIncome - totalExpense;
+      var numCols = ordered.length;
+
+      var wsData = [];
+      var mergeCells = [];
+      var rowIdx = 0;
+
+      var titleRow = [{ v: month.label + ' — Finance Report', s: summaryTitleStyle }];
+      for (var c = 1; c < numCols; c++) titleRow.push({ v: '', s: summaryTitleStyle });
+      wsData.push(titleRow);
+      mergeCells.push({ s: { r: rowIdx, c: 0 }, e: { r: rowIdx, c: numCols-1 } });
+      rowIdx++;
+
+      wsData.push(Array(numCols).fill({ v: '' }));
+      rowIdx++;
+
+      var incRow = Array(numCols).fill({ v: '' });
+      incRow[0] = { v: 'Total Income', s: summaryLabelStyle };
+      incRow[numCols-1] = { v: totalIncome, s: incomeStyle };
+      wsData.push(incRow);
+      rowIdx++;
+
+      var expRow = Array(numCols).fill({ v: '' });
+      expRow[0] = { v: 'Total Expenses', s: summaryLabelStyle };
+      expRow[numCols-1] = { v: totalExpense, s: expenseStyle };
+      wsData.push(expRow);
+      rowIdx++;
+
+      Object.keys(byType).forEach(function(t) {
+        var tRow = Array(numCols).fill({ v: '' });
+        tRow[0] = { v: '  ' + t, s: { font: { sz: 9, italic: true } } };
+        tRow[numCols-1] = { v: byType[t], s: { font: { sz: 9 }, alignment: { horizontal: 'right' }, numFmt: '#,##0.00' } };
+        wsData.push(tRow);
+        rowIdx++;
+      });
+
+      var netRow = Array(numCols).fill({ v: '' });
+      netRow[0] = { v: 'Net Balance', s: { font: { bold: true, sz: 11 } } };
+      netRow[numCols-1] = { v: net, s: net >= 0 ? netPosStyle : netNegStyle };
+      wsData.push(netRow);
+      rowIdx++;
+
+      wsData.push(Array(numCols).fill({ v: '' }));
+      rowIdx++;
+
+      var colHdrRow = ordered.map(function(col) {
+        return { v: col.replace(/_/g,' ').toUpperCase(), s: hdrStyle };
+      });
+      wsData.push(colHdrRow);
+      rowIdx++;
+
+      mRows.forEach(function(row) {
+        var dataRow = ordered.map(function(col) {
+          var val = row[col];
+          if (val === null || val === undefined) return { v: '' };
+          if (col === 'amount') return { v: parseFloat(val)||0, s: amountCellStyle };
+          return { v: String(val) };
+        });
+        wsData.push(dataRow);
+        rowIdx++;
+      });
+
+      var ws = XLSX.utils.aoa_to_sheet(wsData);
+      ws['!merges'] = mergeCells;
+      ws['!cols'] = ordered.map(function(col) {
+        if (col === 'note') return { wch: 35 };
+        if (col === 'entry_date') return { wch: 14 };
+        if (col === 'amount') return { wch: 14 };
+        if (col === 'entry_type' || col === 'category') return { wch: 18 };
+        return { wch: 16 };
+      });
+
+      XLSX.utils.book_append_sheet(wb, ws, month.short.slice(0,31));
+    });
+
+    var summaryData = [
+      [{ v: 'Prime CNC Laser — Finance Summary', s: { font: { bold: true, sz: 14, color: { rgb: '1E3A5F' } } } }],
+      [{ v: 'Generated: ' + new Date().toLocaleString() }],
+      [{ v: '' }],
+      [{ v: 'Month', s: hdrStyle },{ v: 'Income (Rs.)', s: hdrStyle },{ v: 'Expenses (Rs.)', s: hdrStyle },{ v: 'Net Balance (Rs.)', s: hdrStyle },{ v: 'Entries', s: hdrStyle }]
+    ];
+
+    var grandIncome = 0, grandExpense = 0;
+    sortedKeys.forEach(function(key) {
+      var mRows = months[key].rows;
+      var inc = 0, exp = 0;
+      mRows.forEach(function(r) {
+        var amt = parseFloat(r.amount)||0;
+        var type = (r.entry_type||'').toLowerCase();
+        if (type==='income'||type==='invoice_income') inc+=amt; else exp+=amt;
+      });
+      grandIncome += inc; grandExpense += exp;
+      var net = inc - exp;
+      summaryData.push([
+        { v: months[key].label },
+        { v: inc, s: { numFmt: '#,##0.00', font: { color: { rgb: '065F46' } } } },
+        { v: exp, s: { numFmt: '#,##0.00', font: { color: { rgb: '991B1B' } } } },
+        { v: net, s: { numFmt: '#,##0.00', font: { bold: true, color: { rgb: net>=0?'065F46':'991B1B' } } } },
+        { v: mRows.length }
+      ]);
+    });
+
+    var grandNet = grandIncome - grandExpense;
+    summaryData.push([
+      { v: 'GRAND TOTAL', s: { font: { bold: true, sz: 11 } } },
+      { v: grandIncome, s: { numFmt: '#,##0.00', font: { bold: true, color: { rgb: '065F46' }, sz: 11 } } },
+      { v: grandExpense, s: { numFmt: '#,##0.00', font: { bold: true, color: { rgb: '991B1B' }, sz: 11 } } },
+      { v: grandNet, s: { numFmt: '#,##0.00', font: { bold: true, sz: 11, color: { rgb: grandNet>=0?'065F46':'991B1B' } } } },
+      { v: rows.length, s: { font: { bold: true, sz: 11 } } }
+    ]);
+
+    var summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
+    summaryWs['!cols'] = [{ wch: 20 },{ wch: 18 },{ wch: 18 },{ wch: 18 },{ wch: 10 }];
+    summaryWs['!merges'] = [{ s:{r:0,c:0},e:{r:0,c:4} },{ s:{r:1,c:0},e:{r:1,c:4} }];
+
+    wb.SheetNames.unshift('Summary');
+    wb.Sheets['Summary'] = summaryWs;
+
+    if (btn) btn.textContent = '⏳ Generating Excel...';
+    XLSX.writeFile(wb, 'PrimeCNC_Finance_' + today + '.xlsx');
+
+    if (btn) { btn.textContent = origText; btn.disabled = false; }
+    if (typeof toast === 'function') toast('✅ Finance report downloaded!');
+
+  } catch(err) {
+    console.error('Finance export error:', err);
+    if (typeof Sentry !== 'undefined') Sentry.captureException(err);
+    alert('Export failed: ' + (err.message || err));
+    if (btn) { btn.textContent = origText; btn.disabled = false; }
+  }
 }
 
 // ─── HELPER: fetch finance entries and correct invoice_income amounts from invoices table ───
