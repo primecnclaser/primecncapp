@@ -8857,7 +8857,7 @@ function _printHeaderHtml(s, rightHtml) {
     var t=elSt(key);
     var fontFallback = (t.font==='JameelNooriNastaliq') ? '"JameelNooriNastaliq"' : '"'+t.font+'",sans-serif';
     var shadow = t.shadowBlur>0 ? 'text-shadow:0 0 '+t.shadowBlur+'px currentColor;' : '';
-    var _align = (key==='urdu') ? (t.align==='left'?'right': t.align==='right'?'left': 'center') : t.align;
+    var _align = t.align;
     return 'color:'+(t.color||ac)+';font-size:'+t.size+'rem;font-family:'+fontFallback+';'
       +'font-weight:'+(t.bold?700:400)+';font-style:'+(t.italic?'italic':'normal')+';text-align:'+_align+';width:100%;'
       +'letter-spacing:'+t.letterSpacing+'px;line-height:'+t.lineHeight+';opacity:'+t.opacity+';'
