@@ -2210,7 +2210,7 @@ body {
 <!-- ║  SECTION 8 — USER BAR / HEADER                     ║ -->
 <!-- ═══════════════════════════════════════════════════════ -->
 <div id="userBar">
-  <div id="_ubBrand"><span id="_ubBrandText">⚙️ Complete Shop System</span><span id="_appVersionLabel" style="font-size:0.6rem;font-weight:700;color:#f59e0b;font-family:Montserrat,sans-serif;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:middle;">v1.0.2-STAGING</span></div>
+  <div id="_ubBrand"><span id="_ubBrandText">⚙️ Complete Shop System</span><span id="_appVersionLabel" style="font-size:0.6rem;font-weight:700;color:#f59e0b;font-family:Montserrat,sans-serif;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:middle;">v1.0.3-STAGING</span></div>
   <div id="topShopName"></div>
   <!-- Col 3: all SPAN children — no div:last-child matches inside -->
   <div id="_ubProfile">
@@ -4679,8 +4679,8 @@ setInterval(async () => {
 // ══════════════════════════════════════════════
 // SUPABASE CONFIG
 // ══════════════════════════════════════════════
-const SUPA_URL = 'https://libeiofmjbujudwrlmpx.supabase.co';
-const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpYmVpb2ZtamJ1anVkd3JsbXB4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2OTUwMTYsImV4cCI6MjA5NzI3MTAxNn0.cCR7cbJfaaHe6ki9S4oS2FmfZeO2lNljGU-BMeYVxag';
+const SUPA_URL = 'https://jazxyebbbaitvcjeyjly.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imphenh5ZWJiYmFpdHZjamV5amx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU4MzI3OTUsImV4cCI6MjA2MTQwODc5NX0.eLQBTfBqFrFJFeGBMdqsGoVBjbLuCkMxmTiMbgpTBEA';
 let sb;
 try {
   sb = supabase.createClient(SUPA_URL, SUPA_KEY);
@@ -4704,8 +4704,8 @@ let _dbPage = 1;               // pagination page for submitted tab
 let _dbExactName = null;       // exact name selected from dropdown (null = partial/type search)
 let _searchPage = 1;           // pagination page for search tab
 
-const APP_VERSION = '1.0.2';
-Sentry.setTag("app_version", "1.0.2");
+const APP_VERSION = '1.0.3';
+Sentry.setTag("app_version", "1.0.3");
 const storedVersion = localStorage.getItem('app_version');
 if (storedVersion !== APP_VERSION) {
   localStorage.removeItem('fin_ledger_local');
