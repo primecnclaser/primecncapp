@@ -26,6 +26,21 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script
+  src="https://browser.sentry-cdn.com/7.99.0/bundle.min.js"
+  integrity="sha384-xyz"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.init({
+    dsn: "https://317f68cc231c2963fecc64666a38c10d@o4511585608073216.ingest.us.sentry.io/4511585619869696",
+    environment: "staging",
+    tracesSampleRate: 1.0,
+    beforeSend(event) {
+      return event;
+    }
+  });
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Prime CNC Invoice System</title>
@@ -4719,6 +4734,7 @@ let _dbExactName = null;       // exact name selected from dropdown (null = part
 let _searchPage = 1;           // pagination page for search tab
 
 const APP_VERSION = '1.0.2';
+Sentry.setTag("app_version", "1.0.2");
 const storedVersion = localStorage.getItem('app_version');
 if (storedVersion !== APP_VERSION) {
   localStorage.removeItem('fin_ledger_local');
