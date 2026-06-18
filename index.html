@@ -5484,7 +5484,7 @@ function setInvoiceNumber() {
   // Also include imported excel invoices
   if (Array.isArray(_excelDBCache)) {
     _excelDBCache.forEach(r => {
-      const n = parseInt(String(r.order_num).replace(/^INV-/i, ''));
+      const n = parseInt(String(r.order_num).replace(/^[A-Za-z]+-/i, ''));
       if (Number.isFinite(n) && n > 0 && n < 100000) allNums.push(n);
     });
   }
@@ -14426,7 +14426,11 @@ async function _renderSearchByInv(invNum) {
     var bg = (i%2===0)?'#fff':'#f8fafc';
     var dateD = fmtDateDisplay(r.date);
     var discH = r.disc > 0 ? 'Rs.'+Math.round(r.disc).toLocaleString('en-PK') : '—';
-    var srcBadge = '';
+    var srcBadge = r.source === 'excel'
+      ? ''
+      : (r.source === 'supabase'
+        ? '<span style="background:#4f46e5;color:#fff;font-size:0.5rem;font-weight:700;padding:1px 4px;border-radius:3px;margin-left:4px;">CLOUD</span>'
+        : '<span style="background:#0ea5e9;color:#fff;font-size:0.5rem;font-weight:700;padding:1px 4px;border-radius:3px;margin-left:4px;">NEW</span>');
     var remColor = r.remaining > 0 ? '#dc2626' : r.remaining < 0 ? '#8e44ad' : '#059669';
     return '<tr style="background:'+bg+';border-bottom:1px solid #f1f5f9;">'
       + '<td style="'+tdS+'text-align:center;color:#94a3b8;">'+(i+1)+'</td>'
