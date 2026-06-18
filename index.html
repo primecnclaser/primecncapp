@@ -3579,6 +3579,12 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
 
           <!-- Actions -->
           <div style="display:flex;flex-direction:column;gap:12px;">
+            <div style="background:#fff;border:1.5px solid #c7d2fe;border-radius:12px;padding:16px;margin-bottom:12px;">
+              <div style="font-size:0.72rem;font-weight:700;color:#3730a3;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">💾 Full Database Backup</div>
+              <div style="font-size:0.72rem;color:#64748b;margin-bottom:10px;">Download all your data — customers, invoices, finance, settings — as Excel files in a ZIP. Store safely on your computer or Google Drive.</div>
+              <button onclick="exportFullBackup()" style="width:100%;padding:10px 14px;border:1.5px solid #6366f1;background:linear-gradient(135deg,#4f46e5,#6366f1);color:#fff;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.82rem;cursor:pointer;">💾 Download Full Backup (ZIP)</button>
+              <div id="backupStatus" style="font-size:0.72rem;color:#64748b;margin-top:8px;display:none;"></div>
+            </div>
             <div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px;">
               <div style="font-size:0.72rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">📥 Export Data</div>
               <div style="display:flex;flex-direction:column;gap:8px;">
@@ -20377,6 +20383,99 @@ function showPastDayEntries(date){
       if(penBtn) penBtn.style.display = showPen ? '' : 'none';
       if(saveBtn){saveBtn.textContent='✏️ Update Entry';saveBtn.style.background='#d97706';}
     }
+  }
+}
+
+async function exportFullBackup() {
+  var btn = document.querySelector('[onclick="exportFullBackup()"]');
+  var status = document.getElementById('backupStatus');
+  if (btn) { btn.textContent = '⏳ Preparing backup...'; btn.disabled = true; }
+  if (status) { status.style.display = 'block'; status.textContent = 'Fetching data from Supabase...'; }
+
+  try {
+    var tables = [
+      { name: 'invoices', label: 'Invoices' },
+      { name: 'invoice_items', label: 'Invoice Items' },
+      { name: 'excel_invoices', label: 'Historical Invoices' },
+      { name: 'finance_ledger', label: 'Finance Ledger' },
+      { name: 'pending_bills', label: 'Pending Bills' },
+      { name: 'cash_holder_entries', label: 'Cash Holder Entries' },
+      { name: 'cash_holder_names', label: 'Cash Holder Names' },
+      { name: 'app_users', label: 'Users' },
+      { name: 'shop_settings', label: 'Settings' }
+    ];
+
+    var allData = {};
+    for (var i = 0; i < tables.length; i++) {
+      if (status) status.textContent = 'Fetching ' + tables[i].label + '...';
+      var res = await sb.from(tables[i].name).select('*');
+      allData[tables[i].label] = res.data || [];
+    }
+
+    if (status) status.textContent = 'Building Excel files...';
+
+    var XLSX = window.XLSX;
+    if (!XLSX) {
+      await new Promise(function(resolve, reject) {
+        var s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+      XLSX = window.XLSX;
+    }
+
+    await new Promise(function(resolve, reject) {
+      var s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+
+    var zip = new JSZip();
+    var today = new Date().toISOString().slice(0,10);
+    var folder = zip.folder('PrimeCNC_Backup_' + today);
+
+    for (var i = 0; i < tables.length; i++) {
+      var data = allData[tables[i].label];
+      if (!data || data.length === 0) continue;
+      var ws = XLSX.utils.json_to_sheet(data);
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, tables[i].label.slice(0,31));
+      var wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      folder.file(tables[i].label + '.xlsx', wbout);
+    }
+
+    var info = 'Prime CNC Laser — Full Database Backup\n';
+    info += 'Date: ' + new Date().toLocaleString() + '\n';
+    info += 'Tables backed up:\n';
+    tables.forEach(function(t) {
+      info += '  - ' + t.label + ': ' + (allData[t.label] ? allData[t.label].length : 0) + ' records\n';
+    });
+    folder.file('BACKUP_INFO.txt', info);
+
+    if (status) status.textContent = 'Compressing ZIP...';
+
+    var content = await zip.generateAsync({ type: 'blob' });
+    var url = URL.createObjectURL(content);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'PrimeCNC_Backup_' + today + '.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    if (status) { status.textContent = '✅ Backup downloaded successfully! Store it safely.'; status.style.color = '#059669'; }
+    if (btn) { btn.textContent = '💾 Download Full Backup (ZIP)'; btn.disabled = false; }
+
+  } catch(err) {
+    console.error('Backup error:', err);
+    if (typeof Sentry !== 'undefined') Sentry.captureException(err);
+    if (status) { status.textContent = '❌ Backup failed: ' + (err.message || err); status.style.color = '#dc2626'; }
+    if (btn) { btn.textContent = '💾 Download Full Backup (ZIP)'; btn.disabled = false; }
   }
 }
 
