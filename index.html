@@ -12811,10 +12811,16 @@ async function saveInvoiceSettings() {
   if (typeof setInvoiceNumber === 'function') setInvoiceNumber();
   if (typeof renderDB === 'function') {
     loadExcelDBCache().then(function(){
-      setTimeout(function(){
-        console.log('renderDB called, sample order_num:', _excelDBCache && _excelDBCache[0] && _excelDBCache[0].order_num);
-        renderDB();
-      }, 100);
+      var pfx = localStorage.getItem('inv_num_prefix') || 'INV-';
+      if (_excelDBCache) {
+        _excelDBCache.forEach(function(r) {
+          if (r.order_num) {
+            var raw = String(r.order_num).replace(/^[A-Za-z]+-/i, '');
+            r.order_num = pfx + raw;
+          }
+        });
+      }
+      setTimeout(function(){ renderDB(); }, 100);
     });
   }
   toast('✅ Invoice settings saved');
