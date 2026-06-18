@@ -13668,6 +13668,8 @@ function _applyHeaderSettingsNow() {
         el.classList.add('urdu-header');
       });
     });
+    var _dbgEl = document.querySelector('.inv-header [data-hdr-key="urdu"]');
+    console.log('AFTER RENDER urdu style:', _dbgEl ? _dbgEl.getAttribute('style') : 'NOT FOUND');
   }
 
   // Apply to every .inv-footer in the DOM
