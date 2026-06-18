@@ -14051,6 +14051,7 @@ async function loadExcelDBCache() {
     // Normalize all dates from DD.MM.YYYY → YYYY-MM-DD for correct sorting
     allRows.forEach(function(r) {
       r.date = normalizeDate(r.date);
+      if (r.order_num && !String(r.order_num).startsWith('INV-')) r.order_num = 'INV-' + r.order_num;
       if (typeof r.received_entries === 'string') {
         try { r.received_entries = JSON.parse(r.received_entries); } catch(e) { r.received_entries = []; }
       } else if (!Array.isArray(r.received_entries)) {
