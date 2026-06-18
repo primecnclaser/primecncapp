@@ -8802,13 +8802,13 @@ function _printHeaderCSS(s) {
     +'.ph-logo-ph{font-size:0.65rem;color:rgba(201,168,76,0.6);text-align:center;line-height:1.5;}'
     +'.ph-logo-ph span{font-size:2rem;display:block;margin-bottom:3px;}'
     +'.ph-info{padding:'+_phPad+';min-width:0;overflow:hidden;}'
-    +'.ph-urdu{font-family:"JameelNooriNastaliq",serif;font-size:'+_us+';font-weight:700;color:'+ac+';line-height:'+_urduLH+';text-align:center;direction:rtl;margin-bottom:'+_urduMB+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'
-    +'.ph-en{font-family:"Playfair Display",serif;font-size:'+_es+';font-weight:700;color:'+ac+';text-align:center;margin-top:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'
-    +'.ph-tagline{font-family:Montserrat,sans-serif;font-size:'+(_isMob?'0.58rem':'0.72rem')+';font-weight:500;color:rgba(255,255,255,0.7);text-align:center;margin-top:'+(_isMob?'1px':'4px')+';font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'
+    +'.ph-urdu{font-family:"JameelNooriNastaliq",serif;font-size:'+_us+';font-weight:700;color:'+ac+';line-height:'+_urduLH+';direction:rtl;margin-bottom:'+_urduMB+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'
+    +'.ph-en{font-family:"Playfair Display",serif;font-size:'+_es+';font-weight:700;color:'+ac+';margin-top:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'
+    +'.ph-tagline{font-family:Montserrat,sans-serif;font-size:'+(_isMob?'0.58rem':'0.72rem')+';font-weight:500;color:rgba(255,255,255,0.7);margin-top:'+(_isMob?'1px':'4px')+';font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'
     +'.ph-contacts{display:flex;align-items:center;justify-content:center;gap:'+(_isMob?'4px':'14px')+';margin-top:'+(_isMob?'2px':'8px')+';flex-wrap:wrap;}'
     +'.ph-c{font-family:Montserrat,sans-serif;font-size:'+(_isMob?'0.58rem':'0.76rem')+';font-weight:600;color:rgba(255,255,255,0.85);}'
     +'.ph-wa{font-family:Montserrat,sans-serif;font-size:'+(_isMob?'0.58rem':'0.76rem')+';font-weight:600;color:#25D366;}'
-    +'.ph-addr{font-family:Montserrat,sans-serif;font-size:'+(_isMob?'0.55rem':'0.7rem')+';font-weight:500;color:rgba(255,255,255,0.65);text-align:center;margin-top:'+(_isMob?'1px':'5px')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'
+    +'.ph-addr{font-family:Montserrat,sans-serif;font-size:'+(_isMob?'0.55rem':'0.7rem')+';font-weight:500;color:rgba(255,255,255,0.65);margin-top:'+(_isMob?'1px':'5px')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'
     // Right panel: allow content to define height, word-break for long names
     +'.ph-right{padding:'+_phRPad+';display:flex;flex-direction:column;justify-content:center;align-items:flex-end;gap:3px;border-left:1px solid rgba(201,168,76,0.15);overflow:hidden;}'
     +'.ph-lbl{font-size:'+(_isMob?'0.5rem':'0.58rem')+';font-weight:700;text-transform:uppercase;letter-spacing:'+(_isMob?'0.3px':'1px')+';color:rgba(148,163,184,0.9);font-family:Montserrat,sans-serif;white-space:nowrap;}'
@@ -8857,8 +8857,9 @@ function _printHeaderHtml(s, rightHtml) {
     var t=elSt(key);
     var fontFallback = (t.font==='JameelNooriNastaliq') ? '"JameelNooriNastaliq"' : '"'+t.font+'",sans-serif';
     var shadow = t.shadowBlur>0 ? 'text-shadow:0 0 '+t.shadowBlur+'px currentColor;' : '';
+    var _align = (key==='urdu') ? (t.align==='left'?'right': t.align==='right'?'left': 'center') : t.align;
     return 'color:'+(t.color||ac)+';font-size:'+t.size+'rem;font-family:'+fontFallback+';'
-      +'font-weight:'+(t.bold?700:400)+';font-style:'+(t.italic?'italic':'normal')+';text-align:'+t.align+';width:100%;'
+      +'font-weight:'+(t.bold?700:400)+';font-style:'+(t.italic?'italic':'normal')+';text-align:'+_align+';width:100%;'
       +'letter-spacing:'+t.letterSpacing+'px;line-height:'+t.lineHeight+';opacity:'+t.opacity+';'
       +'padding-top:'+t.padTop+'px;padding-bottom:'+t.padBottom+'px;'
       +shadow+(extra||'');
@@ -12840,7 +12841,18 @@ const HDR_EL_DEFAULTS = {
 };
 
 let _hdrElStyles = (function(){
-  try { var s=localStorage.getItem('inv_hdr_el_styles'); if(s) { var p=JSON.parse(s); if(p.urdu && !p.urdu.font) p.urdu.font='JameelNooriNastaliq'; return p; } } catch(e){}
+  try {
+    var s=localStorage.getItem('inv_hdr_el_styles');
+    if(s) {
+      var p=JSON.parse(s);
+      var merged = JSON.parse(JSON.stringify(HDR_EL_DEFAULTS));
+      Object.keys(p).forEach(function(k){
+        if(merged[k]) merged[k] = Object.assign({}, merged[k], p[k]);
+        else merged[k] = p[k];
+      });
+      return merged;
+    }
+  } catch(e){}
   return JSON.parse(JSON.stringify(HDR_EL_DEFAULTS));
 })();
 
@@ -13145,8 +13157,18 @@ function ctrlLoad(skipCloudSync) {
   sc('ctrl_gradbar',       'inv_show_gradbar',  true);
 
   // Load element styles and layout
-  try { var _es=localStorage.getItem('inv_hdr_el_styles'); if(_es) _hdrElStyles=JSON.parse(_es); } catch(e){}
-  if(!_hdrElStyles.urdu) _hdrElStyles.urdu={}; if(!_hdrElStyles.urdu.font) _hdrElStyles.urdu.font='JameelNooriNastaliq';
+  try {
+    var _es=localStorage.getItem('inv_hdr_el_styles');
+    if(_es) {
+      var _ep=JSON.parse(_es);
+      var _em=JSON.parse(JSON.stringify(HDR_EL_DEFAULTS));
+      Object.keys(_ep).forEach(function(k){
+        if(_em[k]) _em[k]=Object.assign({},_em[k],_ep[k]);
+        else _em[k]=_ep[k];
+      });
+      _hdrElStyles=_em;
+    }
+  } catch(e){}
   try { var _ec=localStorage.getItem('inv_hdr_cols');       if(_ec) _hdrCols=JSON.parse(_ec);     } catch(e){}
   try { var _eo=localStorage.getItem('inv_hdr_order'); if(_eo){ var _eop=JSON.parse(_eo); if(_eop && _eop.length>0) _hdrOrder=_eop; } } catch(e){}
   try { var _eh=localStorage.getItem('inv_hdr_hidden');     if(_eh) _hdrHidden=JSON.parse(_eh);   } catch(e){}
@@ -13250,7 +13272,17 @@ function ctrlLoad(skipCloudSync) {
       // ── apply drag-editor layout variables from cloud ───────────
       // Only update if the Drag Editor staging hasn't been opened yet in this session
       // (avoids wiping in-progress edits)
-      try { if(map.hdr_el_styles) _hdrElStyles = JSON.parse(map.hdr_el_styles); } catch(e){}
+      try {
+        if(map.hdr_el_styles) {
+          var _cloudStyles = JSON.parse(map.hdr_el_styles);
+          var _merged = JSON.parse(JSON.stringify(HDR_EL_DEFAULTS));
+          Object.keys(_cloudStyles).forEach(function(k) {
+            if(_merged[k]) _merged[k] = Object.assign({}, _merged[k], _cloudStyles[k]);
+            else _merged[k] = _cloudStyles[k];
+          });
+          _hdrElStyles = _merged;
+        }
+      } catch(e){}
       try { if(map.hdr_cols)      _hdrCols     = JSON.parse(map.hdr_cols);      } catch(e){}
       try { if(map.hdr_order)     _hdrOrder    = JSON.parse(map.hdr_order);     } catch(e){}
       try { if(map.hdr_hidden)    _hdrHidden   = JSON.parse(map.hdr_hidden);    } catch(e){}
@@ -13614,6 +13646,7 @@ function _applyHeaderSettingsNow() {
 
   // Apply to every .inv-header in the DOM — dirty-check skips rebuild if HTML unchanged
   var _newHdrHtml = _printHeaderHtml(s, rightHtml);
+  _lastHdrHtml = null; // force rebuild always
   if (_newHdrHtml !== _lastHdrHtml) {
     _lastHdrHtml = _newHdrHtml;
     document.querySelectorAll('.inv-header').forEach(function(hdr) {
@@ -13660,8 +13693,6 @@ function applyUrduFont(font) {
   if (typeof _hdrElStyles !== 'undefined') {
     if (!_hdrElStyles.urdu) _hdrElStyles.urdu = {};
     _hdrElStyles.urdu.font = ff;
-    localStorage.setItem('inv_hdr_el_styles', JSON.stringify(_hdrElStyles));
-    (async function(){ if (typeof sb !== 'undefined' && sb) { try { var _now=new Date().toISOString(); await sb.from('shop_settings').upsert([{key:'inv_hdr_el_styles',value:localStorage.getItem('inv_hdr_el_styles')||'{}',updated_at:_now},{key:'inv_hdr_cols',value:localStorage.getItem('inv_hdr_cols')||'{}',updated_at:_now},{key:'inv_hdr_order',value:localStorage.getItem('inv_hdr_order')||'[]',updated_at:_now},{key:'inv_hdr_hidden',value:localStorage.getItem('inv_hdr_hidden')||'[]',updated_at:_now}],{onConflict:'key'}); } catch(e){console.warn('Supabase hdr sync failed:',e);} } })();
   }
   var cssFontStack = (ff === 'JameelNooriNastaliq')
     ? '"JameelNooriNastaliq",serif'
@@ -21623,7 +21654,13 @@ window._ctrlBootSyncDone = false;
 var _dragCanvasMode   = 'header'; // 'header' or 'footer'
 
 function _initDragStaging() {
-  _dragElStylesTemp = JSON.parse(JSON.stringify(_hdrElStyles));
+  var _fullDefaults = JSON.parse(JSON.stringify(HDR_EL_DEFAULTS));
+  var _saved = _hdrElStyles || {};
+  var _merged = {};
+  Object.keys(_fullDefaults).forEach(function(key) {
+    _merged[key] = Object.assign({}, _fullDefaults[key], _saved[key] || {});
+  });
+  _dragElStylesTemp = _merged;
   var gv = function(id){ var e=document.getElementById(id); return e?e.value:''; };
   var ls = function(k, d){ return localStorage.getItem(k) || d || ''; };
   _dragBgTemp = {
@@ -22076,7 +22113,7 @@ function dragEditorSave() {
   // ── 1. Commit element styles ─────────────────────────────────
   _hdrElStyles = JSON.parse(JSON.stringify(es));
   localStorage.setItem('inv_hdr_el_styles', JSON.stringify(_hdrElStyles));
-  (async function(){ if (typeof sb !== 'undefined' && sb) { try { var _now=new Date().toISOString(); await sb.from('shop_settings').upsert([{key:'inv_hdr_el_styles',value:localStorage.getItem('inv_hdr_el_styles')||'{}',updated_at:_now},{key:'inv_hdr_cols',value:localStorage.getItem('inv_hdr_cols')||'{}',updated_at:_now},{key:'inv_hdr_order',value:localStorage.getItem('inv_hdr_order')||'[]',updated_at:_now},{key:'inv_hdr_hidden',value:localStorage.getItem('inv_hdr_hidden')||'[]',updated_at:_now}],{onConflict:'key'}); } catch(e){console.warn('Supabase hdr sync failed:',e);} } })();
+  (async function(){ if (typeof sb !== 'undefined' && sb) { try { var _now=new Date().toISOString(); await sb.from('shop_settings').upsert([{key:'inv_hdr_el_styles',value:localStorage.getItem('inv_hdr_el_styles')||'{}',updated_at:_now},{key:'hdr_el_styles',value:localStorage.getItem('inv_hdr_el_styles')||'{}',updated_at:_now},{key:'inv_hdr_cols',value:localStorage.getItem('inv_hdr_cols')||'{}',updated_at:_now},{key:'inv_hdr_order',value:localStorage.getItem('inv_hdr_order')||'[]',updated_at:_now},{key:'inv_hdr_hidden',value:localStorage.getItem('inv_hdr_hidden')||'[]',updated_at:_now}],{onConflict:'key'}); } catch(e){console.warn('Supabase hdr sync failed:',e);} } })();
 
   // ── 2. Commit background colours ─────────────────────────────
   var c1  = bg.c1     || '#1e293b';
