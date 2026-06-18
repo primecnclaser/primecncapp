@@ -1,3 +1,28 @@
+<!--
+╔══════════════════════════════════════════════════════════╗
+║           PRIME CNC — index.html STRUCTURE MAP           ║
+║                    v1.0.2 | Jun 2026                     ╠
+╠══════════════════════════════════════════════════════════╣
+║  1.  HEAD / META                          ~line 1        ║
+║  2.  CSS STYLES                           ~line 20       ║
+║  3.  BODY — AUTH SCREEN                   ~line 1783     ║
+║  4.  AUTH MODALS                          ~line 1993     ║
+║  5.  GLOBAL UI (toast, confirm modal)     ~line 2035     ║
+║  6.  CUSTOMER LIST POPUP                  ~line 2047     ║
+║  7.  OLD LOGIN SCREEN (legacy)            ~line 2075     ║
+║  8.  USER BAR / HEADER                   ~line 2155     ║
+║  9.  PROFILE MODAL                        ~line 2189     ║
+║  10. OFFLINE BANNER                       ~line 2432     ║
+║  11. MAIN APP SHELL                       ~line 2436     ║
+║  12. POST-APP MODALS                      ~line 4315     ║
+║  13. MAIN SCRIPT BLOCK (~15,900 lines)    ~line 4367     ║
+║  14. POST-MAIN-SCRIPT MODALS              ~line 20280    ║
+║  15. PENDING BILLS SCRIPT                 ~line 20408    ║
+║  16. MOBILE BOTTOM NAV                    ~line 23279    ║
+║  17. AUTH SYSTEM SCRIPT                   ~line 23465    ║
+║  18. ADDITIVE PATCH SCRIPTS               ~line 25480    ║
+╚══════════════════════════════════════════════════════════╝
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -26,6 +51,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Prime CNC">
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 2 — CSS STYLES                            ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <style>
 @font-face {
   font-family: 'JameelNooriNastaliq';
@@ -1789,6 +1817,9 @@ body {
 .msp-grey   { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
 </style>
 </head>
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 3 — BODY: AUTH SCREEN                     ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <body>
 
 <!-- ══ AUTH OVERLAY ═══════════════════════════════════════════════
@@ -1999,6 +2030,9 @@ body {
 
 </div><!-- #authOverlay -->
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 4 — AUTH MODALS                           ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <!-- ══ MY PROFILE MODAL ══════════════════════════════════════════ -->
 <div class="auth-modal-overlay" id="authProfileModal">
   <div class="auth-modal-box">
@@ -2041,6 +2075,9 @@ body {
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 5 — GLOBAL UI (toast, confirm modal)      ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
@@ -2053,6 +2090,9 @@ body {
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 6 — CUSTOMER LIST POPUP                   ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <!-- CUSTOMER LIST POPUP (Remaining / Bad Debt drill-down) -->
 <div id="custListOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:600;align-items:flex-start;justify-content:center;padding:0;overflow-y:auto;overflow-x:hidden;">
   <div style="background:#fff;border-radius:0;width:100%;max-width:100%;margin:0 auto;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.5);min-height:100vh;">
@@ -2081,6 +2121,9 @@ body {
 </div>
 
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 7 — OLD LOGIN SCREEN (legacy, keep)       ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <div id="loginScreen">
   <div class="login-box">
 
@@ -2161,8 +2204,11 @@ body {
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 8 — USER BAR / HEADER                     ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <div id="userBar">
-  <div id="_ubBrand"><span id="_ubBrandText">⚙️ Complete Shop System</span><span id="_appVersionLabel" style="font-size:0.6rem;font-weight:700;color:#f59e0b;font-family:Montserrat,sans-serif;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:middle;">v1.0.2</span></div>
+  <div id="_ubBrand"><span id="_ubBrandText">⚙️ Complete Shop System</span><span id="_appVersionLabel" style="font-size:0.6rem;font-weight:700;color:#f59e0b;font-family:Montserrat,sans-serif;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:middle;">v1.0.2-STAGING</span></div>
   <div id="topShopName"></div>
   <!-- Col 3: all SPAN children — no div:last-child matches inside -->
   <div id="_ubProfile">
@@ -2195,6 +2241,9 @@ body {
   </span>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 9 — PROFILE MODAL                         ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <!-- ════ PROFILE MODAL ═══════════════════════════════════════════ -->
 <div id="_ubModalOverlay" onclick="_ubCloseModal()">
   <div id="_ubModal" onclick="event.stopPropagation()">
@@ -2437,11 +2486,17 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
 })();
 </script>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 10 — OFFLINE BANNER                       ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <!-- ── OFFLINE SUPPORT: Global sticky offline banner ── -->
 <div id="offlineBanner" style="display:none;position:sticky;top:0;z-index:9999;background:#92400e;color:#fef3c7;padding:8px 16px;font-family:'Montserrat',sans-serif;font-size:0.82rem;font-weight:600;text-align:center;border-bottom:2px solid #b45309;letter-spacing:0.3px;box-sizing:border-box;width:100%;">
   📵 Offline Mode — Data shown as of <span id="offlineBannerTime"></span> &nbsp;·&nbsp; Connect internet to sync latest data
 </div>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 11 — MAIN APP SHELL                       ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <div class="app">
 
 
@@ -2999,7 +3054,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         <div style="flex:1;min-width:200px;">
           <label style="font-size:0.78rem;font-weight:700;color:#a8dfc0;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:8px;">🧾 By Invoice Number</label>
           <input type="text" id="searchInv" placeholder="🔢 Invoice #..."
-            oninput="this.value=this.value.replace(/[^0-9]/g,'');onSearchInv(this.value)"
+            oninput="onSearchInv(this.value)"
             style="width:100%;padding:11px 16px;background:rgba(255,255,255,0.09);border:1.5px solid rgba(46,204,113,0.4);border-radius:10px;color:#fff;font-family:Montserrat, sans-serif;font-size:0.94rem;outline:none;transition:border .2s;letter-spacing:0.5px;"
             onfocus="this.style.borderColor='#2ecc71';this.style.background='rgba(255,255,255,0.13)'"
             onblur="this.style.borderColor='rgba(46,204,113,0.4)';this.style.background='rgba(255,255,255,0.09)'">
@@ -3496,30 +3551,6 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
 
-          <!-- Supabase SQL Setup -->
-          <div style="background:#fff;border:1.5px solid #e9d5ff;border-radius:12px;padding:16px;">
-            <div style="font-size:0.72rem;font-weight:700;color:#6d28d9;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">⚙️ Supabase Tables — Run Once</div>
-            <div style="font-size:0.75rem;color:#64748b;margin-bottom:8px;font-weight:600;">Shop Settings</div>
-            <code style="display:block;background:#1e293b;color:#f0c96e;padding:10px 14px;border-radius:8px;font-size:0.7rem;line-height:1.8;white-space:pre-wrap;margin-bottom:12px;">CREATE TABLE IF NOT EXISTS shop_settings (
-  key   TEXT PRIMARY KEY,
-  value TEXT,
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);</code>
-            <div style="font-size:0.75rem;color:#64748b;margin-bottom:8px;font-weight:600;">Finance Ledger</div>
-            <code style="display:block;background:#1e293b;color:#f0c96e;padding:10px 14px;border-radius:8px;font-size:0.7rem;line-height:1.8;white-space:pre-wrap;">CREATE TABLE IF NOT EXISTS finance_ledger (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  entry_date date NOT NULL,
-  entry_type text NOT NULL,
-  category text NOT NULL,
-  amount numeric NOT NULL DEFAULT 0,
-  note text,
-  source text DEFAULT 'manual',
-  ref_id text,
-  created_by text,
-  created_at timestamptz DEFAULT now()
-);</code>
-          </div>
-
           <!-- Actions -->
           <div style="display:flex;flex-direction:column;gap:12px;">
             <div style="background:#fff;border:1.5px solid #c7d2fe;border-radius:12px;padding:16px;margin-bottom:12px;">
@@ -3541,13 +3572,6 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
               <div style="display:flex;flex-direction:column;gap:8px;">
                 <button onclick="clearAllInvoicesData()" style="padding:8px 14px;border:1.5px solid #fca5a5;background:#fff5f5;color:#dc2626;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;text-align:left;">🗑️ Clear All Invoices &amp; Finance Entries</button>
                 <button onclick="sCatReset()" style="padding:8px 14px;border:1.5px solid #fde68a;background:#fffbeb;color:#92400e;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;text-align:left;">↩ Reset Categories to Defaults</button>
-              </div>
-            </div>
-            <div style="background:#fff;border:1.5px solid #bbf7d0;border-radius:12px;padding:16px;">
-              <div style="font-size:0.72rem;font-weight:700;color:#065f46;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">🔄 Sync &amp; Repair</div>
-              <div style="display:flex;flex-direction:column;gap:8px;">
-                <button onclick="refreshOfflineCache&&refreshOfflineCache()" style="padding:8px 14px;border:1.5px solid #6ee7b7;background:#f0fdf4;color:#065f46;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;text-align:left;">☁ Refresh Offline Cache from Cloud</button>
-                <button onclick="fixMay2026LedgerDates&&fixMay2026LedgerDates()" style="padding:8px 14px;border:1.5px solid #cbd5e1;background:#f8fafc;color:#475569;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;text-align:left;">🔧 Fix May 2026 Ledger Dates</button>
               </div>
             </div>
           </div>
@@ -4327,6 +4351,9 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
   </div><!-- /main-layout -->
 
 </div><!-- /app -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 12 — POST-APP MODALS                      ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <!-- PRINT PREVIEW MODAL -->
 <div id="printPreviewModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.7);z-index:9900;backdrop-filter:blur(4px);overflow-y:auto;padding:20px 0;">
   <div style="max-width:900px;margin:0 auto;background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.4);overflow:hidden;">
@@ -4379,6 +4406,9 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 13 — MAIN SCRIPT BLOCK (~15,900 lines)    ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <script>
 // -- Urdu font loaded from local file (JameelNooriNastaleeq.ttf) --
 (function(){
@@ -4647,8 +4677,8 @@ setInterval(async () => {
 // ══════════════════════════════════════════════
 // SUPABASE CONFIG
 // ══════════════════════════════════════════════
-const SUPA_URL = 'https://jazxyebbbaitvcjeyjly.supabase.co';
-const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imphenh5ZWJiYmFpdHZjamV5amx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTM5NzIsImV4cCI6MjA5Mjc2OTk3Mn0.AcqIU1igypQ68at-v0avF6-V9MxP2GxzTAxc6VhgTNY';
+const SUPA_URL = 'https://libeiofmjbujudwrlmpx.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpYmVpb2ZtamJ1anVkd3JsbXB4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2OTUwMTYsImV4cCI6MjA5NzI3MTAxNn0.cCR7cbJfaaHe6ki9S4oS2FmfZeO2lNljGU-BMeYVxag';
 let sb;
 try {
   sb = supabase.createClient(SUPA_URL, SUPA_KEY);
@@ -4702,6 +4732,13 @@ function normalizeDate(d) {
   var m2 = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m2) return m2[3] + '-' + m2[2].padStart(2,'0') + '-' + m2[1].padStart(2,'0');
   return d; // return as-is if unrecognised
+}
+function normalizeOrderNum(num) {
+  if (!num) return '';
+  var s = String(num).trim();
+  var pfx = localStorage.getItem('inv_num_prefix') || 'INV-';
+  var raw = s.replace(/^[A-Z]+-/i, '');
+  return pfx + raw;
 }
 
 // ── INVOICE AGE — generic days-old check for any invoice/row date ──
@@ -5445,7 +5482,7 @@ function setInvoiceNumber() {
   // Also include imported excel invoices
   if (Array.isArray(_excelDBCache)) {
     _excelDBCache.forEach(r => {
-      const n = parseInt(r.order_num);
+      const n = parseInt(String(r.order_num).replace(/^[A-Za-z]+-/i, ''));
       if (Number.isFinite(n) && n > 0 && n < 100000) allNums.push(n);
     });
   }
@@ -5459,7 +5496,8 @@ function setInvoiceNumber() {
   var _allMax = Math.max(maxUsed, _advNums.length ? Math.max.apply(null, _advNums) : 0);
   invoiceCounter = Math.max(_allMax + 1, 1001);
   localStorage.setItem('inv_counter', invoiceCounter);
-  var _n = document.getElementById('invNumber'); if (_n) _n.textContent = 'INV-' + invoiceCounter;
+  var _pfx = localStorage.getItem('inv_num_prefix') || 'INV-';
+  var _n = document.getElementById('invNumber'); if (_n) _n.textContent = _pfx + invoiceCounter;
   var _ho = document.getElementById('histOrder'); if (_ho) _ho.value = invoiceCounter;
 
   // Also query Supabase directly to guarantee counter is correct even if
@@ -6744,13 +6782,13 @@ function renderDB() {
   // Filter excel rows by db name/invoice search if active
   const excelFiltered = (_excelDBCache || []).filter(function(r) {
     if (dbNameQ && !_nameMatch(r.customer_name)) return false;
-    if (dbInvQ  && (r.order_num||'') !== _dbInvNumOnly) return false;
+    if (dbInvQ && (r.order_num||'').replace(/^[A-Za-z]+-/i,'') !== (_dbInvNumOnly||'').replace(/^[A-Za-z]+-/i,'')) return false;
     return true;
   });
 
   // Convert excel rows to display objects
   const excelRows = excelFiltered.map(function(r) {
-    const orderInt = parseInt(r.order_num) || 0;
+    const orderInt = parseInt(String(r.order_num).replace(/^[A-Za-z]+-/i,'')) || 0;
     return {
       _isImported: true,
       _orderNum:   r.order_num || '',
@@ -6758,7 +6796,7 @@ function renderDB() {
       date:        r.date || '',
       custName:    r.customer_name || '—',
       phone:       r.phone || '—',
-      invNum:      r.order_num || '—',
+      invNum: (function(n){ if (!n) return '—'; var pfx = localStorage.getItem('inv_num_prefix') || 'INV-'; var raw = String(n).replace(/^[A-Za-z]+-/i, ''); return pfx + raw; })(r.order_num),
       total:       parseFloat(r.total_bill) || 0,
       received:    parseFloat(r.received)   || 0,
       received1:   parseFloat(r.received1)  || 0,
@@ -8812,8 +8850,9 @@ function _printHeaderHtml(s, rightHtml) {
     var t=elSt(key);
     var fontFallback = (t.font==='JameelNooriNastaliq') ? 'JameelNooriNastaliq' : '\''+t.font+'\',sans-serif';
     var shadow = t.shadowBlur>0 ? 'text-shadow:0 0 '+t.shadowBlur+'px currentColor;' : '';
+    var _align = t.align;
     return 'color:'+(t.color||ac)+';font-size:'+t.size+'rem;font-family:'+fontFallback+';'
-      +'font-weight:'+(t.bold?700:400)+';font-style:'+(t.italic?'italic':'normal')+';text-align:'+t.align+';width:100%;'
+      +'font-weight:'+(t.bold?700:400)+';font-style:'+(t.italic?'italic':'normal')+';text-align:'+_align+';width:100%;'
       +'letter-spacing:'+t.letterSpacing+'px;line-height:'+t.lineHeight+';opacity:'+t.opacity+';'
       +'padding-top:'+t.padTop+'px;padding-bottom:'+t.padBottom+'px;'
       +shadow+(extra||'');
@@ -8983,7 +9022,7 @@ async function showCustList(type) {
         else exFrom += exBatch;
       }
       // Normalize all dates DD.MM.YYYY → YYYY-MM-DD
-      allExRows.forEach(function(r) { r.date = normalizeDate(r.date); });
+      allExRows.forEach(function(r) { r.date = normalizeDate(r.date); r.order_num = normalizeOrderNum(r.order_num); });
       // Extend nameToPhoneCI with excel rows (case-insensitive, phone rows take priority)
       allExRows.forEach(function(r) {
         var ph = (r.phone || '').replace(/[^0-9]/g,'');
@@ -9492,6 +9531,7 @@ async function fetchCustomerInvoices(name, phone, nameQuery) {
 
   function addExcelRow(r) {
     r.date = normalizeDate(r.date);
+    r.order_num = normalizeOrderNum(r.order_num);
     r._src = 'excel';
     r._hasR1 = 'received1' in r;
     // Parse received_entries JSONB if returned as string
@@ -12764,19 +12804,238 @@ async function saveInvoiceSettings() {
       ], { onConflict: 'key' });
     } catch(e) { console.warn('Supabase sync failed:', e); }
   }
+  if (typeof _excelDBCache !== 'undefined') _excelDBCache = null;
+  if (typeof _searchNameList !== 'undefined') _searchNameList = null;
+  if (typeof setInvoiceNumber === 'function') setInvoiceNumber();
+  if (typeof renderDB === 'function') {
+    loadExcelDBCache().then(function(){
+      var pfx = localStorage.getItem('inv_num_prefix') || 'INV-';
+      if (_excelDBCache) {
+        _excelDBCache.forEach(function(r) {
+          if (r.order_num) {
+            var raw = String(r.order_num).replace(/^[A-Za-z]+-/i, '');
+            r.order_num = pfx + raw;
+          }
+        });
+      }
+      setTimeout(function(){ renderDB(); }, 100);
+    });
+  }
   toast('✅ Invoice settings saved');
 }
 
 // ── Invoices CSV export (for Data & Sync tab) ──
-function exportInvoicesCSV() {
-  if (!database || !database.length) { toast('No invoices to export'); return; }
-  const rows = [['Invoice #','Customer','Date','Total','Paid','Remaining','Notes']];
-  database.forEach(inv => {
-    rows.push([inv.invNum||'',inv.customerName||'',inv.date||'',inv.total||0,inv.paid||0,(inv.total||0)-(inv.paid||0),inv.notes||'']);
-  });
-  const csv = rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
-  const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-  a.download='invoices-export.csv'; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+async function exportInvoicesCSV() {
+  var btn = event && event.target ? event.target : document.querySelector('[onclick="exportInvoicesCSV()"]');
+  var origText = btn ? btn.textContent : '';
+  if (btn) { btn.textContent = '⏳ Preparing...'; btn.disabled = true; }
+
+  try {
+    if (!window.XLSX) {
+      if (btn) btn.textContent = '⏳ Loading...';
+      await new Promise(function(res, rej) {
+        var s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+
+    if (btn) btn.textContent = '⏳ Fetching invoices...';
+
+    var r1 = await sb.from('invoices').select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,received1,remaining,bad_debt,created_at,received1_entries,edited_at,is_advance,extra_charges,extra_charges_label');
+    var r2 = await sb.from('excel_invoices').select('*');
+
+    var inv1 = (r1.data || []).map(function(r) {
+      var d = r.date ? new Date(r.date) : null;
+      var dateStr = d && !isNaN(d) ? d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : (r.date || '');
+      return Object.assign({}, r, {
+        source: 'App',
+        inv_num: r.inv_num || '',
+        date: dateStr
+      });
+    });
+
+    var inv2 = (r2.data || []).map(function(r) {
+      var d = r.date ? new Date(r.date) : null;
+      var dateStr = d && !isNaN(d) ? d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : (r.date || '');
+      return {
+        source: 'Imported',
+        inv_num: normalizeOrderNum(r.order_num),
+        date: dateStr,
+        cust_name: r.customer_name || '',
+        phone: r.phone || '',
+        area: '',
+        del_date: '',
+        sub_total: r.total_bill || 0,
+        discount: r.discount || 0,
+        extra_charges: r.extra_charges || 0,
+        extra_charges_label: r.extra_charges_label || '',
+        total: r.total_bill || 0,
+        received: r.received || 0,
+        received1: r.received1 || 0,
+        remaining: r.remaining || 0,
+        bad_debt: r.bad_debt || 0,
+        is_advance: false,
+        received1_entries: r.received_entries || '',
+        created_at: r.created_at || '',
+        edited_at: '',
+        id: r.id || ''
+      };
+    });
+
+    var all = inv1.concat(inv2);
+
+    if (all.length === 0) { alert('No invoices found.'); if (btn) { btn.textContent = origText; btn.disabled = false; } return; }
+
+    all.sort(function(a, b) {
+      var na = (a.cust_name || '').toLowerCase().trim();
+      var nb = (b.cust_name || '').toLowerCase().trim();
+      return na.localeCompare(nb);
+    });
+
+    var XLSX = window.XLSX;
+    var wb = XLSX.utils.book_new();
+    var today = new Date().toISOString().slice(0,10);
+
+    var columns = [
+      { key: 'cust_name',           label: 'Customer Name',      width: 22 },
+      { key: 'inv_num',             label: 'Invoice #',           width: 12 },
+      { key: 'date',                label: 'Date',                width: 13 },
+      { key: 'phone',               label: 'Phone',               width: 14 },
+      { key: 'area',                label: 'Area',                width: 16 },
+      { key: 'del_date',            label: 'Delivery Date',       width: 14 },
+      { key: 'sub_total',           label: 'Sub Total',           width: 12 },
+      { key: 'discount',            label: 'Discount',            width: 11 },
+      { key: 'extra_charges',       label: 'Extra Charges',       width: 13 },
+      { key: 'extra_charges_label', label: 'Extra Label',         width: 14 },
+      { key: 'total',               label: 'Total',               width: 12 },
+      { key: 'received',            label: 'Received',            width: 12 },
+      { key: 'received1',           label: 'Received 2',          width: 12 },
+      { key: 'remaining',           label: 'Remaining',           width: 12 },
+      { key: 'bad_debt',            label: 'Bad Debt',            width: 11 },
+      { key: 'is_advance',          label: 'Advance?',            width: 10 },
+      { key: 'received1_entries',   label: 'Payment Entries',     width: 25 },
+      { key: 'created_at',          label: 'Created At',          width: 18 },
+      { key: 'edited_at',           label: 'Edited At',           width: 18 },
+      { key: 'source',              label: 'Source',              width: 11 },
+      { key: 'id',                  label: 'ID',                  width: 14 }
+    ];
+
+    var numericCols = ['sub_total','discount','extra_charges','total','received','received1','remaining','bad_debt'];
+
+    var hdrStyle = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center', wrapText: true }, border: { bottom: { style: 'thin', color: { rgb: '2E75B6' } } } };
+    var custStyle = { font: { bold: true, sz: 10, color: { rgb: '1E3A5F' } }, fill: { fgColor: { rgb: 'D5E8F0' } }, alignment: { wrapText: true, vertical: 'top' } };
+    var evenStyle = { fill: { fgColor: { rgb: 'FFFFFF' } }, alignment: { wrapText: true, vertical: 'top' } };
+    var oddStyle  = { fill: { fgColor: { rgb: 'F8FAFC' } }, alignment: { wrapText: true, vertical: 'top' } };
+    var numStyle  = { alignment: { horizontal: 'right', vertical: 'top' }, numFmt: '#,##0.00' };
+    var titleStyle = { font: { bold: true, sz: 14, color: { rgb: '1E3A5F' } } };
+    var subStyle   = { font: { sz: 10, italic: true, color: { rgb: '64748b' } } };
+    var totalHdrStyle = { font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1D6A35' } }, alignment: { horizontal: 'right' } };
+    var totalValStyle = { font: { bold: true, sz: 10, color: { rgb: '1D6A35' } }, fill: { fgColor: { rgb: 'D1FAE5' } }, alignment: { horizontal: 'right' }, numFmt: '#,##0.00' };
+    var remainRedStyle = { font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: 'C00000' } }, alignment: { horizontal: 'right' }, numFmt: '#,##0.00' };
+
+    var wsData = [];
+    var mergeCells = [];
+    var rowIdx = 0;
+    var numCols = columns.length;
+
+    var titleRow = [{ v: 'Prime CNC Laser — Invoices Report', s: titleStyle }];
+    for (var c = 1; c < numCols; c++) titleRow.push({ v: '' });
+    wsData.push(titleRow);
+    mergeCells.push({ s: { r: rowIdx, c: 0 }, e: { r: rowIdx, c: numCols-1 } });
+    rowIdx++;
+
+    var subRow = [{ v: 'Generated: ' + new Date().toLocaleString() + '  |  Total Invoices: ' + all.length, s: subStyle }];
+    for (var c = 1; c < numCols; c++) subRow.push({ v: '' });
+    wsData.push(subRow);
+    mergeCells.push({ s: { r: rowIdx, c: 0 }, e: { r: rowIdx, c: numCols-1 } });
+    rowIdx++;
+
+    var grandTotal = 0, grandReceived = 0, grandRemaining = 0, grandBadDebt = 0;
+    all.forEach(function(r) {
+      grandTotal     += parseFloat(r.total)     || 0;
+      grandReceived  += parseFloat(r.received)  || 0;
+      grandRemaining += parseFloat(r.remaining) || 0;
+      grandBadDebt   += parseFloat(r.bad_debt)  || 0;
+    });
+
+    wsData.push(Array(numCols).fill({ v: '' }));
+    rowIdx++;
+
+    var sumLabelRow = Array(numCols).fill({ v: '' });
+    sumLabelRow[0] = { v: 'GRAND TOTALS', s: { font: { bold: true, sz: 11, color: { rgb: '1E3A5F' } } } };
+    wsData.push(sumLabelRow);
+    mergeCells.push({ s: { r: rowIdx, c: 0 }, e: { r: rowIdx, c: 3 } });
+    rowIdx++;
+
+    var totalIdx     = columns.findIndex(function(c) { return c.key === 'total'; });
+    var receivedIdx  = columns.findIndex(function(c) { return c.key === 'received'; });
+    var remainingIdx = columns.findIndex(function(c) { return c.key === 'remaining'; });
+    var badDebtIdx   = columns.findIndex(function(c) { return c.key === 'bad_debt'; });
+
+    var sumRow = Array(numCols).fill({ v: '' });
+    sumRow[totalIdx]     = { v: 'Total Billed',     s: totalHdrStyle };
+    sumRow[receivedIdx]  = { v: 'Total Received',   s: totalHdrStyle };
+    sumRow[remainingIdx] = { v: 'Total Remaining',  s: remainRedStyle };
+    sumRow[badDebtIdx]   = { v: 'Bad Debt',         s: totalHdrStyle };
+    wsData.push(sumRow);
+    rowIdx++;
+
+    var sumValRow = Array(numCols).fill({ v: '' });
+    sumValRow[totalIdx]     = { v: grandTotal,     s: totalValStyle };
+    sumValRow[receivedIdx]  = { v: grandReceived,  s: totalValStyle };
+    sumValRow[remainingIdx] = { v: grandRemaining, s: remainRedStyle };
+    sumValRow[badDebtIdx]   = { v: grandBadDebt,   s: totalValStyle };
+    wsData.push(sumValRow);
+    rowIdx++;
+
+    wsData.push(Array(numCols).fill({ v: '' }));
+    rowIdx++;
+
+    var colHdrRow = columns.map(function(col) { return { v: col.label, s: hdrStyle }; });
+    wsData.push(colHdrRow);
+    rowIdx++;
+
+    var currentCust = null;
+    var rowCounter = 0;
+    all.forEach(function(row) {
+      var isNewCust = row.cust_name !== currentCust;
+      if (isNewCust) currentCust = row.cust_name;
+
+      var dataRow = columns.map(function(col) {
+        var val = row[col.key];
+        var isNum = numericCols.indexOf(col.key) !== -1;
+        var baseStyle = isNewCust && col.key === 'cust_name' ? custStyle : (rowCounter % 2 === 0 ? evenStyle : oddStyle);
+
+        if (val === null || val === undefined || val === '') return { v: '', s: baseStyle };
+        if (col.key === 'is_advance') return { v: val ? 'Yes' : 'No', s: baseStyle };
+        if (isNum) return { v: parseFloat(val) || 0, s: Object.assign({}, baseStyle, numStyle) };
+        if (col.key === 'created_at') { var cd = new Date(val); return { v: !isNaN(cd) ? cd.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : String(val), s: baseStyle }; }
+        return { v: String(val), s: baseStyle };
+      });
+
+      wsData.push(dataRow);
+      rowIdx++;
+      rowCounter++;
+    });
+
+    var ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws['!merges'] = mergeCells;
+    ws['!cols'] = columns.map(function(col) { return { wch: col.width }; });
+
+    XLSX.utils.book_append_sheet(wb, ws, 'All Invoices');
+    XLSX.writeFile(wb, 'PrimeCNC_Invoices_' + today + '.xlsx');
+
+    if (btn) { btn.textContent = origText; btn.disabled = false; }
+    if (typeof toast === 'function') toast('✅ Invoices exported!');
+
+  } catch(err) {
+    console.error('Invoice export error:', err);
+    if (typeof Sentry !== 'undefined') Sentry.captureException(err);
+    alert('Export failed: ' + (err.message || err));
+    if (btn) { btn.textContent = origText; btn.disabled = false; }
+  }
 }
 
 // ═══════════════════════════════════════════════════
@@ -12799,8 +13058,11 @@ let _hdrElStyles = (function(){
     var s=localStorage.getItem('inv_hdr_el_styles');
     if(s) {
       var p=JSON.parse(s);
-      var merged=JSON.parse(JSON.stringify(HDR_EL_DEFAULTS));
-      Object.keys(p).forEach(function(k){ if(merged[k]) merged[k]=Object.assign({},merged[k],p[k]); else merged[k]=p[k]; });
+      var merged = JSON.parse(JSON.stringify(HDR_EL_DEFAULTS));
+      Object.keys(p).forEach(function(k){
+        if(merged[k]) merged[k] = Object.assign({}, merged[k], p[k]);
+        else merged[k] = p[k];
+      });
       return merged;
     }
   } catch(e){}
@@ -13108,8 +13370,18 @@ function ctrlLoad(skipCloudSync) {
   sc('ctrl_gradbar',       'inv_show_gradbar',  true);
 
   // Load element styles and layout
-  try { var _es=localStorage.getItem('inv_hdr_el_styles'); if(_es) { var _ep=JSON.parse(_es); var _em=JSON.parse(JSON.stringify(HDR_EL_DEFAULTS)); Object.keys(_ep).forEach(function(k){ if(_em[k]) _em[k]=Object.assign({},_em[k],_ep[k]); else _em[k]=_ep[k]; }); _hdrElStyles=_em; } } catch(e){}
-  if(!_hdrElStyles.urdu) _hdrElStyles.urdu={}; if(!_hdrElStyles.urdu.font) _hdrElStyles.urdu.font='JameelNooriNastaliq';
+  try {
+    var _es=localStorage.getItem('inv_hdr_el_styles');
+    if(_es) {
+      var _ep=JSON.parse(_es);
+      var _em=JSON.parse(JSON.stringify(HDR_EL_DEFAULTS));
+      Object.keys(_ep).forEach(function(k){
+        if(_em[k]) _em[k]=Object.assign({},_em[k],_ep[k]);
+        else _em[k]=_ep[k];
+      });
+      _hdrElStyles=_em;
+    }
+  } catch(e){}
   try { var _ec=localStorage.getItem('inv_hdr_cols');       if(_ec) _hdrCols=JSON.parse(_ec);     } catch(e){}
   try { var _eo=localStorage.getItem('inv_hdr_order'); if(_eo){ var _eop=JSON.parse(_eo); if(_eop && _eop.length>0) _hdrOrder=_eop; } } catch(e){}
   try { var _eh=localStorage.getItem('inv_hdr_hidden');     if(_eh) _hdrHidden=JSON.parse(_eh);   } catch(e){}
@@ -13213,7 +13485,17 @@ function ctrlLoad(skipCloudSync) {
       // ── apply drag-editor layout variables from cloud ───────────
       // Only update if the Drag Editor staging hasn't been opened yet in this session
       // (avoids wiping in-progress edits)
-      try { if(map.hdr_el_styles) { var _cs=JSON.parse(map.hdr_el_styles); var _cm=JSON.parse(JSON.stringify(HDR_EL_DEFAULTS)); Object.keys(_cs).forEach(function(k){ if(_cm[k]) _cm[k]=Object.assign({},_cm[k],_cs[k]); else _cm[k]=_cs[k]; }); _hdrElStyles=_cm; } } catch(e){}
+      try {
+        if(map.hdr_el_styles) {
+          var _cloudStyles = JSON.parse(map.hdr_el_styles);
+          var _merged = JSON.parse(JSON.stringify(HDR_EL_DEFAULTS));
+          Object.keys(_cloudStyles).forEach(function(k) {
+            if(_merged[k]) _merged[k] = Object.assign({}, _merged[k], _cloudStyles[k]);
+            else _merged[k] = _cloudStyles[k];
+          });
+          _hdrElStyles = _merged;
+        }
+      } catch(e){}
       try { if(map.hdr_cols)      _hdrCols     = JSON.parse(map.hdr_cols);      } catch(e){}
       try { if(map.hdr_order)     _hdrOrder    = JSON.parse(map.hdr_order);     } catch(e){}
       try { if(map.hdr_hidden)    _hdrHidden   = JSON.parse(map.hdr_hidden);    } catch(e){}
@@ -13577,6 +13859,7 @@ function _applyHeaderSettingsNow() {
 
   // Apply to every .inv-header in the DOM — dirty-check skips rebuild if HTML unchanged
   var _newHdrHtml = _printHeaderHtml(s, rightHtml);
+  _lastHdrHtml = null; // force rebuild always
   if (_newHdrHtml !== _lastHdrHtml) {
     _lastHdrHtml = _newHdrHtml;
     document.querySelectorAll('.inv-header').forEach(function(hdr) {
@@ -13792,6 +14075,7 @@ async function loadExcelDBCache() {
     // Normalize all dates from DD.MM.YYYY → YYYY-MM-DD for correct sorting
     allRows.forEach(function(r) {
       r.date = normalizeDate(r.date);
+      if (r.order_num && !String(r.order_num).startsWith('INV-')) r.order_num = 'INV-' + r.order_num;
       if (typeof r.received_entries === 'string') {
         try { r.received_entries = JSON.parse(r.received_entries); } catch(e) { r.received_entries = []; }
       } else if (!Array.isArray(r.received_entries)) {
@@ -14129,7 +14413,7 @@ async function _renderSearchByInv(invNum) {
       if (res2.data) res2.data.forEach(function(r) {
         if (!matchedInvoices.find(function(m){ return m.invNum === r.order_num; })) {
           matchedInvoices.push({
-            date: r.date||'', invNum: r.order_num||'—',
+            date: r.date||'', invNum: normalizeOrderNum(r.order_num)||'—',
             custName: r.customer_name||'', phone: r.phone||'',
             bill: parseFloat(r.total_bill)||0, disc: parseFloat(r.discount)||0,
             recv: parseFloat(r.received)||0, r1sum: 0,
@@ -14158,7 +14442,7 @@ async function _renderSearchByInv(invNum) {
     var dateD = fmtDateDisplay(r.date);
     var discH = r.disc > 0 ? 'Rs.'+Math.round(r.disc).toLocaleString('en-PK') : '—';
     var srcBadge = r.source === 'excel'
-      ? '<span style="background:#0f766e;color:#fff;font-size:0.5rem;font-weight:700;padding:1px 4px;border-radius:3px;margin-left:4px;">IMP</span>'
+      ? ''
       : (r.source === 'supabase'
         ? '<span style="background:#4f46e5;color:#fff;font-size:0.5rem;font-weight:700;padding:1px 4px;border-radius:3px;margin-left:4px;">CLOUD</span>'
         : '<span style="background:#0ea5e9;color:#fff;font-size:0.5rem;font-weight:700;padding:1px 4px;border-radius:3px;margin-left:4px;">NEW</span>');
@@ -17904,17 +18188,193 @@ async function deleteLocalLedgerEntry(localId, date, type, cat, btnEl) {
   await renderLedger();
 }
 
-function exportLedgerCSV() {
-  toast('📥 Exporting ledger...');
-  fetchFinanceEntries().then(entries => {
-    const rows = [['Date','Type','Category','Note','Amount','Source']];
-    entries.forEach(e => rows.push([e.entry_date, TYPE_LABELS[e.entry_type]||e.entry_type, e.category, e.note||'', e.amount, e.source]));
-    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
-    const a = document.createElement('a');
-    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-    a.download = 'PrimeCNC_Ledger_' + new Date().toISOString().slice(0,10) + '.csv';
-    a.click();
-  });
+async function exportLedgerCSV() {
+  var btn = event && event.target ? event.target : document.querySelector('[onclick="exportLedgerCSV()"]');
+  var origText = btn ? btn.textContent : '';
+  if (btn) { btn.textContent = '⏳ Preparing...'; btn.disabled = true; }
+
+  try {
+    if (!window.XLSX) {
+      if (btn) btn.textContent = '⏳ Loading...';
+      await new Promise(function(res, rej) {
+        var s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+
+    if (btn) btn.textContent = '⏳ Fetching data...';
+
+    var res = await sb.from('finance_ledger').select('*').order('entry_date', { ascending: true });
+    var rows = res.data || [];
+
+    if (rows.length === 0) { alert('No finance data found.'); if (btn) { btn.textContent = origText; btn.disabled = false; } return; }
+
+    var monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    var shortMonths = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var months = {};
+    rows.forEach(function(row) {
+      var d = row.entry_date || '';
+      var parts = d.split('-');
+      var yr = parts[0] || '0000';
+      var mo = parseInt(parts[1],10) || 1;
+      var key = yr + '-' + String(mo).padStart(2,'0');
+      var label = monthNames[mo-1] + ' ' + yr;
+      if (!months[key]) months[key] = { label: label, short: shortMonths[mo-1] + ' ' + yr, rows: [] };
+      months[key].rows.push(row);
+    });
+
+    var XLSX = window.XLSX;
+    var wb = XLSX.utils.book_new();
+    var today = new Date().toISOString().slice(0,10);
+
+    var hdrStyle = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center', wrapText: true } };
+    var summaryTitleStyle = { font: { bold: true, sz: 12, color: { rgb: '1E3A5F' } }, fill: { fgColor: { rgb: 'D5E8F0' } }, alignment: { horizontal: 'left' } };
+    var summaryLabelStyle = { font: { bold: true, sz: 10 }, fill: { fgColor: { rgb: 'F2F2F2' } }, alignment: { horizontal: 'left' } };
+    var incomeStyle = { font: { bold: true, color: { rgb: '065F46' }, sz: 10 }, fill: { fgColor: { rgb: 'D1FAE5' } }, alignment: { horizontal: 'right' }, numFmt: '#,##0.00' };
+    var expenseStyle = { font: { bold: true, color: { rgb: '991B1B' }, sz: 10 }, fill: { fgColor: { rgb: 'FEE2E2' } }, alignment: { horizontal: 'right' }, numFmt: '#,##0.00' };
+    var netPosStyle = { font: { bold: true, color: { rgb: '065F46' }, sz: 11 }, fill: { fgColor: { rgb: 'A7F3D0' } }, alignment: { horizontal: 'right' }, numFmt: '#,##0.00' };
+    var netNegStyle = { font: { bold: true, color: { rgb: '991B1B' }, sz: 11 }, fill: { fgColor: { rgb: 'FECACA' } }, alignment: { horizontal: 'right' }, numFmt: '#,##0.00' };
+    var amountCellStyle = { alignment: { horizontal: 'right' }, numFmt: '#,##0.00' };
+
+    var sortedKeys = Object.keys(months).sort();
+
+    sortedKeys.forEach(function(key) {
+      var month = months[key];
+      var mRows = month.rows;
+
+      var ordered = ['entry_date','entry_type','category','note','amount','source','ref_id'];
+
+      var totalIncome = 0, totalExpense = 0;
+      mRows.forEach(function(r) {
+        var amt = parseFloat(r.amount) || 0;
+        var type = (r.entry_type || r.type || 'other').toLowerCase();
+        if (type === 'income' || type === 'credit' || type === 'invoice_income') totalIncome += amt;
+        else totalExpense += amt;
+      });
+      var net = totalIncome - totalExpense;
+      var numCols = ordered.length;
+
+      var wsData = [];
+      var mergeCells = [];
+      var rowIdx = 0;
+
+      var titleRow = [{ v: month.label + ' — Finance Report', s: summaryTitleStyle }];
+      for (var c = 1; c < numCols; c++) titleRow.push({ v: '', s: summaryTitleStyle });
+      wsData.push(titleRow);
+      mergeCells.push({ s: { r: rowIdx, c: 0 }, e: { r: rowIdx, c: numCols-1 } });
+      rowIdx++;
+
+      wsData.push(Array(numCols).fill({ v: '' }));
+      rowIdx++;
+
+      var incRow = Array(numCols).fill({ v: '' });
+      incRow[0] = { v: 'Total Income', s: summaryLabelStyle };
+      incRow[numCols-1] = { v: totalIncome, s: incomeStyle };
+      wsData.push(incRow);
+      rowIdx++;
+
+      var expRow = Array(numCols).fill({ v: '' });
+      expRow[0] = { v: 'Total Expenses', s: summaryLabelStyle };
+      expRow[numCols-1] = { v: totalExpense, s: expenseStyle };
+      wsData.push(expRow);
+      rowIdx++;
+
+      var netRow = Array(numCols).fill({ v: '' });
+      netRow[0] = { v: 'Net Balance', s: { font: { bold: true, sz: 11 } } };
+      netRow[numCols-1] = { v: net, s: net >= 0 ? netPosStyle : netNegStyle };
+      wsData.push(netRow);
+      rowIdx++;
+
+      wsData.push(Array(numCols).fill({ v: '' }));
+      rowIdx++;
+
+      var colHdrRow = ordered.map(function(col) {
+        return { v: col.replace(/_/g,' ').toUpperCase(), s: hdrStyle };
+      });
+      wsData.push(colHdrRow);
+      rowIdx++;
+
+      mRows.forEach(function(row) {
+        var dataRow = ordered.map(function(col) {
+          var val = row[col];
+          if (val === null || val === undefined) return { v: '' };
+          if (col === 'amount') return { v: parseFloat(val)||0, s: amountCellStyle };
+          return { v: String(val) };
+        });
+        wsData.push(dataRow);
+        rowIdx++;
+      });
+
+      var ws = XLSX.utils.aoa_to_sheet(wsData);
+      ws['!merges'] = mergeCells;
+      ws['!cols'] = ordered.map(function(col) {
+        if (col === 'note') return { wch: 35 };
+        if (col === 'entry_date') return { wch: 14 };
+        if (col === 'amount') return { wch: 14 };
+        if (col === 'entry_type' || col === 'category') return { wch: 18 };
+        return { wch: 16 };
+      });
+
+      XLSX.utils.book_append_sheet(wb, ws, month.short.slice(0,31));
+    });
+
+    var summaryData = [
+      [{ v: 'Prime CNC Laser — Finance Summary', s: { font: { bold: true, sz: 14, color: { rgb: '1E3A5F' } } } }],
+      [{ v: 'Generated: ' + new Date().toLocaleString() }],
+      [{ v: '' }],
+      [{ v: 'Month', s: hdrStyle },{ v: 'Income (Rs.)', s: hdrStyle },{ v: 'Expenses (Rs.)', s: hdrStyle },{ v: 'Net Balance (Rs.)', s: hdrStyle },{ v: 'Entries', s: hdrStyle }]
+    ];
+
+    var grandIncome = 0, grandExpense = 0;
+    sortedKeys.forEach(function(key) {
+      var mRows = months[key].rows;
+      var inc = 0, exp = 0;
+      mRows.forEach(function(r) {
+        var amt = parseFloat(r.amount)||0;
+        var type = (r.entry_type||r.type||'').toLowerCase();
+        if (type==='income'||type==='credit'||type==='invoice_income') inc+=amt; else exp+=amt;
+      });
+      grandIncome += inc; grandExpense += exp;
+      var net = inc - exp;
+      summaryData.push([
+        { v: months[key].label },
+        { v: inc, s: { numFmt: '#,##0.00', font: { color: { rgb: '065F46' } } } },
+        { v: exp, s: { numFmt: '#,##0.00', font: { color: { rgb: '991B1B' } } } },
+        { v: net, s: { numFmt: '#,##0.00', font: { bold: true, color: { rgb: net>=0?'065F46':'991B1B' } } } },
+        { v: mRows.length }
+      ]);
+    });
+
+    var grandNet = grandIncome - grandExpense;
+    summaryData.push([
+      { v: 'GRAND TOTAL', s: { font: { bold: true, sz: 11 } } },
+      { v: grandIncome, s: { numFmt: '#,##0.00', font: { bold: true, color: { rgb: '065F46' }, sz: 11 } } },
+      { v: grandExpense, s: { numFmt: '#,##0.00', font: { bold: true, color: { rgb: '991B1B' }, sz: 11 } } },
+      { v: grandNet, s: { numFmt: '#,##0.00', font: { bold: true, sz: 11, color: { rgb: grandNet>=0?'065F46':'991B1B' } } } },
+      { v: rows.length, s: { font: { bold: true, sz: 11 } } }
+    ]);
+
+    var summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
+    summaryWs['!cols'] = [{ wch: 20 },{ wch: 18 },{ wch: 18 },{ wch: 18 },{ wch: 10 }];
+    summaryWs['!merges'] = [{ s:{r:0,c:0},e:{r:0,c:4} },{ s:{r:1,c:0},e:{r:1,c:4} }];
+
+    wb.SheetNames.unshift('Summary');
+    wb.Sheets['Summary'] = summaryWs;
+
+    if (btn) btn.textContent = '⏳ Generating Excel...';
+    XLSX.writeFile(wb, 'PrimeCNC_Finance_' + today + '.xlsx');
+
+    if (btn) { btn.textContent = origText; btn.disabled = false; }
+    if (typeof toast === 'function') toast('✅ Finance report downloaded!');
+
+  } catch(err) {
+    console.error('Finance export error:', err);
+    if (typeof Sentry !== 'undefined') Sentry.captureException(err);
+    alert('Export failed: ' + (err.message || err));
+    if (btn) { btn.textContent = origText; btn.disabled = false; }
+  }
 }
 
 // ─── HELPER: fetch finance entries and correct invoice_income amounts from invoices table ───
@@ -20370,6 +20830,9 @@ async function exportFullBackup() {
 
 </script>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 14 — POST-MAIN-SCRIPT MODALS              ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <!-- ☁️ Migrate to Cloud Modal — at body level so position:fixed works regardless of tab state -->
 <div id="migrateModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)closeMigrateModal()">
   <div style="background:#fff;border-radius:18px;width:100%;max-width:560px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.4);font-family:'Montserrat',sans-serif;">
@@ -20498,6 +20961,9 @@ async function exportFullBackup() {
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 15 — PENDING BILLS SCRIPT                 ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <script>
 // ═══════════════ PENDING BILLS SYSTEM ═══════════════
 var _pbData        = [];
@@ -21648,7 +22114,13 @@ window._ctrlBootSyncDone = false;
 var _dragCanvasMode   = 'header'; // 'header' or 'footer'
 
 function _initDragStaging() {
-  _dragElStylesTemp = JSON.parse(JSON.stringify(_hdrElStyles));
+  var _fullDefaults = JSON.parse(JSON.stringify(HDR_EL_DEFAULTS));
+  var _saved = _hdrElStyles || {};
+  var _merged = {};
+  Object.keys(_fullDefaults).forEach(function(key) {
+    _merged[key] = Object.assign({}, _fullDefaults[key], _saved[key] || {});
+  });
+  _dragElStylesTemp = _merged;
   var gv = function(id){ var e=document.getElementById(id); return e?e.value:''; };
   var ls = function(k, d){ return localStorage.getItem(k) || d || ''; };
   _dragBgTemp = {
@@ -22101,7 +22573,7 @@ function dragEditorSave() {
   // ── 1. Commit element styles ─────────────────────────────────
   _hdrElStyles = JSON.parse(JSON.stringify(es));
   localStorage.setItem('inv_hdr_el_styles', JSON.stringify(_hdrElStyles));
-  (async function(){ if (typeof sb !== 'undefined' && sb) { try { var _now=new Date().toISOString(); await sb.from('shop_settings').upsert([{key:'inv_hdr_el_styles',value:localStorage.getItem('inv_hdr_el_styles')||'{}',updated_at:_now},{key:'inv_hdr_cols',value:localStorage.getItem('inv_hdr_cols')||'{}',updated_at:_now},{key:'inv_hdr_order',value:localStorage.getItem('inv_hdr_order')||'[]',updated_at:_now},{key:'inv_hdr_hidden',value:localStorage.getItem('inv_hdr_hidden')||'[]',updated_at:_now}],{onConflict:'key'}); } catch(e){console.warn('Supabase hdr sync failed:',e);} } })();
+  (async function(){ if (typeof sb !== 'undefined' && sb) { try { var _now=new Date().toISOString(); await sb.from('shop_settings').upsert([{key:'inv_hdr_el_styles',value:localStorage.getItem('inv_hdr_el_styles')||'{}',updated_at:_now},{key:'hdr_el_styles',value:localStorage.getItem('inv_hdr_el_styles')||'{}',updated_at:_now},{key:'inv_hdr_cols',value:localStorage.getItem('inv_hdr_cols')||'{}',updated_at:_now},{key:'inv_hdr_order',value:localStorage.getItem('inv_hdr_order')||'[]',updated_at:_now},{key:'inv_hdr_hidden',value:localStorage.getItem('inv_hdr_hidden')||'[]',updated_at:_now}],{onConflict:'key'}); } catch(e){console.warn('Supabase hdr sync failed:',e);} } })();
 
   // ── 2. Commit background colours ─────────────────────────────
   var c1  = bg.c1     || '#1e293b';
@@ -23380,6 +23852,9 @@ setInterval(function() {
      PWA — MOBILE BOTTOM NAVIGATION BAR
      Calls existing switchTab() via _mobSwitchTab() wrapper below.
      ═══════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 16 — MOBILE BOTTOM NAV                    ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <div id="mobSyncStrip">
   <span id="mobSyncPill" class="msp-grey">— Checking...</span>
 </div>
@@ -23477,6 +23952,13 @@ window._forceAppRefresh = async function() {
   }, 300);
 };
 
+// Unregister all service workers on every load to prevent caching issues
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(function(registrations) {
+    registrations.forEach(function(reg) { reg.unregister(); });
+  });
+}
+
 /* 3. Service worker registration for offline support */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
@@ -23562,6 +24044,9 @@ if ('serviceWorker' in navigator) {
 })();
 </script>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 17 — AUTH SYSTEM SCRIPT                   ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <!-- ════════════════════════════════════════════════════════════
      AUTH SYSTEM — Prime CNC Invoice
      All new code. Zero modifications to existing logic.
@@ -25577,6 +26062,9 @@ window.addEventListener('online', async function() {
 })(); // end IIFE
 </script>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ║  SECTION 18 — ADDITIVE PATCH SCRIPTS               ║ -->
+<!-- ═══════════════════════════════════════════════════════ -->
 <script>
 /* ─── GLOBAL SYNC BAR — purely additive patches, no existing logic changed ─── */
 (function() {
