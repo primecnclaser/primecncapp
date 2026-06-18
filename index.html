@@ -3522,6 +3522,12 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
 
           <!-- Actions -->
           <div style="display:flex;flex-direction:column;gap:12px;">
+            <div style="background:#fff;border:1.5px solid #c7d2fe;border-radius:12px;padding:16px;margin-bottom:12px;">
+              <div style="font-size:0.72rem;font-weight:700;color:#3730a3;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">💾 Full Database Backup</div>
+              <div style="font-size:0.72rem;color:#64748b;margin-bottom:10px;">Downloads all tables as one Excel file with separate sheets — Invoices, Finance, Customers, Settings and more.</div>
+              <button onclick="exportFullBackup()" style="width:100%;padding:10px 14px;border:1.5px solid #6366f1;background:linear-gradient(135deg,#4f46e5,#6366f1);color:#fff;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.82rem;cursor:pointer;">💾 Download Full Backup (Excel)</button>
+              <div id="backupStatus" style="font-size:0.72rem;color:#64748b;margin-top:8px;display:none;"></div>
+            </div>
             <div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px;">
               <div style="font-size:0.72rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">📥 Export Data</div>
               <div style="display:flex;flex-direction:column;gap:8px;">
@@ -20289,6 +20295,76 @@ function showPastDayEntries(date){
       if(penBtn) penBtn.style.display = showPen ? '' : 'none';
       if(saveBtn){saveBtn.textContent='✏️ Update Entry';saveBtn.style.background='#d97706';}
     }
+  }
+}
+
+async function exportFullBackup() {
+  var btn = document.querySelector('[onclick="exportFullBackup()"]');
+  var status = document.getElementById('backupStatus');
+  if (btn) { btn.textContent = '⏳ Preparing backup...'; btn.disabled = true; }
+  if (status) { status.style.display = 'block'; status.style.color = '#64748b'; status.textContent = 'Loading...'; }
+
+  try {
+    if (!window.XLSX) {
+      if (status) status.textContent = 'Loading Excel library...';
+      await new Promise(function(resolve, reject) {
+        var s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    var tables = [
+      { name: 'invoices',             label: 'Invoices' },
+      { name: 'invoice_items',        label: 'Invoice Items' },
+      { name: 'excel_invoices',       label: 'Historical Invoices' },
+      { name: 'finance_ledger',       label: 'Finance Ledger' },
+      { name: 'pending_bills',        label: 'Pending Bills' },
+      { name: 'cash_holder_entries',  label: 'Cash Entries' },
+      { name: 'cash_holder_names',    label: 'Cash Names' },
+      { name: 'app_users',            label: 'Users' },
+      { name: 'shop_settings',        label: 'Settings' }
+    ];
+
+    var wb = window.XLSX.utils.book_new();
+    var today = new Date().toISOString().slice(0,10);
+
+    for (var i = 0; i < tables.length; i++) {
+      if (status) status.textContent = 'Fetching ' + tables[i].label + ' (' + (i+1) + '/' + tables.length + ')...';
+
+      var res = await sb.from(tables[i].name).select('*');
+      var data = res.data || [];
+      if (data.length === 0) continue;
+
+      var clean = data.map(function(row) {
+        var r = {};
+        Object.keys(row).forEach(function(k) {
+          var v = row[k];
+          if (v === null || v === undefined) { r[k] = ''; return; }
+          if (typeof v === 'object') { r[k] = '[object]'; return; }
+          var s = String(v);
+          r[k] = s.length > 500 ? s.slice(0, 500) + '...' : s;
+        });
+        return r;
+      });
+
+      var ws = window.XLSX.utils.json_to_sheet(clean);
+      window.XLSX.utils.book_append_sheet(wb, ws, tables[i].label.slice(0, 31));
+    }
+
+    if (status) status.textContent = 'Generating Excel file...';
+
+    window.XLSX.writeFile(wb, 'PrimeCNC_Backup_' + today + '.xlsx');
+
+    if (status) { status.textContent = '✅ Backup downloaded! Check your Downloads folder.'; status.style.color = '#059669'; }
+    if (btn) { btn.textContent = '💾 Download Full Backup (Excel)'; btn.disabled = false; }
+
+  } catch(err) {
+    console.error('Backup error:', err);
+    if (typeof Sentry !== 'undefined') Sentry.captureException(err);
+    if (status) { status.textContent = '❌ Backup failed: ' + (err.message || err); status.style.color = '#dc2626'; }
+    if (btn) { btn.textContent = '💾 Download Full Backup (Excel)'; btn.disabled = false; }
   }
 }
 
