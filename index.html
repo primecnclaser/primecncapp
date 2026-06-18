@@ -3553,30 +3553,6 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
 
-          <!-- Supabase SQL Setup -->
-          <div style="background:#fff;border:1.5px solid #e9d5ff;border-radius:12px;padding:16px;">
-            <div style="font-size:0.72rem;font-weight:700;color:#6d28d9;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">⚙️ Supabase Tables — Run Once</div>
-            <div style="font-size:0.75rem;color:#64748b;margin-bottom:8px;font-weight:600;">Shop Settings</div>
-            <code style="display:block;background:#1e293b;color:#f0c96e;padding:10px 14px;border-radius:8px;font-size:0.7rem;line-height:1.8;white-space:pre-wrap;margin-bottom:12px;">CREATE TABLE IF NOT EXISTS shop_settings (
-  key   TEXT PRIMARY KEY,
-  value TEXT,
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);</code>
-            <div style="font-size:0.75rem;color:#64748b;margin-bottom:8px;font-weight:600;">Finance Ledger</div>
-            <code style="display:block;background:#1e293b;color:#f0c96e;padding:10px 14px;border-radius:8px;font-size:0.7rem;line-height:1.8;white-space:pre-wrap;">CREATE TABLE IF NOT EXISTS finance_ledger (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  entry_date date NOT NULL,
-  entry_type text NOT NULL,
-  category text NOT NULL,
-  amount numeric NOT NULL DEFAULT 0,
-  note text,
-  source text DEFAULT 'manual',
-  ref_id text,
-  created_by text,
-  created_at timestamptz DEFAULT now()
-);</code>
-          </div>
-
           <!-- Actions -->
           <div style="display:flex;flex-direction:column;gap:12px;">
             <div style="background:#fff;border:1.5px solid #c7d2fe;border-radius:12px;padding:16px;margin-bottom:12px;">
