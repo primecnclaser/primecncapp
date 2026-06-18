@@ -4735,6 +4735,11 @@ function normalizeDate(d) {
   if (m2) return m2[3] + '-' + m2[2].padStart(2,'0') + '-' + m2[1].padStart(2,'0');
   return d; // return as-is if unrecognised
 }
+function normalizeOrderNum(num) {
+  if (!num) return '';
+  var s = String(num).trim();
+  return s.startsWith('INV-') ? s : 'INV-' + s;
+}
 
 // ── INVOICE AGE — generic days-old check for any invoice/row date ──
 // Accepts any format normalizeDate understands (YYYY-MM-DD, DD.MM.YYYY, DD/MM/YYYY)
@@ -9016,7 +9021,7 @@ async function showCustList(type) {
         else exFrom += exBatch;
       }
       // Normalize all dates DD.MM.YYYY → YYYY-MM-DD
-      allExRows.forEach(function(r) { r.date = normalizeDate(r.date); });
+      allExRows.forEach(function(r) { r.date = normalizeDate(r.date); r.order_num = normalizeOrderNum(r.order_num); });
       // Extend nameToPhoneCI with excel rows (case-insensitive, phone rows take priority)
       allExRows.forEach(function(r) {
         var ph = (r.phone || '').replace(/[^0-9]/g,'');
@@ -9525,6 +9530,7 @@ async function fetchCustomerInvoices(name, phone, nameQuery) {
 
   function addExcelRow(r) {
     r.date = normalizeDate(r.date);
+    r.order_num = normalizeOrderNum(r.order_num);
     r._src = 'excel';
     r._hasR1 = 'received1' in r;
     // Parse received_entries JSONB if returned as string
