@@ -13545,6 +13545,7 @@ function _runApplyHeaderToInvoice() {
   if (!hdr) return;
 
   var s = _getFullPrintShop();
+  console.log('INVOICE elStyles:', JSON.stringify(s.elStyles));
 
   // Preserve invoice number + date (recreated inside the new header with same IDs)
   var invNumEl = document.getElementById('invNumber');
