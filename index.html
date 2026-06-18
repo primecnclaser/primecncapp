@@ -8854,21 +8854,15 @@ function _printHeaderHtml(s, rightHtml) {
     };
   }
   function elStyle(key, extra) {
-    try {
-      var t=elSt(key);
-      if(key==='urdu') console.log('elStyle urdu t:', JSON.stringify(t));
-      var fontFallback = (t.font==='JameelNooriNastaliq') ? 'JameelNooriNastaliq' : '\''+t.font+'\',sans-serif';
-      var shadow = t.shadowBlur>0 ? 'text-shadow:0 0 '+t.shadowBlur+'px currentColor;' : '';
-      var _align = t.align;
-      return 'color:'+(t.color||ac)+';font-size:'+t.size+'rem;font-family:'+fontFallback+';'
-        +'font-weight:'+(t.bold?700:400)+';font-style:'+(t.italic?'italic':'normal')+';text-align:'+_align+';width:100%;'
-        +'letter-spacing:'+t.letterSpacing+'px;line-height:'+t.lineHeight+';opacity:'+t.opacity+';'
-        +'padding-top:'+t.padTop+'px;padding-bottom:'+t.padBottom+'px;'
-        +shadow+(extra||'');
-    } catch(e) {
-      console.error('elStyle ERROR for key='+key+':', e.message, JSON.stringify(elSt(key)));
-      return '';
-    }
+    var t=elSt(key);
+    var fontFallback = (t.font==='JameelNooriNastaliq') ? 'JameelNooriNastaliq' : '\''+t.font+'\',sans-serif';
+    var shadow = t.shadowBlur>0 ? 'text-shadow:0 0 '+t.shadowBlur+'px currentColor;' : '';
+    var _align = t.align;
+    return 'color:'+(t.color||ac)+';font-size:'+t.size+'rem;font-family:'+fontFallback+';'
+      +'font-weight:'+(t.bold?700:400)+';font-style:'+(t.italic?'italic':'normal')+';text-align:'+_align+';width:100%;'
+      +'letter-spacing:'+t.letterSpacing+'px;line-height:'+t.lineHeight+';opacity:'+t.opacity+';'
+      +'padding-top:'+t.padTop+'px;padding-bottom:'+t.padBottom+'px;'
+      +shadow+(extra||'');
   }
 
   // Build middle content in order
@@ -13551,7 +13545,6 @@ function _runApplyHeaderToInvoice() {
   if (!hdr) return;
 
   var s = _getFullPrintShop();
-  console.log('INVOICE elStyles:', JSON.stringify(s.elStyles));
 
   // Preserve invoice number + date (recreated inside the new header with same IDs)
   var invNumEl = document.getElementById('invNumber');
@@ -13674,8 +13667,6 @@ function _applyHeaderSettingsNow() {
         el.classList.add('urdu-header');
       });
     });
-    var _dbgEl = document.querySelector('.inv-header [data-hdr-key="urdu"]');
-    console.log('AFTER RENDER urdu style:', _dbgEl ? _dbgEl.getAttribute('style') : 'NOT FOUND');
   }
 
   // Apply to every .inv-footer in the DOM
