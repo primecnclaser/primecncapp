@@ -12809,7 +12809,11 @@ async function saveInvoiceSettings() {
   if (typeof _excelDBCache !== 'undefined') _excelDBCache = null;
   if (typeof _searchNameList !== 'undefined') _searchNameList = null;
   if (typeof setInvoiceNumber === 'function') setInvoiceNumber();
-  if (typeof renderDB === 'function') { loadExcelDBCache().then(function(){ renderDB(); }); }
+  if (typeof renderDB === 'function') {
+    loadExcelDBCache().then(function(){
+      setTimeout(function(){ renderDB(); }, 100);
+    });
+  }
   toast('✅ Invoice settings saved');
 }
 
