@@ -12853,7 +12853,7 @@ async function exportInvoicesCSV() {
       var dateStr = d && !isNaN(d) ? d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : (r.date || '');
       return Object.assign({}, r, {
         source: 'App',
-        inv_num: r.inv_num || '',
+        inv_num: (function(n){ if (!n) return ''; var pfx = localStorage.getItem('inv_num_prefix') || 'INV-'; var raw = String(n).replace(/^[A-Za-z]+-/i, ''); return pfx + raw; })(r.inv_num),
         date: dateStr
       });
     });
