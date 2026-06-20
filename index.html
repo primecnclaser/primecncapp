@@ -3597,8 +3597,35 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:8px;padding:8px 14px;font-size:0.72rem;color:#1e40af;margin-bottom:14px;line-height:1.6;">
           <strong>Free Positions mode:</strong> enables absolute positioning. Drag elements anywhere on the canvas. Toggle off to return to grid layout. All changes also reflect in Print / PDF.
         </div>
-        <div style="display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start;">
-          <!-- Left: mode-sensitive controls -->
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          <!-- Live canvas + buttons + on-demand preview -->
+          <div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+              <div style="font-size:0.72rem;font-weight:700;color:#475569;display:flex;align-items:center;gap:8px;">
+                &#128065; Live Canvas
+                <span id="dragModeLabel" style="font-size:0.62rem;padding:2px 8px;border-radius:12px;background:#f1f5f9;color:#64748b;">Grid Mode</span>
+              </div>
+              <div style="display:flex;gap:4px;">
+                <button id="dcToggleHeader" onclick="setDragCanvasMode('header')" style="padding:5px 14px;border:1.5px solid #6366f1;border-radius:6px;background:#ede9fe;color:#6d28d9;font-family:Montserrat,sans-serif;font-size:0.72rem;font-weight:700;cursor:pointer;">&#127968; Header</button>
+                <button id="dcToggleFooter" onclick="setDragCanvasMode('footer')" style="padding:5px 14px;border:1.5px solid #e2e8f0;border-radius:6px;background:#f8fafc;color:#475569;font-family:Montserrat,sans-serif;font-size:0.72rem;font-weight:700;cursor:pointer;">&#128196; Footer</button>
+              </div>
+            </div>
+            <!-- Canvas wrapper with fixed min-height to prevent layout shifts on color changes -->
+            <div style="position:relative;border:2px solid #e2e8f0;border-radius:10px;overflow:hidden;background:#f1f5f9;min-height:168px;">
+              <div id="dragEditorCanvas" style="position:relative;overflow:hidden;cursor:default;user-select:none;width:100%;"></div>
+            </div>
+            <!-- Action buttons -->
+            <div style="margin-top:10px;display:flex;gap:8px;">
+              <button onclick="dragEditorSaveLocal()" style="flex:1;padding:10px;background:linear-gradient(135deg,#1e293b,#334155);color:#fff;border:none;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.78rem;font-weight:700;cursor:pointer;">&#128190; Save Layout</button>
+              <button onclick="dragEditorApply()" id="deApplyBtn" style="flex:1;padding:10px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.78rem;font-weight:700;cursor:pointer;">&#9654; Apply Layout</button>
+            </div>
+            <div style="margin-top:8px;">
+              <button id="dePreviewBtn" onclick="deTogglePreview()" style="width:100%;padding:8px;background:#fff;color:#4338ca;border:1.5px solid #a5b4fc;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.78rem;font-weight:700;cursor:pointer;">&#128065; Preview Full Invoice</button>
+            </div>
+            <!-- Full-invoice preview — hidden until Preview button is clicked -->
+            <div id="deInlinePreview" style="display:none;margin-top:10px;border:2px solid #e2e8f0;border-radius:10px;overflow:hidden;background:#fff;"></div>
+          </div>
+          <!-- mode-sensitive controls -->
           <div>
 
             <!-- ── HEADER PANEL ── -->
@@ -3665,7 +3692,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
                   </div>
                   <div style="display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid #f1f5f9;">
                     <label style="font-size:0.6rem;font-weight:700;color:#475569;text-transform:uppercase;min-width:76px;margin:0;">Style</label>
-                    <button id="dElBoldBtn" onclick="dragElToggleBold()" title="Bold" style="width:32px;height:30px;border:1.5px solid #e2e8f0;border-radius:6px;background:#f8fafc;font-weight:900;font-size:1rem;cursor:pointer;color:#475569;font-family:Georgia,serif;transition:all .15s;">B</button>
+                    <button id="dElBoldBtn" onclick="dragElToggleBold()" title="Bold" style="width:32px;height:30px;border:1.5px solid #e2e8f0;border-radius:6px;background:#f8fafc;font-weight:900;font-size:1rem;cursor:pointer;color:#475569;font-family:Georgia,serif;transition:all .15s;">B</button><button id="dElItalicBtn" onclick="dragElToggleItalic()" title="Italic" style="width:32px;height:30px;border:1.5px solid #e2e8f0;border-radius:6px;background:#f8fafc;font-style:italic;font-size:1rem;cursor:pointer;color:#475569;font-family:Georgia,serif;transition:all .15s;">I</button>
                   </div>
                   <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
                     <label style="font-size:0.6rem;font-weight:700;color:#475569;text-transform:uppercase;min-width:76px;margin:0;">Alignment</label>
@@ -3790,33 +3817,6 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
               </div>
             </div>
 
-          </div>
-          <!-- Right: Live canvas + buttons + on-demand preview -->
-          <div>
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
-              <div style="font-size:0.72rem;font-weight:700;color:#475569;display:flex;align-items:center;gap:8px;">
-                &#128065; Live Canvas
-                <span id="dragModeLabel" style="font-size:0.62rem;padding:2px 8px;border-radius:12px;background:#f1f5f9;color:#64748b;">Grid Mode</span>
-              </div>
-              <div style="display:flex;gap:4px;">
-                <button id="dcToggleHeader" onclick="setDragCanvasMode('header')" style="padding:5px 14px;border:1.5px solid #6366f1;border-radius:6px;background:#ede9fe;color:#6d28d9;font-family:Montserrat,sans-serif;font-size:0.72rem;font-weight:700;cursor:pointer;">&#127968; Header</button>
-                <button id="dcToggleFooter" onclick="setDragCanvasMode('footer')" style="padding:5px 14px;border:1.5px solid #e2e8f0;border-radius:6px;background:#f8fafc;color:#475569;font-family:Montserrat,sans-serif;font-size:0.72rem;font-weight:700;cursor:pointer;">&#128196; Footer</button>
-              </div>
-            </div>
-            <!-- Canvas wrapper with fixed min-height to prevent layout shifts on color changes -->
-            <div style="position:relative;border:2px solid #e2e8f0;border-radius:10px;overflow:hidden;background:#f1f5f9;min-height:168px;">
-              <div id="dragEditorCanvas" style="position:relative;overflow:hidden;cursor:default;user-select:none;width:100%;"></div>
-            </div>
-            <!-- Action buttons -->
-            <div style="margin-top:10px;display:flex;gap:8px;">
-              <button onclick="dragEditorSaveLocal()" style="flex:1;padding:10px;background:linear-gradient(135deg,#1e293b,#334155);color:#fff;border:none;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.78rem;font-weight:700;cursor:pointer;">&#128190; Save Layout</button>
-              <button onclick="dragEditorApply()" id="deApplyBtn" style="flex:1;padding:10px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.78rem;font-weight:700;cursor:pointer;">&#9654; Apply Layout</button>
-            </div>
-            <div style="margin-top:8px;">
-              <button id="dePreviewBtn" onclick="deTogglePreview()" style="width:100%;padding:8px;background:#fff;color:#4338ca;border:1.5px solid #a5b4fc;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.78rem;font-weight:700;cursor:pointer;">&#128065; Preview Full Invoice</button>
-            </div>
-            <!-- Full-invoice preview — hidden until Preview button is clicked -->
-            <div id="deInlinePreview" style="display:none;margin-top:10px;border:2px solid #e2e8f0;border-radius:10px;overflow:hidden;background:#fff;"></div>
           </div>
         </div>
       </div>
@@ -8848,7 +8848,7 @@ function _printHeaderHtml(s, rightHtml) {
   }
   function elStyle(key, extra) {
     var t=elSt(key);
-    var fontFallback = (t.font==='JameelNooriNastaliq') ? 'JameelNooriNastaliq' : '\''+t.font+'\',sans-serif';
+    var fontFallback = (t.font==='JameelNooriNastaliq') ? 'JameelNooriNastaliq' : t.font+',sans-serif';
     var shadow = t.shadowBlur>0 ? 'text-shadow:0 0 '+t.shadowBlur+'px currentColor;' : '';
     var _align = t.align;
     return 'color:'+(t.color||ac)+';font-size:'+t.size+'rem;font-family:'+fontFallback+';'
@@ -13047,7 +13047,7 @@ const HDR_EL_KEYS = ['urdu','en','tagline','contacts','address','right'];
 const HDR_EL_DEFAULTS = {
   urdu:     { color:null,                       size:1.75, font:'JameelNooriNastaliq', bold:true,  italic:false, align:'center' },
   en:       { color:null,                       size:1.05, font:'Playfair Display',   bold:true,  italic:false, align:'center' },
-  tagline:  { color:'rgba(255,255,255,0.7)',    size:0.72, font:'Montserrat',         bold:false, italic:true,  align:'center' },
+  tagline:  { color:'rgba(255,255,255,0.7)',    size:0.72, font:'Montserrat',         bold:false, italic:false, align:'center' },
   contacts: { color:'rgba(255,255,255,0.85)',   size:0.76, font:'Montserrat',         bold:false, italic:false, align:'center' },
   address:  { color:'rgba(255,255,255,0.65)',   size:0.70, font:'Montserrat',         bold:false, italic:false, align:'center' },
   right:    { color:null,                       size:0.92, font:'Montserrat',         bold:true,  italic:false, align:'right'  },
@@ -22298,9 +22298,11 @@ function selectDragEl(key, btnEl) {
   setR('dElFontFamily', fontVal);
   // Bold / align — read from staging (st already merges defaults + _dragElStylesTemp)
   var def  = HDR_EL_DEFAULTS[key] || {};
-  var bold  = st.bold  !== undefined ? st.bold  : (def.bold  || false);
-  var align = st.align !== undefined ? st.align : (def.align || 'center');
+  var bold   = st.bold   !== undefined ? st.bold   : (def.bold   || false);
+  var italic = st.italic !== undefined ? st.italic : (def.italic || false);
+  var align  = st.align  !== undefined ? st.align  : (def.align  || 'center');
   _dElRefreshBoldBtn(bold);
+  _dElRefreshItalicBtn(italic);
   _dElRefreshAlignBtns(align);
   var fp = _dragFreePos[key] || {};
   setR('dFreeX', fp.x !== undefined ? fp.x : '');
@@ -22347,6 +22349,12 @@ function _dElRefreshBoldBtn(bold) {
   btn.style.color        = bold ? '#fff'    : '#475569';
   btn.style.borderColor  = bold ? '#6366f1' : '#e2e8f0';
 }
+function _dElRefreshItalicBtn(italic) {
+  var btn = document.getElementById('dElItalicBtn'); if (!btn) return;
+  btn.style.background   = italic ? '#6366f1' : '#f8fafc';
+  btn.style.color        = italic ? '#fff'    : '#475569';
+  btn.style.borderColor  = italic ? '#6366f1' : '#e2e8f0';
+}
 function _dElRefreshAlignBtns(align) {
   ['left','center','right'].forEach(function(a) {
     var btn = document.getElementById('dElAlign'+a.charAt(0).toUpperCase()+a.slice(1)); if (!btn) return;
@@ -22364,6 +22372,14 @@ function dragElToggleBold() {
     : (HDR_EL_DEFAULTS[_selDragEl] || {}).bold || false;
   dragElSet('bold', !cur);
   _dElRefreshBoldBtn(!cur);
+}
+function dragElToggleItalic() {
+  var staging = (_dragElStylesTemp && _dragElStylesTemp[_selDragEl]) || {};
+  var cur = staging.italic !== undefined
+    ? staging.italic
+    : (HDR_EL_DEFAULTS[_selDragEl] || {}).italic || false;
+  dragElSet('italic', !cur);
+  _dElRefreshItalicBtn(!cur);
 }
 function dragElSetAlign(align) {
   dragElSet('align', align);
