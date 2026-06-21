@@ -2517,6 +2517,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
       </div>
 
       <div class="tab tab-search" onclick="switchTab('search',this)">🔍 Search</div>
+      <div class="tab tab-payment" onclick="switchTab('payment',this)">💰 Receive Payment</div>
 
       <div class="tab tab-database" onclick="switchTab('database',this)">🗃️ Database (<span id="dbCount">0</span>)</div>
       <div class="tab-sub-list" id="sublist-database">
@@ -3011,6 +3012,29 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
       </div>
 
 
+    </div>
+  </div>
+
+  <div id="paymentTab" style="display:none">
+    <div class="panel" style="max-width:1100px;margin:0 auto;">
+      <h2 style="font-family:Montserrat,sans-serif;font-size:1.1rem;color:#1e293b;margin-bottom:16px;">💰 Receive Payment</h2>
+
+      <div style="display:flex;gap:10px;margin-bottom:16px;">
+        <input type="text" id="rpSearchName" name="search_field_no_autofill_xyz123" autocomplete="new-password" placeholder="🔍 Search by customer name" oninput="rpSearchByName(this.value)" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
+        <input type="text" id="rpSearchInv" placeholder="🔍 Search by invoice number" oninput="this.value=this.value.replace(/[^0-9]/g,'');rpSearchByInv(this.value)" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
+      </div>
+      <div id="rpNameDropdown" style="display:none;position:relative;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;max-height:220px;overflow-y:auto;margin-top:-10px;margin-bottom:16px;"></div>
+
+      <div id="rpCustomerPanel"></div>
+
+      <div style="margin-top:24px;padding-top:20px;border-top:2px solid #f1f5f9;">
+        <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.9rem;color:#1e293b;margin-bottom:10px;">📅 Daily Received Summary</div>
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;">
+          <input type="date" id="rpDateLookup" value="" onchange="rpLookupByDate(this.value)" style="padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
+          <button onclick="rpLookupByDate(document.getElementById('rpDateLookup').value)" style="padding:10px 16px;background:#1e293b;color:#fff;border:none;border-radius:8px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.82rem;cursor:pointer;">View</button>
+        </div>
+        <div id="rpDateLookupResults"></div>
+      </div>
     </div>
   </div>
 
@@ -7566,7 +7590,7 @@ async function _fetchExcelOrderCount(mode, dateV, monV, yearV) {
   } catch(e) { return 0; }
 }
 
-function renderSummary() {
+async function renderSummary() {
   const mode  = (document.getElementById('summaryMode2') || {}).value || 'month';
   const dateV = (document.getElementById('summaryDate2') || {}).value || '';
   const monV  = (document.getElementById('summaryMonth2') || {}).value || '';
@@ -7708,37 +7732,33 @@ function renderSummary() {
       totalDiscount = 0, totalActualRemaining = 0, totalBadDebt = 0,
       totalAdvance = 0, orderCount = 0;
 
-  // Remaining in Market & Bad Debt — always from FULL database (all time)
-  // Bad debt read directly from invoices (via database array) — no localStorage needed
-  const custActualRemaining = {};
-  const custBadDebt = {};
-  // Pass 1: build name→phone map (case-insensitive) for resolving no-phone rows
-  const _rsNameToPhone = {};
-  database.forEach(inv => {
-    if (inv.isNull || inv.isDraft) return;
-    const ph = (inv.phone||'').replace(/[^0-9]/g,'');
-    const nm = (inv.custName||'').toLowerCase().trim();
-    if (ph && !_rsNameToPhone[nm]) _rsNameToPhone[nm] = ph;
-  });
-  // Pass 2: group using resolved phone key
-  database.forEach(inv => {
+  // ── Build customer remaining/badDebt via rpGetCustomerSummary
+  //    (same formula as Receive Payment tab, single source of truth)
+
+  // Collect unique customer names from both sources
+  var _rsCustNames = {};
+  database.forEach(function(inv){
     if (inv.isNull || inv.isAdvance || inv.isDraft) return;
-    const r1sum = Array.isArray(inv.received1Entries)
-      ? inv.received1Entries.reduce((s,e) => s + (e.amount||0), 0)
-      : (parseFloat(inv.received1) || 0);
-    const afterDisc = inv.afterDiscount != null ? inv.afterDiscount : inv.total;
-    const rem = Math.max(0, (afterDisc || 0) - (inv.received || 0) - r1sum);
-    let ph = (inv.phone||'').replace(/[^0-9]/g,'');
-    const nmL = (inv.custName||'').toLowerCase().trim();
-    if (!ph) ph = _rsNameToPhone[nmL] || '';
-    const key = ph ? ('ph_'+ph) : ('nm_'+nmL);
-    custActualRemaining[key] = (custActualRemaining[key] || 0) + rem;
-    custBadDebt[key] = (custBadDebt[key] || 0) + (parseFloat(inv.badDebt) || 0);
+    var nm = (inv.custName||'').trim();
+    if (nm) _rsCustNames[nm.toLowerCase()] = nm;
+  });
+  (Array.isArray(_excelDBCache) ? _excelDBCache : []).forEach(function(r){
+    var nm = (r.customer_name||'').trim();
+    if (nm) _rsCustNames[nm.toLowerCase()] = nm;
   });
 
-  Object.keys(custActualRemaining).forEach(key => {
-    const bdVal = custBadDebt[key] || 0;
-    const effectiveBD = Math.min(bdVal, custActualRemaining[key]);
+  var allSummaries = await buildAllCustomerSummaries();
+  var custActualRemaining = {};
+  var custBadDebt = {};
+  Object.keys(allSummaries).forEach(function(key) {
+    var s = allSummaries[key];
+    custActualRemaining[key] = s.remaining;
+    custBadDebt[key] = s.totalBadDebt;
+  });
+
+  Object.keys(custActualRemaining).forEach(function(key) {
+    var bdVal = custBadDebt[key] || 0;
+    var effectiveBD = Math.min(bdVal, custActualRemaining[key]);
     totalBadDebt += effectiveBD;
     totalActualRemaining += custActualRemaining[key];
   });
@@ -8256,9 +8276,9 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
   });
   Object.keys(newInvCustMap).forEach(k => { mergedRemaining[k] = (mergedRemaining[k]||0) + newInvCustMap[k]; });
   const unifiedRemaining = Object.values(mergedRemaining).filter(v => v > 0).reduce((s,v) => s+v, 0);
-  const displayRemaining = unifiedRemaining > 0 ? unifiedRemaining : totalRemaining;
+  const displayRemaining = totalRemaining;
   // Use supabase bad debt if available, otherwise fall back to local calculation
-  const displayBadDebt = supaBaseBadDebt > 0 ? supaBaseBadDebt : totalBadDebt;
+  const displayBadDebt = totalBadDebt;
 
   // ── Step 5: Final render with all data loaded ──
   _cachedRemainingInMarket = displayRemaining;
@@ -8992,124 +9012,20 @@ async function showCustList(type) {
   listEl.innerHTML = _skelHtml;
   listEl.style.display = 'block';
 
-  // ── Build unified customer map: excel_invoices + new invoices ──
-  var unifiedMap = {}; // key → { name, phone, totalBill, totalReceived, badDebt, discount, remaining, invoices[] }
-
-  // Pre-build case-insensitive name→phone map from database rows (available immediately).
-  // Extended with excel rows after fetch. Rules:
-  //   same phone → same customer (one name picked)
-  //   same name (case-insensitive) + no phone on some rows → group under that phone
-  //   same name, different phones → separate customers
-  var nameToPhoneCI = {};  // nameLower → phone_digits
-  database.forEach(function(inv) {
-    if (inv.isNull || inv.isDraft) return;
-    var ph = (inv.phone||'').replace(/[^0-9]/g,'');
-    var nm = (inv.custName||'').trim().toLowerCase();
-    if (ph && !nameToPhoneCI[nm]) nameToPhoneCI[nm] = ph;
+  var allSummaries = await buildAllCustomerSummaries();
+  var allCust = Object.keys(allSummaries).map(function(key) {
+    var s = allSummaries[key];
+    return {
+      name: s.name,
+      phone: s.phone,
+      totalBill: s.totalBilled,
+      totalReceived: s.totalPaid,
+      badDebt: s.totalBadDebt,
+      discount: s.totalDiscount,
+      remaining: s.remaining,
+      invoices: []
+    };
   });
-
-  // 1. Load excel_invoices from Supabase
-  if (sb) {
-    try {
-      // Paginated fetch — bypass 1000-row Supabase default limit
-      var allExRows = [];
-      var exFrom = 0, exBatch = 1000, exDone = false;
-      while (!exDone) {
-        var exRes = await sb.from('excel_invoices')
-          .select('customer_name,phone,order_num,date,total_bill,received,received1,received_entries,bad_debt,discount,remaining')
-          .range(exFrom, exFrom + exBatch - 1);
-        if (exRes.error) { console.error('[excel_invoices] error:', exRes.error); break; }
-        allExRows = allExRows.concat(exRes.data || []);
-        if (!exRes.data || exRes.data.length < exBatch) exDone = true;
-        else exFrom += exBatch;
-      }
-      // Normalize all dates DD.MM.YYYY → YYYY-MM-DD
-      allExRows.forEach(function(r) { r.date = normalizeDate(r.date); r.order_num = normalizeOrderNum(r.order_num); });
-      // Extend nameToPhoneCI with excel rows (case-insensitive, phone rows take priority)
-      allExRows.forEach(function(r) {
-        var ph = (r.phone || '').replace(/[^0-9]/g,'');
-        var nm = (r.customer_name || '').trim().toLowerCase();
-        if (ph && !nameToPhoneCI[nm]) nameToPhoneCI[nm] = ph;
-      });
-      console.log('[showCustList excel_invoices] total rows fetched:', allExRows.length);
-      allExRows.forEach(function(r) {
-        var nm  = (r.customer_name || '').trim();
-        var nmL = nm.toLowerCase();
-        var explicitPh = (r.phone || '').replace(/[^0-9]/g,'');
-        var ph  = explicitPh || nameToPhoneCI[nmL] || '';
-        var k   = ph ? ('ph_'+ph) : ('nm_'+nmL);
-        var dispPhone = r.phone || (ph ? ph : '');
-        if (!unifiedMap[k]) unifiedMap[k] = { name: nm, phone: dispPhone, _nameFromPhone: !!explicitPh, totalBill:0, totalReceived:0, badDebt:0, discount:0, remaining:0, invoices:[], source:'excel' };
-        var c = unifiedMap[k];
-        // Phone-bearing row always wins the display name over a no-phone row
-        if (explicitPh && !c._nameFromPhone) { c.name = nm; c._nameFromPhone = true; }
-        if (!c.phone && dispPhone) c.phone = dispPhone;
-        var bill = parseFloat(r.total_bill)||0;
-        var bd   = parseFloat(r.bad_debt)||0;
-        var disc = parseFloat(r.discount)||0;
-        // Sum actual payments: received + received_entries amounts (received1 is just a cached sum — do not add)
-        var recvBase = parseFloat(r.received)||0;
-        var recvEntries = [];
-        if (typeof r.received_entries === 'string') {
-          try { recvEntries = JSON.parse(r.received_entries); } catch(e) { recvEntries = []; }
-        } else if (Array.isArray(r.received_entries)) {
-          recvEntries = r.received_entries;
-        }
-        var recvExtra = recvEntries.reduce(function(s,e){return s+(parseFloat(e.amount)||0);},0);
-        var totalPaid = recvBase + recvExtra;
-        // Use stored remaining column — it is the authoritative value maintained by saveExcelField
-        // on every payment, discount, bad_debt, and total_bill update. Recalculating from received
-        // alone is wrong because received is a stale historical column that does not include
-        // installment payments recorded via the app (those only update remaining, not received).
-        var rem = parseFloat(r.remaining)||0;
-        c.totalBill     += bill;
-        c.totalReceived += totalPaid;
-        c.badDebt       += bd;
-        c.discount      += disc;
-        c.remaining     += rem;
-        c.invoices.push({ date: r.date||'', orderNum: r.order_num||'', totalBill: bill, received: totalPaid, badDebt: bd, discount: disc, remaining: rem, source:'excel' });
-      });
-    } catch(e) { console.warn('excel_invoices load error:', e); }
-  }
-
-  // 2. Merge new invoices from live database
-  database.forEach(function(inv) {
-    if (inv.isNull || inv.isDraft) return;
-    var explicitPh = (inv.phone||'').replace(/[^0-9]/g,'');
-    var nmL = (inv.custName||'').toLowerCase().trim();
-    var ph  = explicitPh || nameToPhoneCI[nmL] || '';
-    var k   = ph ? ('ph_'+ph) : ('nm_'+nmL);
-    var dispPhone = inv.phone || (ph ? ph : '');
-    if (!unifiedMap[k]) unifiedMap[k] = { name: inv.custName||'—', phone: dispPhone, _nameFromPhone: !!explicitPh, totalBill:0, totalReceived:0, badDebt:0, discount:0, remaining:0, invoices:[], source:'new' };
-    var c = unifiedMap[k];
-    // Phone-bearing row always wins the display name over a no-phone row
-    if (explicitPh && !c._nameFromPhone) { c.name = inv.custName||'—'; c._nameFromPhone = true; }
-    if (!c.phone && dispPhone) c.phone = dispPhone;
-    var r1sum = Array.isArray(inv.received1Entries)
-      ? inv.received1Entries.reduce(function(s,e){return s+(e.amount||0);},0)
-      : (parseFloat(inv.received1)||0);
-    var afterDisc = (inv.afterDiscount != null ? inv.afterDiscount : inv.total)||0;
-    var paid = (inv.received||0) + r1sum;
-    var disc = inv.discount||0;
-    var bd   = parseFloat(inv.badDebt)||0;
-    var rem  = afterDisc - paid;
-    if (!inv.isAdvance) {
-      c.totalBill     += afterDisc;
-      c.totalReceived += paid;
-      c.badDebt       += bd;
-      c.discount      += disc;
-      c.remaining     += (rem - bd);
-      c.invoices.push({ date: inv.date||'', orderNum: inv.invNum||'', totalBill: afterDisc, received: paid, badDebt: bd, discount: disc, remaining: rem - bd, source:'new' });
-    } else {
-      c.totalReceived += paid;
-      c.remaining     -= paid; // advance = credit
-    }
-  });
-
-  // Bad debt for new invoices is already applied per-invoice above (inv.badDebt from database).
-  // Bad debt for excel invoices is baked into the stored remaining column.
-
-  var allCust = Object.values(unifiedMap);
   var ACth = 'padding:7px 8px;font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;font-family:Montserrat,sans-serif;white-space:nowrap;';
   var ACtd = 'font-family:Montserrat,sans-serif;font-size:0.75rem;font-weight:600;padding:8px 8px;white-space:nowrap;';
   var ACtdn= 'font-family:Montserrat,sans-serif;font-size:0.78rem;font-weight:800;padding:8px 8px;white-space:nowrap;';
@@ -9737,32 +9653,16 @@ async function renderCustomerDetail(targetEl, name, phone, showBackBtn, nameQuer
     return;
   }
 
-  var totalBill = allInvs.reduce(function(s,r){return s+(parseFloat(r.total_bill)||0);},0);
-  var totalBD   = allInvs.reduce(function(s,r){return s+(parseFloat(r.bad_debt)||0);},0);
-  var totalDisc = allInvs.reduce(function(s,r){return s+(parseFloat(r.discount)||0);},0);
+  var rpData = await rpGetCustomerSummary(name);
+  var totalBill = rpData.totalBilled;
+  var totalDisc = rpData.totalDiscount;
+  var totalBD   = rpData.totalBadDebt;
+  var totalRecv = rpData.totalPaid;
+  var totalRem  = rpData.remaining;
 
-  // Build individual payment entries.
-  // All invoice types now share the same pattern:
-  //   r.received       = original/first payment (no date — historical, shown without date)
-  //   r.received_entries = [{amount, date}, ...] — every dated payment added via the app
-  var paymentEntries = [];
-  allInvs.forEach(function(r) {
-    var recv = parseFloat(r.received)||0;
-    // Original received (no date label)
-    if (recv > 0) paymentEntries.push({ amount: recv, date: '', orderNum: r.order_num||'' });
-    // Individual dated entries (new payments added via + Add or ✎ pen)
-    if (Array.isArray(r.received_entries)) {
-      r.received_entries.forEach(function(e) {
-        if ((parseFloat(e.amount)||0) > 0)
-          paymentEntries.push({ amount: parseFloat(e.amount), date: e.date||'', orderNum: r.order_num||'' });
-      });
-    }
+  var paymentEntries = rpData.payments.map(function(p) {
+    return { date: p.payment_date, amount: parseFloat(p.amount)||0, type: p.type };
   });
-
-  // totalRecv = sum of all actual payments made
-  // totalRem  = Total Bill − Total Received − Discount − Bad Debt
-  var totalRecv = paymentEntries.reduce(function(s,p){return s+(p.amount||0);},0);
-  var totalRem  = totalBill - totalRecv - totalDisc - totalBD;
 
   // Sort: most-recent date first; undated (historical) entries at bottom
   paymentEntries.sort(function(a,b){
@@ -9785,29 +9685,42 @@ async function renderCustomerDetail(targetEl, name, phone, showBackBtn, nameQuer
   var td  = 'font-family:Montserrat,sans-serif;font-size:0.75rem;font-weight:600;padding:7px 10px;white-space:nowrap;';
   var tdn = 'font-family:Montserrat,sans-serif;font-size:0.82rem;font-weight:800;padding:8px 12px;white-space:nowrap;';
 
-  // LEFT: invoice bill rows
-  var billRowsHtml = allInvs.map(function(r,i) {
+  // LEFT: invoice bill rows (from rpData, sorted by invoice number)
+  var allInvList = rpData.newInvs.map(function(inv){
+    return { invNum: inv.invNum, date: inv.date, total: inv.total };
+  }).concat(rpData.exInvs.map(function(r){
+    return { invNum: normalizeOrderNum(r.order_num), date: r.date, total: r.total_bill };
+  }));
+  function getInvNumValue2(inv) {
+    var n = String(inv.invNum||'').replace(/^[A-Za-z]+-/,'');
+    return parseInt(n) || 0;
+  }
+  allInvList.sort(function(a, b) {
+    return getInvNumValue2(b) - getInvNumValue2(a);
+  });
+  var billRowsHtml = allInvList.map(function(inv,i) {
     var evenBg   = i%2===0?'#fff':'#f8fafc';
-    var dateDisp = fmtDateDisplay(r.date);
     return '<tr style="background:'+evenBg+';border-bottom:1px solid #eee;">'
       +'<td style="'+td+'color:#94a3b8;text-align:center;">'+(i+1)+'</td>'
-      +'<td style="'+td+'color:#64748b;">'+dateDisp+'</td>'
-      +'<td style="'+td+'color:#6366f1;font-weight:700;">'+(r.order_num||'—')+'</td>'
-      +'<td style="'+td+'text-align:right;color:#1e293b;font-weight:800;">'+Math.round(parseFloat(r.total_bill)||0).toLocaleString('en-PK')+'</td>'
+      +'<td style="'+td+'color:#64748b;">'+fmtDateDisplay(inv.date)+'</td>'
+      +'<td style="'+td+'color:#6366f1;font-weight:700;">'+inv.invNum+'</td>'
+      +'<td style="'+td+'text-align:right;color:#1e293b;font-weight:800;">'+Math.round(parseFloat(inv.total)||0).toLocaleString('en-PK')+'</td>'
       +'</tr>';
   }).join('');
 
-  // RIGHT: payment entry rows
-  var payRowsHtml = paymentEntries.length ? paymentEntries.map(function(p,i) {
+  // RIGHT: payment entry rows (payment type only)
+  var payOnlyEntries = paymentEntries.filter(function(p){ return p.type === 'payment'; });
+  var payRowsHtml = payOnlyEntries.length ? payOnlyEntries.map(function(p,i) {
     var evenBg   = i%2===0?'#f0fdf4':'#dcfce7';
-    var dateDisp = p.date ? fmtDateDisplay(p.date) : '<span style="font-size:0.6rem;color:#94a3b8;font-style:italic;">historical</span>';
+    var dateDisp = p.date ? fmtDateDisplay(p.date) : '—';
     return '<tr style="background:'+evenBg+';border-bottom:1px solid #bbf7d0;">'
       +'<td style="'+td+'color:#94a3b8;text-align:center;">'+(i+1)+'</td>'
       +'<td style="'+td+'color:#64748b;">'+dateDisp+'</td>'
+      +'<td style="'+td+'color:#059669;font-size:0.68rem;">Payment</td>'
       +'<td style="'+td+'text-align:right;color:#059669;font-weight:800;">Rs.'+Math.round(p.amount||0).toLocaleString('en-PK')+'</td>'
       +'</tr>';
   }).join('')
-  : '<tr><td colspan="3" style="'+td+'text-align:center;color:#94a3b8;font-style:italic;padding:18px;">No payments recorded</td></tr>';
+  : '<tr><td colspan="4" style="'+td+'text-align:center;color:#94a3b8;font-style:italic;padding:18px;">No payments recorded</td></tr>';
 
   var remColor2    = totalRem>0?'#dc2626':(totalRem<0?'#7c3aed':'#059669');
   var remBg        = totalRem>0?'#fef2f2':(totalRem<0?'#f5f3ff':'#f0fdf4');
@@ -9946,7 +9859,8 @@ async function renderCustomerDetail(targetEl, name, phone, showBackBtn, nameQuer
           +'<thead style="position:sticky;top:0;z-index:2;"><tr style="background:#065f46;">'
             +'<th style="'+th+'color:#a7f3d0;text-align:center;width:30px;">#</th>'
             +'<th style="'+th+'color:#d1fae5;text-align:left;">Date</th>'
-            +'<th style="'+th+'color:#6ee7b7;text-align:right;">Amount Received (Rs.)</th>'
+            +'<th style="'+th+'color:#d1fae5;text-align:left;">Type</th>'
+            +'<th style="'+th+'color:#6ee7b7;text-align:right;">Amount (Rs.)</th>'
           +'</tr></thead>'
           +'<tbody>'+payRowsHtml+'</tbody>'
         +'</table>'
@@ -10019,217 +9933,8 @@ function showExcelCustDetail(encodedKey) {
 }
 
 
-// Open customer statement inline overlay (stays on Summary tab)
-function openStatementFromSummary(phone) {
-  if (!phone) return;
 
-  var invoices = database.filter(function(inv){
-    var stored = (inv.phone||'').replace(/\D/g,'');
-    return stored === phone || stored === '0'+phone || stored.slice(-phone.length) === phone;
-  });
-  if (!invoices.length) { toast('No invoices found for this customer'); return; }
 
-  var cust = invoices[0];
-  var custName  = cust.custName || '\u2014';
-  var custPhone = cust.phone ? '+92-' + cust.phone : '\u2014';
-  var custArea  = cust.area  || '\u2014';
-
-  var _s           = _getFullPrintShop();
-  var shopNameUrdu = _s.urdu;
-  var shopNameEn   = _s.en;
-  var shopPhone    = _s.phone;
-  var logoData     = _s.logo;
-  var _sAcc        = _s.accent || '#f59e0b';
-
-  function fmtRs(n) { return 'Rs.\u00a0' + Math.round(n||0).toLocaleString('en-PK'); }
-
-  var grandTotal = 0, grandDiscount = 0;
-  invoices.forEach(function(inv) {
-    grandTotal    += inv.total    || 0;
-    grandDiscount += inv.discount || 0;
-  });
-  var grandAfterDisc = grandTotal - grandDiscount;
-
-  var allPayments = [];
-  invoices.slice().reverse().forEach(function(inv) {
-    if (inv.received && inv.received > 0) allPayments.push({ amount: inv.received, date: '' });
-    if (Array.isArray(inv.received1Entries) && inv.received1Entries.length > 0) {
-      inv.received1Entries.forEach(function(e){ allPayments.push({ amount: e.amount||0, date: e.date||'' }); });
-    } else if (!Array.isArray(inv.received1Entries) && inv.received1 && parseFloat(inv.received1) > 0) {
-      allPayments.push({ amount: parseFloat(inv.received1)||0, date: '' });
-    }
-  });
-
-  allPayments.sort(function(a, b) {
-    var _pd = function(s) {
-      if (!s) return '';
-      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-      var _ms = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
-      var _m = s.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
-      if (_m) return _m[3]+'-'+(_ms[_m[2]]||'00')+'-'+(('0'+_m[1]).slice(-2));
-      return s;
-    };
-    var da = _pd(a.date), db = _pd(b.date);
-    if (!da && !db) return 0;
-    if (!da) return 1;
-    if (!db) return -1;
-    return db < da ? -1 : db > da ? 1 : 0;
-  });
-
-  var grandReceived  = allPayments.reduce(function(s,p){ return s+(p.amount||0); }, 0);
-  var grandRemaining = grandAfterDisc - grandReceived;
-  var remClr = grandRemaining > 0 ? '#c0392b' : '#1a7a4a';
-
-  var now = new Date();
-  var printDate = now.toLocaleDateString('en-PK',{day:'2-digit',month:'short',year:'numeric'});
-
-  var invRows = '';
-  invoices.slice().reverse().forEach(function(inv, ri) {
-    var sn = invoices.length - ri;
-    invRows += '<tr>'
-      + '<td style="text-align:center;color:#8a8a9a;font-family:Montserrat,sans-serif;font-size:0.82rem;">'+sn+'</td>'
-      + '<td style="font-family:Montserrat,sans-serif;color:#0f1e45;font-weight:600;font-size:0.82rem;">'+inv.invNum+'</td>'
-      + '<td style="white-space:nowrap;font-size:0.82rem;">'+fmtDateDisplay(inv.date)+'</td>'
-      + '<td style="font-family:Montserrat,sans-serif;font-weight:700;color:#0f1e45;font-size:0.82rem;">'+fmtRs(inv.total)+'</td>'
-    + '</tr>';
-  });
-
-  var payRows = '';
-  var payLeft = 0, payRight = 0;
-  var numPayRows = Math.ceil(allPayments.length / 2);
-  for (var pr = 0; pr < numPayRows; pr++) {
-    var pL = allPayments[pr * 2];
-    var pR = allPayments[pr * 2 + 1];
-    var rowBg = pr % 2 === 0 ? '#f6fdf9' : '#edf8f2';
-    var tdStyle = 'border:1px solid #d0d0d0;vertical-align:top;padding:6px 10px;width:50%;';
-    if (pL) payLeft += pL.amount || 0;
-    if (pR) payRight += pR.amount || 0;
-    var leftCell = pL
-      ? '<td style="'+tdStyle+'">'
-          + '<span style="display:block;font-family:Montserrat,sans-serif;font-weight:800;font-size:0.88rem;color:#1a7a4a;">'+fmtRs(pL.amount)+'</span>'
-          + (pL.date ? '<span style="display:block;font-size:0.68rem;color:#999;margin-top:2px;">'+pL.date+'</span>' : '')
-        + '</td>'
-      : '<td style="'+tdStyle+'background:#fafafa;"></td>';
-    var rightCell = pR
-      ? '<td style="'+tdStyle+'">'
-          + '<span style="display:block;font-family:Montserrat,sans-serif;font-weight:800;font-size:0.88rem;color:#1a7a4a;">'+fmtRs(pR.amount)+'</span>'
-          + (pR.date ? '<span style="display:block;font-size:0.68rem;color:#999;margin-top:2px;">'+pR.date+'</span>' : '')
-        + '</td>'
-      : '<td style="'+tdStyle+'background:#fafafa;"></td>';
-    payRows += '<tr style="background:'+rowBg+';">'+leftCell+rightCell+'</tr>';
-  }
-  if (!payRows) payRows = '<tr><td colspan="2" style="text-align:center;color:#aaa;font-style:italic;padding:10px;">No payments recorded</td></tr>';
-
-  var _stmtRightHtml = '<span style="font-size:0.58rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:rgba(148,163,184,0.9);font-family:Montserrat,sans-serif;">Customer Statement<\/span><br>'
-    + '<span style="font-size:0.9rem;font-weight:800;color:'+_sAcc+';font-family:Montserrat,sans-serif;">'+custName+'<\/span><br>'
-    + '<span style="font-size:0.72rem;font-weight:600;color:rgba(255,255,255,0.7);font-family:Montserrat,sans-serif;">'+printDate+'<\/span>';
-  var stmtHtml = '<style>' + _printHeaderCSS(_s) + '<\/style>'
-    + _printHeaderHtml(_s, _stmtRightHtml)
-    + '<div style="margin-bottom:13px;"></div>'
-
-    // Customer info
-    + '<div style="border:1.5px solid rgba(201,168,76,0.45);border-radius:9px;padding:10px 16px;margin-bottom:13px;background:#fffdf5;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">'
-      + '<div><div style="font-size:0.56rem;font-weight:700;color:#8a7a4a;text-transform:uppercase;letter-spacing:0.8px;">Customer Name</div><div style="font-size:0.92rem;font-weight:700;color:#0f1e45;margin-top:3px;">'+custName+'</div></div>'
-      + '<div><div style="font-size:0.56rem;font-weight:700;color:#8a7a4a;text-transform:uppercase;letter-spacing:0.8px;">Cell Number</div><div style="font-size:0.92rem;font-weight:700;color:#0f1e45;font-family:Montserrat,sans-serif;margin-top:3px;">'+custPhone+'</div></div>'
-      + '<div><div style="font-size:0.56rem;font-weight:700;color:#8a7a4a;text-transform:uppercase;letter-spacing:0.8px;">Area / Address</div><div style="font-size:0.92rem;font-weight:700;color:#0f1e45;margin-top:3px;">'+custArea+'</div></div>'
-    + '</div>'
-
-    // Stats
-    + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:14px;">'
-      + '<div style="border:2px solid #d0c090;border-radius:10px;padding:12px 10px;text-align:center;background:#fffdf5;"><div style="font-size:0.58rem;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:#8a7a4a;">Total Billed</div><div style="font-family:Montserrat,sans-serif;font-size:1.1rem;font-weight:800;margin-top:4px;color:#0f1e45;">'+fmtRs(grandTotal)+'</div></div>'
-      + '<div style="border:2px solid #1a7a4a;border-radius:10px;padding:12px 10px;text-align:center;background:#f0faf4;"><div style="font-size:0.58rem;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:#1a7a4a;">Total Received</div><div style="font-family:Montserrat,sans-serif;font-size:1.1rem;font-weight:800;margin-top:4px;color:#1a7a4a;">'+fmtRs(grandReceived)+'</div></div>'
-      + '<div style="border:2px solid '+remClr+';border-radius:10px;padding:12px 10px;text-align:center;background:'+(grandRemaining>0?'#fdf0ef':'#f0faf4')+'"><div style="font-size:0.58rem;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:'+remClr+';">Total Remaining</div><div style="font-family:Montserrat,sans-serif;font-size:1.1rem;font-weight:800;margin-top:4px;color:'+remClr+';">'+fmtRs(grandRemaining)+'</div></div>'
-    + '</div>'
-
-    // Tables side by side
-    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">'
-      + '<div>'
-        + '<div style="font-family:Playfair Display,serif;font-size:1rem;font-weight:700;color:#0f1e45;border-bottom:2px solid #c9a84c;padding-bottom:5px;margin-bottom:10px;">Invoice Details</div>'
-        + '<table style="border-collapse:collapse;width:100%;margin-bottom:0;">'
-          + '<thead><tr><th style="background:#0f1e45;color:#f0c96e;font-size:0.7rem;padding:6px 4px;border:1px solid #1a3166;width:28px;">Sr</th><th style="background:#0f1e45;color:#f0c96e;font-size:0.7rem;padding:6px 5px;border:1px solid #1a3166;text-align:left;">Bill No</th><th style="background:#0f1e45;color:#f0c96e;font-size:0.7rem;padding:6px 5px;border:1px solid #1a3166;">Date</th><th style="background:#0f1e45;color:#f0c96e;font-size:0.7rem;padding:6px 5px;border:1px solid #1a3166;">Total</th></tr></thead>'
-          + '<tbody>'+invRows+'</tbody>'
-          + '<tfoot><tr style="background:#0f1e45;"><td colspan="3" style="text-align:right;color:#f0c96e;font-weight:700;font-size:0.72rem;border:1px solid #1a3166;padding:5px 8px;">TOTAL</td><td style="font-family:Montserrat,sans-serif;font-weight:800;color:#f0c96e;border:1px solid #1a3166;font-size:0.8rem;padding:5px 8px;">'+fmtRs(grandTotal)+'</td></tr></tfoot>'
-        + '</table>'
-      + '</div>'
-      + '<div>'
-        + '<div style="font-family:Playfair Display,serif;font-size:1rem;font-weight:700;color:#0f1e45;border-bottom:2px solid #c9a84c;padding-bottom:5px;margin-bottom:10px;">Payment History</div>'
-        + '<table style="border-collapse:collapse;width:100%;margin-bottom:0;table-layout:fixed;">'          + '<thead>'            + '<tr>'              + '<th style="width:50%;background:#155a35;color:#fff;font-size:0.72rem;font-family:Montserrat,sans-serif;font-weight:700;padding:7px 10px;border:1px solid #0d4a28;text-align:center;">وصول شدہ رقم<br><span style=\"font-size:0.62rem;font-weight:400;font-family:Montserrat,sans-serif;opacity:0.85;\">Received Amount (1)</span></th>'              + '<th style="width:50%;background:#0d5c3a;color:#fff;font-size:0.72rem;font-family:Montserrat,sans-serif;font-weight:700;padding:7px 10px;border:1px solid #0d4a28;text-align:center;">وصول شدہ رقم<br><span style=\"font-size:0.62rem;font-weight:400;font-family:Montserrat,sans-serif;opacity:0.85;\">Received Amount (2)</span></th>'            + '</tr>'          + '</thead>'          + '<tbody>'+payRows+'</tbody>'          + '<tfoot>'            + '<tr style="background:#0f1e45;">'              + '<td style="font-family:Montserrat,sans-serif;font-weight:700;color:#f0c96e;font-size:0.78rem;text-align:center;padding:6px 8px;border:1px solid #1a3166;>وصول شدہ (1): '+fmtRs(payLeft)+'</td>'              + '<td style="font-family:Montserrat,sans-serif;font-weight:700;color:#f0c96e;font-size:0.78rem;text-align:center;padding:6px 8px;border:1px solid #1a3166;>وصول شدہ (2): '+fmtRs(payRight)+'</td>'            + '</tr>'            + '<tr style="background:#0a1628;">'              + '<td colspan="2" style="font-family:Montserrat,sans-serif;font-weight:800;color:#f0c96e;font-size:0.85rem;text-align:center;padding:7px 10px;border:1px solid #1a3166;">Total Received: '+fmtRs(grandReceived)+'</td>'            + '</tr>'          + '</tfoot>'        + '</table>'
-      + '</div>'
-    + '</div>'
-
-    // Summary bar
-    + '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 14px;background:#f0f0f0;border-radius:7px;border:1px solid #ddd;font-size:0.8rem;font-family:Montserrat,sans-serif;">'
-      + '<span>Total Received: <strong style="color:#1a7a4a;">'+fmtRs(grandReceived)+'</strong></span>'
-      + '<span style="color:#bbb;">|</span>'
-      + '<span>Balance Remaining: <strong style="color:'+remClr+';">'+fmtRs(grandRemaining)+'</strong></span>'
-    + '</div>'
-
-    // Printed date line
-    + '<div style="margin-top:10px;border-top:1.5px solid #e2e8f0;padding-top:6px;font-size:0.62rem;color:#8a8a9a;font-family:Montserrat,sans-serif;">\u2605 Prime CNC Invoice System \u00B7 '+printDate+'</div>'
-    + _buildPrintFooterHtml(_s);
-
-  // Build overlay
-  var overlay = document.getElementById('custStmtOverlay');
-  if (!overlay) {
-    overlay = document.createElement('div');
-    overlay.id = 'custStmtOverlay';
-    overlay.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:8000;overflow-y:auto;padding:24px 16px;';
-    document.body.appendChild(overlay);
-  }
-
-  overlay.innerHTML =
-    '<div style="background:#fff;border-radius:14px;max-width:860px;margin:0 auto;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.5);font-family:Montserrat,sans-serif;">'
-      // Overlay toolbar
-      + '<div style="background:#1e293b;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;">'
-        + '<span style="color:#f0c96e;font-weight:700;font-size:0.9rem;">📄 Customer Statement</span>'
-        + '<div style="display:flex;gap:10px;align-items:center;">'
-          + '<button onclick="window._printCustStmt(\'pdf\')" style="background:#4338ca;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-family:Montserrat,sans-serif;font-weight:800;font-size:0.82rem;cursor:pointer;">💾 Save as PDF</button>'
-          + '<button onclick="window._printCustStmt(\'print\')" style="background:#f0c96e;color:#0f1e45;border:none;border-radius:8px;padding:8px 16px;font-family:Montserrat,sans-serif;font-weight:800;font-size:0.82rem;cursor:pointer;letter-spacing:0.3px;">🖨️ Print</button>'
-          + '<button onclick="document.getElementById(\'custStmtOverlay\').style.display=\'none\'" style="background:rgba(255,255,255,0.15);border:none;border-radius:50%;width:34px;height:34px;color:#fff;font-size:1.1rem;cursor:pointer;font-weight:700;line-height:1;">✕</button>'
-        + '</div>'
-      + '</div>'
-      // Statement content
-      + '<div id="custStmtContent" style="padding:20px;">'
-        + stmtHtml
-      + '</div>'
-    + '</div>';
-
-  // Print helper — html2pdf loaded inline in <head> so it's ready before body content renders
-  window._printCustStmt = function(mode) {
-    mode = mode || 'print';
-    var contentEl = document.getElementById('custStmtContent');
-    if (!contentEl) return;
-    // Use the customer name from the outer closure for a meaningful filename
-    var safeName = (custName || 'Customer').replace(/[^\w؀-ۿ\s-]/g,'').trim().replace(/\s+/g,'-') || 'Customer';
-    var _today = new Date(); var _dd = String(_today.getDate()).padStart(2,'0'); var _mm = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][_today.getMonth()]; var _yyyy = _today.getFullYear(); var fname = safeName + '-' + _dd + '-' + _mm + '-' + _yyyy + '.pdf';
-    var baseCSS = '@page{size:A4 portrait;margin:10mm;}'
-      + '*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
-      + 'body{font-family:Montserrat,sans-serif;background:#fff;font-size:0.82rem;width:210mm;}'
-      + 'tbody tr{page-break-inside:avoid!important;break-inside:avoid!important;}';
-    var _stmtHtmlStr = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
-      + _printFonts()
-      + '<style>' + baseCSS + '<\/style>'
-      + '<\/head><body>' + contentEl.innerHTML + '<\/body><\/html>';
-    if (mode === 'pdf') {
-      _silentPDFFromHtml(_stmtHtmlStr, fname);
-    } else {
-      var _isElec = typeof navigator !== 'undefined' && /Electron\//.test(navigator.userAgent);
-      if (_isElec) { _electronPrintHtml(_stmtHtmlStr); return; }
-      var printWin = window.open('', '_blank', 'width=960,height=720');
-      if (!printWin) { toast('Allow popups to print'); return; }
-      var _stmtOrient = _getPageOrientation(_stmtHtmlStr);
-      _stmtHtmlStr = _stmtHtmlStr.replace(/@page\s*\{[^}]*\}/g, '@page{size:A4 '+_stmtOrient+';margin:10mm;}');
-      printWin.document.write(_stmtHtmlStr);
-      printWin.document.close();
-      var _doPrintStmt2 = function(){ try{ printWin.print(); }catch(e){} };
-      if (printWin.document.fonts) { printWin.document.fonts.ready.then(_doPrintStmt2); }
-      else { setTimeout(_doPrintStmt2, 1500); }
-    }
-  };
-
-  overlay.style.display = 'block';
-  overlay.scrollTop = 0;
-}
 
 
 
@@ -14127,6 +13832,7 @@ function switchTab(tab, el) {
   document.getElementById('summaryTab').style.display  = tab === 'summary'  ? '' : 'none';
   document.getElementById('financeTab').style.display  = tab === 'finance'  ? '' : 'none';
   document.getElementById('settingsTab').style.display = tab === 'settings' ? '' : 'none';
+  document.getElementById('paymentTab').style.display  = tab === 'payment'  ? '' : 'none';
   if (tab === 'database') {
     _excelDBCache = null; _searchNameList = null;
     loadExcelDBCache().then(() => { renderDB(); setInvoiceNumber(); updateDBCount(); });
@@ -14139,6 +13845,450 @@ function switchTab(tab, el) {
   if (tab === 'summary')  { initSummaryFilters(); renderSummary(); }
   if (tab === 'finance')  { initFinanceTab(); const _finFirst = document.querySelector('#finSubTabs .fin-sub-tab'); if (_finFirst) _finFirst.click(); }
   if (tab === 'settings') { ctrlLoad(); const _setFirst = document.querySelector('#setSubTabs .fin-sub-tab'); if (_setFirst) _setFirst.click(); }
+  if (tab === 'payment') { rpClearPanel(); }
+}
+
+// ══════════════════════════════════════════════
+// RECEIVE PAYMENT TAB
+// ══════════════════════════════════════════════
+var _rpCurrentCustomer = null;
+
+async function rpGetCustomerSummary(name) {
+  var result = { newInvs: [], exInvs: [], payments: [],
+    totalBilled: 0, invoiceDiscountSum: 0, manualDiscount: 0,
+    totalDiscount: 0, totalPaid: 0, totalBadDebt: 0, remaining: 0, advanceCredit: 0 };
+
+  if (typeof sb === 'undefined' || !sb) return result;
+
+  // Fetch new invoices
+  try {
+    var nRes = await sb.from('invoices').select('inv_num,date,total,discount').ilike('cust_name', name);
+    result.newInvs = (nRes.data || []).map(function(r){
+      return { invNum: r.inv_num, date: r.date, total: r.total, discount: r.discount };
+    });
+  } catch(e) { console.warn('rpGetCustomerSummary invoices fetch:', e); }
+
+  // Fetch imported invoices
+  try {
+    var eRes = await sb.from('excel_invoices').select('order_num,date,total_bill,discount').ilike('customer_name', name);
+    result.exInvs = (eRes.data || []).map(function(r){
+      return { order_num: r.order_num, date: r.date, total_bill: r.total_bill, discount: r.discount };
+    });
+  } catch(e) { console.warn('rpGetCustomerSummary excel_invoices fetch:', e); }
+
+  // Fetch payments
+  try {
+    var pRes = await sb.from('customer_payments').select('*').ilike('customer_name', name).order('payment_date', { ascending: false });
+    result.payments = pRes.data || [];
+  } catch(e) { console.warn('rpGetCustomerSummary payments fetch:', e); }
+
+  // Billing totals
+  result.newInvs.forEach(function(inv){
+    result.totalBilled += parseFloat(inv.total)||0;
+    result.invoiceDiscountSum += parseFloat(inv.discount)||0;
+  });
+  result.exInvs.forEach(function(r){
+    result.totalBilled += parseFloat(r.total_bill)||0;
+    result.invoiceDiscountSum += parseFloat(r.discount)||0;
+  });
+
+  // Payment totals
+  result.payments.forEach(function(p){
+    if (p.type === 'bad_debt') result.totalBadDebt += parseFloat(p.amount)||0;
+    else if (p.type === 'discount') result.manualDiscount += parseFloat(p.amount)||0;
+    else result.totalPaid += parseFloat(p.amount)||0;
+  });
+
+  // Final formula: Remaining = TotalBilled - TotalDiscount - TotalPaid - TotalBadDebt
+  result.totalDiscount = result.invoiceDiscountSum + result.manualDiscount;
+  result.remaining = Math.max(0, result.totalBilled - result.totalDiscount - result.totalPaid - result.totalBadDebt);
+  result.advanceCredit = Math.max(0, result.totalPaid - (result.totalBilled - result.totalDiscount - result.totalBadDebt));
+
+  return result;
+}
+
+var _allCustomerSummaryCache = null;
+
+async function buildAllCustomerSummaries() {
+  if (_allCustomerSummaryCache) return _allCustomerSummaryCache;
+
+  var summaries = {};
+  function getKey(name) { return (name||'').toLowerCase().trim(); }
+
+  var newRows = [];
+  if (typeof sb !== 'undefined' && sb) {
+    try {
+      var nOffset = 0, nBatchSize = 1000, nDone = false;
+      while (!nDone) {
+        var nRes = await sb.from('invoices').select('cust_name,phone,total,discount').range(nOffset, nOffset + nBatchSize - 1);
+        var batch = nRes.data || [];
+        newRows = newRows.concat(batch);
+        if (batch.length < nBatchSize) nDone = true;
+        else nOffset += nBatchSize;
+      }
+    } catch(e) { console.warn('buildAllCustomerSummaries new invoices:', e); }
+  }
+  newRows.forEach(function(r){
+    if (!r.cust_name) return;
+    var k = getKey(r.cust_name);
+    if (!summaries[k]) summaries[k] = { name: r.cust_name, phone: r.phone||'', totalBilled:0, totalDiscount:0, totalPaid:0, totalBadDebt:0 };
+    summaries[k].totalBilled += parseFloat(r.total)||0;
+    summaries[k].totalDiscount += parseFloat(r.discount)||0;
+    if (!summaries[k].phone && r.phone) summaries[k].phone = r.phone;
+  });
+
+  var exRows = [];
+  if (typeof sb !== 'undefined' && sb) {
+    try {
+      var exOffset = 0, exBatchSize = 1000, exDone = false;
+      while (!exDone) {
+        var eRes = await sb.from('excel_invoices').select('customer_name,phone,total_bill,discount').range(exOffset, exOffset + exBatchSize - 1);
+        var batch = eRes.data || [];
+        exRows = exRows.concat(batch);
+        if (batch.length < exBatchSize) exDone = true;
+        else exOffset += exBatchSize;
+      }
+    } catch(e) { console.warn('buildAllCustomerSummaries excel invoices:', e); }
+  }
+  exRows.forEach(function(r){
+    if (!r.customer_name) return;
+    var k = getKey(r.customer_name);
+    if (!summaries[k]) summaries[k] = { name: r.customer_name, phone: r.phone||'', totalBilled:0, totalDiscount:0, totalPaid:0, totalBadDebt:0 };
+    summaries[k].totalBilled += parseFloat(r.total_bill)||0;
+    summaries[k].totalDiscount += parseFloat(r.discount)||0;
+    if (!summaries[k].phone && r.phone) summaries[k].phone = r.phone;
+  });
+
+  var payRows = [];
+  if (typeof sb !== 'undefined' && sb) {
+    try {
+      var pOffset = 0, pBatchSize = 1000, pDone = false;
+      while (!pDone) {
+        var pRes = await sb.from('customer_payments').select('customer_name,phone,amount,type').range(pOffset, pOffset + pBatchSize - 1);
+        var batch = pRes.data || [];
+        payRows = payRows.concat(batch);
+        if (batch.length < pBatchSize) pDone = true;
+        else pOffset += pBatchSize;
+      }
+    } catch(e) { console.warn('buildAllCustomerSummaries payments:', e); }
+  }
+  payRows.forEach(function(p){
+    if (!p.customer_name) return;
+    var k = getKey(p.customer_name);
+    if (!summaries[k]) summaries[k] = { name: p.customer_name, phone: p.phone||'', totalBilled:0, totalDiscount:0, totalPaid:0, totalBadDebt:0 };
+    var amt = parseFloat(p.amount)||0;
+    if (p.type === 'bad_debt') summaries[k].totalBadDebt += amt;
+    else if (p.type === 'discount') summaries[k].totalDiscount += amt;
+    else summaries[k].totalPaid += amt;
+  });
+
+  Object.keys(summaries).forEach(function(k){
+    var c = summaries[k];
+    c.remaining = Math.max(0, c.totalBilled - c.totalDiscount - c.totalPaid - c.totalBadDebt);
+  });
+
+  _allCustomerSummaryCache = summaries;
+  return summaries;
+}
+
+function _rpInvalidateSummaryCache() {
+  _allCustomerSummaryCache = null;
+}
+
+function rpClearPanel() {
+  document.getElementById('rpSearchName').value = '';
+  document.getElementById('rpSearchInv').value = '';
+  document.getElementById('rpNameDropdown').style.display = 'none';
+  document.getElementById('rpCustomerPanel').innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;font-family:Montserrat,sans-serif;font-size:0.85rem;">Search a customer by name or invoice number above.</div>';
+  _rpCurrentCustomer = null;
+}
+
+async function rpSearchByName(val) {
+  var invField = document.getElementById('rpSearchInv');
+  if (val.trim().length > 0) {
+    invField.disabled = true;
+    invField.style.opacity = '0.5';
+  } else {
+    invField.disabled = false;
+    invField.style.opacity = '1';
+  }
+  var drop = document.getElementById('rpNameDropdown');
+  var q = val.trim().toLowerCase();
+  if (!q || q.length < 2) {
+    drop.style.display = 'none';
+    if (!q) rpClearPanel();
+    return;
+  }
+  var list = await _buildSearchNameList();
+  var matches = list.filter(function(c){ return c.name.toLowerCase().includes(q); }).slice(0, 15);
+  if (!matches.length) { drop.style.display = 'none'; return; }
+  drop.innerHTML = matches.map(function(c) {
+    var eName = encodeURIComponent(c.name);
+    var ePhone = encodeURIComponent(c.phone || '');
+    return '<div onclick="rpSelectCustomer(\'' + eName + '\',\'' + ePhone + '\')" style="padding:9px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-family:Montserrat,sans-serif;font-size:0.82rem;" onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\'#fff\'">' +
+      c.name + (c.phone ? ' <span style="color:#94a3b8;font-size:0.72rem;">📞 ' + c.phone + '</span>' : '') + '</div>';
+  }).join('');
+  drop.style.display = '';
+}
+
+async function rpSearchByInv(val) {
+  var nameField = document.getElementById('rpSearchName');
+  if (val.trim().length > 0) {
+    nameField.disabled = true;
+    nameField.style.opacity = '0.5';
+  } else {
+    nameField.disabled = false;
+    nameField.style.opacity = '1';
+  }
+  var q = val.trim().toUpperCase().replace(/^[A-Z]+-/,'');
+  if (!q) { rpClearPanel(); return; }
+  document.getElementById('rpNameDropdown').style.display = 'none';
+  // Check new invoices
+  var found = database.find(function(inv){ return (inv.invNum||'').replace(/^[A-Za-z]+-/,'').toUpperCase() === q; });
+  if (found && found.custName) { rpSelectCustomer(encodeURIComponent(found.custName), encodeURIComponent(found.phone||'')); return; }
+  // Check imported invoices
+  if (Array.isArray(_excelDBCache)) {
+    var foundEx = _excelDBCache.find(function(r){ return String(r.order_num||'').replace(/^[A-Za-z]+-/,'').toUpperCase() === q; });
+    if (foundEx && foundEx.customer_name) { rpSelectCustomer(encodeURIComponent(foundEx.customer_name), encodeURIComponent(foundEx.phone||'')); return; }
+  }
+}
+
+async function rpSelectCustomer(eName, ePhone) {
+  var name = decodeURIComponent(eName);
+  var phone = decodeURIComponent(ePhone);
+  document.getElementById('rpSearchName').value = name;
+  document.getElementById('rpNameDropdown').style.display = 'none';
+  _rpCurrentCustomer = { name: name, phone: phone };
+  await rpRenderCustomerPanel(name, phone);
+}
+
+async function rpRenderCustomerPanel(name, phone) {
+  var panel = document.getElementById('rpCustomerPanel');
+  panel.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">Loading...</div>';
+
+  var d = await rpGetCustomerSummary(name);
+  var newInvs = d.newInvs, exInvs = d.exInvs, payments = d.payments;
+  var totalBilled = d.totalBilled, totalDiscount = d.totalDiscount;
+  var totalPaid = d.totalPaid, totalBadDebt = d.totalBadDebt;
+  var remaining = d.remaining, advanceCredit = d.advanceCredit;
+
+  // Sort invoices by date, most recent first
+  var dateSorter = function(a, b) {
+    var da = new Date(a.date), db = new Date(b.date);
+    if (isNaN(da)) return 1;
+    if (isNaN(db)) return -1;
+    return db - da;
+  };
+  newInvs.sort(dateSorter);
+  exInvs.sort(dateSorter);
+
+  var allInvList = newInvs.map(function(inv){
+    return { invNum: inv.invNum, date: inv.date, total: inv.total, _sortDate: new Date(inv.date) };
+  }).concat(exInvs.map(function(r){
+    return { invNum: normalizeOrderNum(r.order_num), date: r.date, total: r.total_bill, _sortDate: new Date(r.date) };
+  }));
+
+  function getInvNumValue(inv) {
+    var n = String(inv.invNum||'').replace(/^[A-Za-z]+-/,'');
+    return parseInt(n) || 0;
+  }
+  allInvList.sort(function(a, b) {
+    return getInvNumValue(b) - getInvNumValue(a);
+  });
+
+  var invRows = allInvList.map(function(inv){
+    return '<tr><td style="padding:6px 8px;font-size:0.78rem;">' + fmtDateDisplay(inv.date) + '</td><td style="padding:6px 8px;font-size:0.78rem;">' + inv.invNum + '</td><td style="padding:6px 8px;font-size:0.78rem;text-align:right;">Rs.' + fmt(inv.total) + '</td></tr>';
+  }).join('');
+
+  var payRows = payments.filter(function(p){ return p.type === 'payment'; }).map(function(p){
+    var typeLabel = '<span style="color:#059669;">Payment</span>';
+    var isLocked = false;
+    if (p.source === 'imported') {
+      isLocked = true;
+    } else {
+      var createdDate = new Date(p.created_at);
+      var daysSince = (new Date() - createdDate) / (1000*60*60*24);
+      isLocked = daysSince > 40;
+    }
+    var deleteBtn = isLocked
+      ? '<span style="color:#cbd5e1;font-size:0.7rem;" title="Locked after 40 days">🔒</span>'
+      : '<span onclick="rpDeletePayment(\'' + p.id + '\',\'' + encodeURIComponent(_rpCurrentCustomer.name) + '\')" style="cursor:pointer;color:#dc2626;font-weight:700;font-size:0.85rem;" title="Delete this entry">✕</span>';
+    return '<tr><td style="padding:6px 8px;font-size:0.78rem;">' + fmtDateDisplay(p.payment_date) + '</td><td style="padding:6px 8px;font-size:0.78rem;">' + typeLabel + '</td><td style="padding:6px 8px;font-size:0.78rem;text-align:right;">Rs.' + fmt(p.amount) + '</td><td style="padding:6px 8px;text-align:center;">' + deleteBtn + '</td></tr>';
+  }).join('');
+
+  var discRows = payments.filter(function(p){ return p.type === 'discount'; }).map(function(p){
+    var delBtn = '<span onclick="rpDeletePayment(\'' + p.id + '\',\'' + encodeURIComponent(_rpCurrentCustomer.name) + '\')" style="cursor:pointer;color:#dc2626;font-weight:700;font-size:0.85rem;" title="Delete this entry">✕</span>';
+    return '<tr><td style="padding:6px 8px;font-size:0.78rem;">' + fmtDateDisplay(p.payment_date) + '</td><td style="padding:6px 8px;font-size:0.78rem;text-align:right;color:#7c3aed;">Rs.' + fmt(p.amount) + '</td><td style="padding:6px 8px;text-align:center;">' + delBtn + '</td></tr>';
+  }).join('');
+
+  var badDebtRows = payments.filter(function(p){ return p.type === 'bad_debt'; }).map(function(p){
+    var delBtn = '<span onclick="rpDeletePayment(\'' + p.id + '\',\'' + encodeURIComponent(_rpCurrentCustomer.name) + '\')" style="cursor:pointer;color:#dc2626;font-weight:700;font-size:0.85rem;" title="Delete this entry">✕</span>';
+    return '<tr><td style="padding:6px 8px;font-size:0.78rem;">' + fmtDateDisplay(p.payment_date) + '</td><td style="padding:6px 8px;font-size:0.78rem;text-align:right;color:#ea580c;">Rs.' + fmt(p.amount) + '</td><td style="padding:6px 8px;text-align:center;">' + delBtn + '</td></tr>';
+  }).join('');
+
+  panel.innerHTML =
+    '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:14px;">' +
+      '<div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.95rem;color:#1e293b;margin-bottom:12px;">' + name + (phone ? ' <span style="font-weight:400;color:#64748b;font-size:0.78rem;">📞 ' + phone + '</span>' : '') + '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">' +
+        '<div style="background:#f8fafc;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Total Billed</div><div style="font-size:1.1rem;font-weight:700;color:#1e293b;">Rs.' + fmt(totalBilled) + '</div></div>' +
+        '<div style="background:#f5f3ff;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Discount</div><div style="font-size:1.1rem;font-weight:700;color:#7c3aed;">Rs.' + fmt(totalDiscount) + '</div></div>' +
+        '<div style="background:#f0fdf4;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Received</div><div style="font-size:1.1rem;font-weight:700;color:#059669;">Rs.' + fmt(totalPaid) + '</div></div>' +
+        '<div style="background:#fff7ed;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Bad Debt</div><div style="font-size:1.1rem;font-weight:700;color:#ea580c;">Rs.' + fmt(totalBadDebt) + '</div></div>' +
+        '<div style="background:#fef2f2;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Remaining</div><div style="font-size:1.1rem;font-weight:700;color:#dc2626;">Rs.' + fmt(remaining) + '</div></div>' +
+      '</div>' +
+      (advanceCredit > 0 ? '<div style="margin-top:10px;background:#ede9fe;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#6d28d9;text-transform:uppercase;">Advance Credit</div><div style="font-size:1.1rem;font-weight:700;color:#6d28d9;">Rs.' + fmt(advanceCredit) + '</div></div>' : '') +
+    '</div>' +
+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
+      '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;">' +
+        '<div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.8rem;color:#475569;margin-bottom:10px;">📋 All Invoices (' + (newInvs.length+exInvs.length) + ')</div>' +
+        '<div style="max-height:220px;overflow-y:auto;"><table style="width:100%;border-collapse:collapse;">' + (invRows || '<tr><td style="padding:10px;color:#94a3b8;font-size:0.78rem;">No invoices found.</td></tr>') + '</table></div>' +
+      '</div>' +
+      '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;">' +
+        '<div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.8rem;color:#475569;margin-bottom:10px;">💵 Payment History (' + payments.filter(function(p){return p.type==='payment';}).length + ')</div>' +
+        '<div style="font-size:0.65rem;color:#94a3b8;margin-bottom:8px;font-style:italic;">ℹ️ Payment entries can be deleted within 40 days of being added. After that, they lock automatically for record integrity.</div>' +
+        '<div style="max-height:220px;overflow-y:auto;"><table style="width:100%;border-collapse:collapse;">' + (payRows || '<tr><td style="padding:10px;color:#94a3b8;font-size:0.78rem;">No payments recorded yet.</td></tr>') + '</table></div>' +
+      '</div>' +
+    '</div>' +
+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
+      '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;">' +
+        '<div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.8rem;color:#7c3aed;margin-bottom:10px;">🏷️ Discount Entries (' + payments.filter(function(p){return p.type==='discount';}).length + ')</div>' +
+        '<div style="max-height:150px;overflow-y:auto;"><table style="width:100%;border-collapse:collapse;">' + (discRows || '<tr><td style="padding:10px;color:#94a3b8;font-size:0.78rem;">No discount entries.</td></tr>') + '</table></div>' +
+      '</div>' +
+      '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;">' +
+        '<div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.8rem;color:#ea580c;margin-bottom:10px;">⚠️ Bad Debt Entries (' + payments.filter(function(p){return p.type==='bad_debt';}).length + ')</div>' +
+        '<div style="max-height:150px;overflow-y:auto;"><table style="width:100%;border-collapse:collapse;">' + (badDebtRows || '<tr><td style="padding:10px;color:#94a3b8;font-size:0.78rem;">No bad debt entries.</td></tr>') + '</table></div>' +
+      '</div>' +
+    '</div>' +
+
+    '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;">' +
+      '<div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.8rem;color:#475569;margin-bottom:10px;">➕ Add New Entry</div>' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
+        '<select id="rpEntryType" style="padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-family:Montserrat,sans-serif;font-size:0.82rem;">' +
+          '<option value="payment">Payment</option>' +
+          '<option value="bad_debt">Bad Debt</option>' +
+          '<option value="discount">Discount</option>' +
+        '</select>' +
+        '<input type="number" id="rpEntryAmount" placeholder="Amount" style="flex:1;min-width:120px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-family:Montserrat,sans-serif;font-size:0.82rem;">' +
+        '<input type="date" id="rpEntryDate" value="' + new Date().toISOString().split('T')[0] + '" style="padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-family:Montserrat,sans-serif;font-size:0.82rem;">' +
+        '<button onclick="rpAddEntry()" style="padding:9px 18px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;border-radius:7px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.82rem;cursor:pointer;">Add</button>' +
+      '</div>' +
+      '<div id="rpEntryStatus" style="margin-top:8px;font-size:0.75rem;"></div>' +
+    '</div>';
+}
+
+async function rpAddEntry() {
+  if (!_rpCurrentCustomer) { alert('Please search and select a customer first.'); return; }
+  var type = document.getElementById('rpEntryType').value;
+  var amount = parseFloat(document.getElementById('rpEntryAmount').value);
+  var date = document.getElementById('rpEntryDate').value;
+  var status = document.getElementById('rpEntryStatus');
+
+  if (!amount || amount <= 0) { status.textContent = '⚠️ Enter a valid amount.'; status.style.color = '#dc2626'; return; }
+  if (!date) { status.textContent = '⚠️ Select a date.'; status.style.color = '#dc2626'; return; }
+
+  status.textContent = '⏳ Saving...'; status.style.color = '#64748b';
+
+  try {
+    if (typeof sb === 'undefined' || !sb) throw new Error('Not connected to Supabase.');
+
+    var payRow = {
+      customer_name: _rpCurrentCustomer.name,
+      phone: _rpCurrentCustomer.phone || null,
+      amount: amount,
+      payment_date: date,
+      type: type,
+      source: 'non_imported',
+      created_by: currentUser || 'unknown'
+    };
+    var res = await sb.from('customer_payments').insert(payRow);
+    if (res.error) throw res.error;
+
+    // Also post to finance_ledger if it's a real payment (not bad debt)
+    if (type === 'payment') {
+      await sb.from('finance_ledger').insert({
+        entry_date: date,
+        entry_type: 'invoice_income',
+        category: 'Sheets Cutting',
+        amount: amount,
+        note: 'Payment — ' + _rpCurrentCustomer.name,
+        source: 'customer_payment',
+        created_by: currentUser || 'unknown'
+      });
+    }
+
+    status.textContent = '✅ Entry added successfully!'; status.style.color = '#059669';
+    document.getElementById('rpEntryAmount').value = '';
+    await rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
+
+  } catch(e) {
+    console.error('rpAddEntry error:', e);
+    if (typeof Sentry !== 'undefined') Sentry.captureException(e);
+    status.textContent = '❌ Failed: ' + (e.message || e); status.style.color = '#dc2626';
+  }
+}
+
+async function rpDeletePayment(paymentId, encodedName) {
+  var confirmed = confirm('Are you sure you want to delete this payment entry? This cannot be undone.');
+  if (!confirmed) return;
+
+  try {
+    if (typeof sb === 'undefined' || !sb) throw new Error('Not connected to Supabase.');
+
+    var res = await sb.from('customer_payments').delete().eq('id', paymentId);
+    if (res.error) throw res.error;
+
+    _rpInvalidateSummaryCache();
+    var name = decodeURIComponent(encodedName);
+    await rpRenderCustomerPanel(name, _rpCurrentCustomer ? _rpCurrentCustomer.phone : '');
+    toast && toast('Payment entry deleted.');
+
+  } catch(e) {
+    console.error('rpDeletePayment error:', e);
+    if (typeof Sentry !== 'undefined') Sentry.captureException(e);
+    alert('Failed to delete: ' + (e.message || e));
+  }
+}
+
+async function rpLookupByDate(dateVal) {
+  var results = document.getElementById('rpDateLookupResults');
+  if (!dateVal) { results.innerHTML = ''; return; }
+
+  results.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;">Loading...</div>';
+
+  try {
+    if (typeof sb === 'undefined' || !sb) throw new Error('Not connected.');
+
+    var res = await sb.from('customer_payments').select('customer_name,phone,amount,type').eq('payment_date', dateVal).order('customer_name');
+    var rows = res.data || [];
+
+    if (rows.length === 0) {
+      results.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:0.85rem;">No payments recorded on ' + fmtDateDisplay(dateVal) + '.</div>';
+      return;
+    }
+
+    var total = 0;
+    var tableRows = rows.map(function(r) {
+      var typeLabel = r.type === 'bad_debt' ? '<span style="color:#ea580c;">Bad Debt</span>'
+        : r.type === 'discount' ? '<span style="color:#7c3aed;">Discount</span>'
+        : '<span style="color:#059669;">Payment</span>';
+      if (r.type === 'payment') total += parseFloat(r.amount)||0;
+      return '<tr><td style="padding:8px;font-size:0.8rem;border-bottom:1px solid #f1f5f9;">' + r.customer_name + '</td><td style="padding:8px;font-size:0.8rem;border-bottom:1px solid #f1f5f9;">' + typeLabel + '</td><td style="padding:8px;font-size:0.8rem;text-align:right;border-bottom:1px solid #f1f5f9;font-weight:700;">Rs.' + fmt(r.amount) + '</td></tr>';
+    }).join('');
+
+    results.innerHTML =
+      '<div style="background:#f0fdf4;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-weight:700;color:#065f46;font-size:0.9rem;">Total Received: Rs.' + fmt(total) + ' (' + rows.filter(function(r){return r.type==='payment';}).length + ' payments)</div>' +
+      '<div style="max-height:300px;overflow-y:auto;border:1.5px solid #e2e8f0;border-radius:8px;">' +
+      '<table style="width:100%;border-collapse:collapse;">' +
+      '<tr style="background:#1e293b;"><th style="padding:8px;color:#fff;text-align:left;font-size:0.75rem;">Customer</th><th style="padding:8px;color:#fff;text-align:left;font-size:0.75rem;">Type</th><th style="padding:8px;color:#fff;text-align:right;font-size:0.75rem;">Amount</th></tr>' +
+      tableRows +
+      '</table></div>';
+
+  } catch(e) {
+    console.error('rpLookupByDate error:', e);
+    results.innerHTML = '<div style="padding:20px;text-align:center;color:#dc2626;font-size:0.85rem;">Error loading data.</div>';
+  }
 }
 
 function renderSearchTab() {
@@ -14169,50 +14319,6 @@ function _clearSearchPanel() {
 }
 
 // ── Shared data extractor: collect rows + totals from a record set ──
-function _extractSearchData(records) {
-  var invoiceRows = [];        // left half: invoice details
-  var totalBills = 0, totalDiscount = 0;
-  var totalReceived = 0, totalReceivedR1 = 0, totalBadDebt = 0;
-
-  records.forEach(function(inv) {
-    var bill = (inv.afterDiscount != null ? inv.afterDiscount : inv.total) || 0;
-    var disc = inv.discount || 0;
-    var recv = inv.received || 0;
-    var r1sum = Array.isArray(inv.received1Entries)
-      ? inv.received1Entries.reduce(function(s,e){ return s+(e.amount||0); }, 0)
-      : (parseFloat(inv.received1)||0);
-    var bd = parseFloat(inv.badDebt) || parseFloat(inv.bad_debt) || 0;
-
-    totalBills      += bill;
-    totalDiscount   += disc;
-    totalReceived   += recv;
-    totalReceivedR1 += r1sum;
-    totalBadDebt    += bd;
-
-    var payments = [];
-    if (recv > 0) payments.push(recv);
-    var r1entries = Array.isArray(inv.received1Entries) ? inv.received1Entries : [];
-    if (r1entries.length > 0) {
-      r1entries.forEach(function(e){ if(e && (e.amount||0) > 0) payments.push(e.amount); });
-    } else if (r1sum > 0) {
-      payments.push(r1sum);
-    }
-    if (!payments.length) payments.push(null);
-
-    invoiceRows.push({
-      date:    inv.date || '',
-      invNum:  inv.invNum || '—',
-      bill:    bill,
-      disc:    disc,
-      recv:    recv,
-      r1sum:   r1sum,
-      isNull:  inv.isNull || false,
-      payments: payments
-    });
-  });
-
-  return { invoiceRows, totalBills, totalDiscount, totalReceived, totalReceivedR1, totalBadDebt };
-}
 
 // ── Build the 3 summary cards (value-based bright colors, compact) ──
 function _buildSummaryCards(totalBills, totalReceived, totalRemaining) {
@@ -16313,39 +16419,20 @@ async function fetchAutoAmount() {
   }
 
   if (isSheetsCutting) {
-    // ── Sum ALL received amounts on this date across every invoice source ──
-    const _r1months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const [_r1yr, _r1mo, _r1dy] = date.split('-');
-    const dateForEntries = `${_r1dy}-${_r1months[parseInt(_r1mo)-1]}-${_r1yr}`;
     const matchingEntries = [];
 
-    // 1. New invoices: initial received paid on invoice creation date
-    database.forEach(inv => {
-      if (inv.isNull) return;
-      if (parseDateStr(inv.date) === date && (parseFloat(inv.received)||0) > 0) {
-        matchingEntries.push({ invNum: inv.invNum, amount: parseFloat(inv.received)||0 });
-      }
-    });
-
-    // 2. New invoices: received1 entries added on this date
-    database.forEach(inv => {
-      if (!Array.isArray(inv.received1Entries)) return;
-      inv.received1Entries.forEach(e => {
-        if (e.date === dateForEntries && (parseFloat(e.amount)||0) > 0) {
-          matchingEntries.push({ invNum: inv.invNum, amount: parseFloat(e.amount)||0 });
-        }
-      });
-    });
-
-    // 3. Excel invoices: received_entries added on this date
-    (_excelDBCache || []).forEach(row => {
-      if (!Array.isArray(row.received_entries)) return;
-      row.received_entries.forEach(e => {
-        if (e.date === dateForEntries && (parseFloat(e.amount)||0) > 0) {
-          matchingEntries.push({ invNum: row.order_num, amount: parseFloat(e.amount)||0 });
-        }
-      });
-    });
+    // Sheets Cutting now reads EXCLUSIVELY from customer_payments
+    // — single source of truth for live (post-May-31-2026) dates.
+    // Staff can still use Manual Override toggle to enter any
+    // amount by hand if this auto-calculated figure isn't correct.
+    if (typeof sb !== 'undefined' && sb) {
+      try {
+        var cpRes = await sb.from('customer_payments').select('amount,customer_name').eq('payment_date', date).eq('type', 'payment');
+        (cpRes.data || []).forEach(function(p) {
+          matchingEntries.push({ invNum: p.customer_name, amount: parseFloat(p.amount)||0 });
+        });
+      } catch(e) { console.warn('fetchAutoAmount customer_payments fetch:', e); }
+    }
 
     if (_isStale()) return;
     const totalReceived = matchingEntries.reduce((s, e) => s + e.amount, 0);
@@ -21832,33 +21919,47 @@ window.debugExcel = async function() {
 // GLOBAL: Print customer account statement
 // Data is stored in window._csd by showExcelCustDetail
 // ════════════════════════════════════════════════════
-function printCustStatement(mode) {
+async function printCustStatement(mode) {
   mode = mode || 'print';
   var d = window._csd;
   if (!d) { if(typeof toast==='function') toast('Open a customer first'); return; }
 
-  var remCol = d.totalRem > 0 ? '#dc2626' : d.totalRem < 0 ? '#7c3aed' : '#059669';
-  var remBg  = d.totalRem > 0 ? '#fef2f2' : d.totalRem < 0 ? '#f5f3ff' : '#f0fdf4';
+  var rpData = await rpGetCustomerSummary(d.name);
+  var correctTotalBill = rpData.totalBilled;
+  var correctTotalRecv = rpData.totalPaid;
+  var correctTotalDisc = rpData.totalDiscount;
+  var correctTotalBD = rpData.totalBadDebt;
+  var correctTotalRem = rpData.remaining;
+  var correctInvoices = rpData.newInvs.map(function(inv){
+    return { date: inv.date, order_num: inv.invNum, total_bill: inv.total };
+  }).concat(rpData.exInvs.map(function(r){
+    return { date: r.date, order_num: normalizeOrderNum(r.order_num), total_bill: r.total_bill };
+  }));
+  correctInvoices.sort(function(a,b){
+    var da = new Date(a.date), db = new Date(b.date);
+    if (isNaN(da)) return 1;
+    if (isNaN(db)) return -1;
+    return db - da;
+  });
+
+  var remCol = correctTotalRem > 0 ? '#dc2626' : correctTotalRem < 0 ? '#7c3aed' : '#059669';
+  var remBg  = correctTotalRem > 0 ? '#fef2f2' : correctTotalRem < 0 ? '#f5f3ff' : '#f0fdf4';
   var remLbl = 'REMAINING';
 
-  // Build payment entries: received = always historical (no date), received_entries = use their own date only
   var allPayEntries = [];
-  (d.invoices || []).forEach(function(r) {
-    var recv = parseFloat(r.received) || 0;
-    if (recv > 0) {
-      allPayEntries.push({ orderNum: r.order_num || '\u2014', date: '', amount: recv });
-    }
-    if (Array.isArray(r.received_entries)) {
-      r.received_entries.forEach(function(e) {
-        var ea = parseFloat(e.amount) || 0;
-        if (ea > 0) {
-          // Only use date if it's a real date string, never fall back to invoice date
-          var eDate = (e.date && e.date.trim()) ? e.date.trim() : '';
-          allPayEntries.push({ orderNum: r.order_num || '\u2014', date: eDate, amount: ea });
-        }
+  if (typeof sb !== 'undefined' && sb) {
+    try {
+      var cpRes = await sb.from('customer_payments').select('payment_date,amount,type').ilike('customer_name', d.name);
+      (cpRes.data || []).forEach(function(p) {
+        allPayEntries.push({
+          orderNum: '\u2014',
+          date: p.payment_date || '',
+          amount: parseFloat(p.amount)||0,
+          type: p.type
+        });
       });
-    }
-  });
+    } catch(e) { console.warn('printCustStatement payments fetch:', e); }
+  }
 
   // Sort: most recent dated entries first, historical (no date) at bottom
   var _pd = function(s) {
@@ -21880,7 +21981,7 @@ function printCustStatement(mode) {
   // Renumber after sort
   allPayEntries.forEach(function(p, i) { p.num = i + 1; });
 
-  var rows = (d.invoices || []).map(function(r, i) {
+  var rows = correctInvoices.map(function(r, i) {
     var dateD = fmtDateDisplay(r.date);
     return '<tr style="border-bottom:1px solid #e2e8f0;' + (i%2===0?'':'background:#f8fafc;') + '">'
       + '<td style="padding:5px 6px;text-align:center;color:#94a3b8;font-size:0.7rem;">' + (i+1) + '</td>'
@@ -21891,7 +21992,7 @@ function printCustStatement(mode) {
   }).join('');
 
   var payRows = allPayEntries.length ? allPayEntries.map(function(p, i) {
-    var dateDisp = (p.date && p.date.trim()) ? fmtDateDisplay(p.date) : '<span style="font-style:italic;color:#94a3b8;font-size:0.65rem;">historical</span>';
+    var dateDisp = (p.date && p.date.trim()) ? fmtDateDisplay(p.date) : '—';
     return '<tr style="border-bottom:1px solid #bbf7d0;' + (i%2===0?'background:#f0fdf4;':'background:#dcfce7;') + '">'
       + '<td style="padding:5px 6px;text-align:center;color:#94a3b8;font-size:0.7rem;">' + p.num + '</td>'
       + '<td style="padding:5px 6px;font-size:0.7rem;color:#64748b;white-space:nowrap;">' + dateDisp + '</td>'
@@ -21956,13 +22057,13 @@ function printCustStatement(mode) {
       + '<div class="cc"><span class="lbl">Customer Name<\/span><span class="val" style="font-size:0.95rem;">' + d.name + '<\/span><\/div>'
       + '<div class="cc"><span class="lbl">Phone<\/span><span class="val">' + d.phone + '<\/span><\/div>'
       + '<div class="cc"><span class="lbl">Period<\/span><span class="val">Apr 2025 \u2014 Present<\/span><\/div>'
-      + '<div class="cc"><span class="lbl">Total Invoices<\/span><span class="val">' + (d.invoices||[]).length + '<\/span><\/div>'
+      + '<div class="cc"><span class="lbl">Total Invoices<\/span><span class="val">' + correctInvoices.length + '<\/span><\/div>'
     + '<\/div>'
 
     + '<div class="sbar">'
-      + '<div class="sc"><span class="lbl">Total Bills<\/span><span class="val" style="color:#1e293b;">Rs. ' + Math.round(d.totalBill).toLocaleString('en-PK') + '<\/span><\/div>'
-      + '<div class="sc"><span class="lbl">Total Received<\/span><span class="val" style="color:#059669;">Rs. ' + Math.round(d.totalRecv).toLocaleString('en-PK') + '<\/span><\/div>'
-      + '<div class="sc" style="background:' + remBg + '"><span class="lbl" style="color:' + remCol + ';">' + remLbl + '<\/span><span class="val" style="color:' + remCol + ';">Rs. ' + Math.round(Math.abs(d.totalRem)).toLocaleString('en-PK') + '<\/span><\/div>'
+      + '<div class="sc"><span class="lbl">Total Bills<\/span><span class="val" style="color:#1e293b;">Rs. ' + Math.round(correctTotalBill).toLocaleString('en-PK') + '<\/span><\/div>'
+      + '<div class="sc"><span class="lbl">Total Received<\/span><span class="val" style="color:#059669;">Rs. ' + Math.round(correctTotalRecv).toLocaleString('en-PK') + '<\/span><\/div>'
+      + '<div class="sc" style="background:' + remBg + '"><span class="lbl" style="color:' + remCol + ';">' + remLbl + '<\/span><span class="val" style="color:' + remCol + ';">Rs. ' + Math.round(Math.abs(correctTotalRem)).toLocaleString('en-PK') + '<\/span><\/div>'
     + '<\/div>'
 
     // TWO TABLES SIDE BY SIDE
@@ -21972,7 +22073,7 @@ function printCustStatement(mode) {
       + '<div>'
         + '<div style="background:#1e293b;padding:7px 10px;border-radius:6px 6px 0 0;display:flex;justify-content:space-between;align-items:center;">'
           + '<span style="color:#f0c96e;font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;">📄 Invoice Totals<\/span>'
-          + '<span style="color:#94a3b8;font-size:0.6rem;">' + (d.invoices||[]).length + ' bills<\/span>'
+          + '<span style="color:#94a3b8;font-size:0.6rem;">' + correctInvoices.length + ' bills<\/span>'
         + '<\/div>'
         + '<table style="table-layout:fixed;">'
           + '<colgroup><col style="width:22px"><col style="width:62px"><col style="width:48px"><col></colgroup>'
@@ -21986,7 +22087,7 @@ function printCustStatement(mode) {
         + '<\/table>'
         + '<div style="background:#1e293b;padding:5px 6px;display:flex;justify-content:space-between;align-items:center;page-break-inside:avoid;break-inside:avoid;">'
           + '<span style="color:#94a3b8;font-size:0.58rem;font-weight:700;text-transform:uppercase;">TOTAL BILLED<\/span>'
-          + '<span style="color:#f0c96e;font-size:0.75rem;font-weight:800;">Rs.'+Math.round(d.totalBill).toLocaleString('en-PK')+'<\/span>'
+          + '<span style="color:#f0c96e;font-size:0.75rem;font-weight:800;">Rs.'+Math.round(correctTotalBill).toLocaleString('en-PK')+'<\/span>'
         + '<\/div>'
       + '<\/div>'
 
@@ -22007,7 +22108,7 @@ function printCustStatement(mode) {
         + '<\/table>'
         + '<div style="background:#064e3b;padding:5px 6px;display:flex;justify-content:space-between;align-items:center;page-break-inside:avoid;break-inside:avoid;">'
           + '<span style="color:#a7f3d0;font-size:0.58rem;font-weight:700;text-transform:uppercase;">TOTAL RECEIVED<\/span>'
-          + '<span style="color:#6ee7b7;font-size:0.75rem;font-weight:800;">Rs.'+Math.round(d.totalRecv).toLocaleString('en-PK')+'<\/span>'
+          + '<span style="color:#6ee7b7;font-size:0.75rem;font-weight:800;">Rs.'+Math.round(correctTotalRecv).toLocaleString('en-PK')+'<\/span>'
         + '<\/div>'
       + '<\/div>'
 
@@ -22016,10 +22117,10 @@ function printCustStatement(mode) {
     + '<div class="grand-total">'
       + '<div class="gt-head">Grand Total Summary<\/div>'
       + '<div class="gt-body">'
-        + '<div class="gt-cell"><span class="gt-lbl">Total Bills<\/span><span class="gt-val" style="color:#1e293b;">Rs. ' + Math.round(d.totalBill).toLocaleString('en-PK') + '<\/span><\/div>'
-        + '<div class="gt-cell"><span class="gt-lbl">Total Received<\/span><span class="gt-val" style="color:#059669;">Rs. ' + Math.round(d.totalRecv).toLocaleString('en-PK') + '<\/span><\/div>'
-        + '<div class="gt-cell"><span class="gt-lbl">Discount / Bad Debt<\/span><span class="gt-val" style="color:#d97706;">Rs. ' + Math.round((d.totalDisc||0)+(d.totalBD||0)).toLocaleString('en-PK') + '<\/span><\/div>'
-        + '<div class="gt-cell" style="background:' + remBg + '"><span class="gt-lbl" style="color:' + remCol + ';">' + remLbl + '<\/span><span class="gt-val" style="color:' + remCol + ';">Rs. ' + Math.round(Math.abs(d.totalRem)).toLocaleString('en-PK') + '<\/span><\/div>'
+        + '<div class="gt-cell"><span class="gt-lbl">Total Bills<\/span><span class="gt-val" style="color:#1e293b;">Rs. ' + Math.round(correctTotalBill).toLocaleString('en-PK') + '<\/span><\/div>'
+        + '<div class="gt-cell"><span class="gt-lbl">Total Received<\/span><span class="gt-val" style="color:#059669;">Rs. ' + Math.round(correctTotalRecv).toLocaleString('en-PK') + '<\/span><\/div>'
+        + '<div class="gt-cell"><span class="gt-lbl">Discount / Bad Debt<\/span><span class="gt-val" style="color:#d97706;">Rs. ' + Math.round((correctTotalDisc||0)+(correctTotalBD||0)).toLocaleString('en-PK') + '<\/span><\/div>'
+        + '<div class="gt-cell" style="background:' + remBg + '"><span class="gt-lbl" style="color:' + remCol + ';">' + remLbl + '<\/span><span class="gt-val" style="color:' + remCol + ';">Rs. ' + Math.round(Math.abs(correctTotalRem)).toLocaleString('en-PK') + '<\/span><\/div>'
       + '<\/div>'
     + '<\/div>'
 
