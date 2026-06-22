@@ -2971,10 +2971,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
               <th>Phone</th>
               <th>Invoice #</th>
               <th>Total Bill</th>
-              <th>Received</th>
-              <th>Received 1</th>
               <th>Discount</th>
-              <th>Bad Debt</th>
               <th>Remaining</th>
               <th>Action</th>
             </tr>
@@ -6206,6 +6203,38 @@ async function doSubmit(data) {
         const idx2 = database.findIndex(d => d.invNum === data.invNum);
         if (idx2 !== -1) { database[idx2]._supaId = supaId; localStorage.setItem('inv_database', JSON.stringify(database)); }
         toast('✅ Invoice ' + data.invNum + ' updated & synced!'); _pbCustCache = null;
+
+        // Update matching customer_payments entry if received amount changed
+        if (typeof sb !== 'undefined' && sb && data.invNum) {
+          (async function() {
+            try {
+              var cpRes = await sb.from('customer_payments').select('id,amount,payment_date').eq('invoice_ref', data.invNum).eq('type','payment').limit(1);
+              var newAmount = parseFloat(data.received) || 0;
+              if (cpRes.data && cpRes.data.length > 0) {
+                var existing = cpRes.data[0];
+                if (Math.abs(existing.amount - newAmount) > 0.01) {
+                  await sb.from('customer_payments').update({ amount: newAmount }).eq('id', existing.id);
+                  if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+                  alert('⚠️ Payment amount updated for ' + data.invNum + '.\n\nPlease also check and update Finance tab → Daily Entry for ' + existing.payment_date + ' (Sheets Cutting) to keep the ledger accurate.');
+                }
+              } else if (newAmount > 0) {
+                await sb.from('customer_payments').insert({
+                  customer_name: data.custName || 'Unknown',
+                  phone: data.phone || null,
+                  amount: newAmount,
+                  payment_date: parseDateStr ? parseDateStr(data.date) : data.date,
+                  type: 'payment',
+                  source: 'non_imported',
+                  note: 'Added via edit — ' + data.invNum,
+                  invoice_ref: data.invNum,
+                  created_by: currentUser || 'unknown'
+                });
+                if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+                alert('✅ New payment of Rs.' + newAmount + ' recorded for ' + data.invNum + '.\n\nPlease also check and update Finance tab → Daily Entry for ' + (parseDateStr ? parseDateStr(data.date) : data.date) + ' (Sheets Cutting) to keep the ledger accurate.');
+              }
+            } catch(e) { console.warn('customer_payments edit-sync failed:', e); }
+          })();
+        }
       } else {
         addToPendingQueue({ ...data, _supaId: prevSupaId });
         toast('Invoice ' + data.invNum + ' updated locally — cloud sync pending.');
@@ -6272,6 +6301,30 @@ async function doSubmit(data) {
   // Auto-post invoice amount as Sheets Cutting income in finance ledger
   if (!isAdvance && !data.isNull && navigator.onLine && currentUser) {
     postInvoiceToLedger(data).catch(e => console.warn('Finance ledger auto-post:', e));
+  }
+
+  // Auto-create customer_payments entry for the INITIAL payment
+  // received at invoice creation time (including advance payments)
+  if (!data.isNull && (parseFloat(data.received)||0) > 0 && typeof sb !== 'undefined' && sb) {
+    (async function() {
+      try {
+        await sb.from('customer_payments').insert({
+          customer_name: data.custName || 'Unknown',
+          phone: data.phone || null,
+          amount: parseFloat(data.received) || 0,
+          payment_date: parseDateStr ? parseDateStr(data.date) : data.date,
+          type: 'payment',
+          source: 'non_imported',
+          note: (isAdvance ? 'Advance payment — ' : 'Initial payment — ') + data.invNum,
+          invoice_ref: data.invNum,
+          created_by: currentUser || 'unknown'
+        });
+        if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+      } catch(e) {
+        console.warn('customer_payments auto-create failed:', e);
+        if (typeof Sentry !== 'undefined') Sentry.captureException(e);
+      }
+    })();
   }
 
   if (navigator.onLine && currentUser) {
@@ -6684,7 +6737,7 @@ function renderDB() {
   if (_activeDbTab === 'draft') {
     // ── DRAFT TAB ──
     if (draftsDB.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="11" class="empty-db">No drafts saved. Click "Save as Draft" on an invoice to save it here.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="empty-db">No drafts saved. Click "Save as Draft" on an invoice to save it here.</td></tr>`;
       document.getElementById('dbSubCount').textContent = '0 drafts';
       return;
     }
@@ -6700,10 +6753,7 @@ function renderDB() {
         <td class="mono">${inv.phone || '—'}</td>
         <td class="mono" style="color:#e67e22;font-weight:700;">${inv.invNum}</td>
         <td class="mono gold">Rs.${fmt(inv.afterDiscount ?? inv.total)}</td>
-        <td class="mono green">Rs.${fmt(inv.received||0)}</td>
-        <td>—</td>
         <td class="mono" style="color:#f39c12">Rs.${fmt(inv.discount||0)}</td>
-        <td>—</td>
         <td class="mono red">Rs.${fmt(remaining)}</td>
         <td>
           <div class="db-action-row" style="flex-wrap:wrap;">
@@ -6723,7 +6773,7 @@ function renderDB() {
     const oldLM2 = document.getElementById('dbLoadMore');
     if (oldLM2) oldLM2.remove();
     if (advanceInvs.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="11" class="empty-db">No advance payments yet. When a customer pays in advance (received amount entered but no items added), the invoice appears here automatically.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="empty-db">No advance payments yet. When a customer pays in advance (received amount entered but no items added), the invoice appears here automatically.</td></tr>`;
       document.getElementById('dbSubCount').textContent = '0 advance payments';
       return;
     }
@@ -6741,15 +6791,6 @@ function renderDB() {
         <td class="mono">${inv.phone || '—'}</td>
         <td class="mono" style="color:#8e44ad;font-weight:700;">${inv.invNum} <span style="background:#8e44ad;color:#fff;font-size:0.55rem;padding:1px 5px;border-radius:3px;margin-left:3px;">ADVANCE</span></td>
         <td class="mono" style="color:#8a8a9a;">— (pending)</td>
-        <td class="mono green">Rs.${fmt(inv.received||0)}</td>
-        <td style="min-width:130px;">
-          ${(inv.received1Entries && inv.received1Entries.length > 0)
-            ? inv.received1Entries.map(e => `<div style="font-size:0.68rem;color:#2ecc71;font-family:Montserrat, sans-serif;white-space:nowrap;margin-bottom:2px;">Rs.${Math.round(e.amount||0).toLocaleString('en-PK')} <span style="color:#94a3b8;font-size:0.6rem;">${e.date||''}</span></div>`).join('')
-            : ''}
-          <input type="number" class="db-editable" placeholder="+ Add"
-              onkeydown="if(event.key==='Enter'){event.preventDefault();var v=this.value;this.value='';this.blur();saveDBField(${idx},'received1',v);renderSummary();}"
-              style="color:#2ecc71;width:80px;margin-top:3px;" title="Type amount then press Enter to save">
-        </td>
         <td class="mono" style="color:#f39c12">Rs.${fmt(inv.discount||0)}</td>
         <td class="mono" style="color:#8e44ad;font-weight:700;">Rs.${fmt(totalAdvance)} <span style="font-size:0.58rem;color:#8a8a9a;">(advance)</span></td>
         <td>
@@ -6858,8 +6899,8 @@ function renderDB() {
   if (mergedRows.length === 0) {
     const isLoading = _excelDBCache === null;
     tbody.innerHTML = isLoading
-      ? '<tr><td colspan="11" class="empty-db">⏳ Loading invoices...</td></tr>'
-      : '<tr><td colspan="11" class="empty-db">' + (dbNameQ ? 'No invoices found for "' + dbNameQ + '".' : 'No invoices saved yet.') + '</td></tr>';
+      ? '<tr><td colspan="9" class="empty-db">⏳ Loading invoices...</td></tr>'
+      : '<tr><td colspan="9" class="empty-db">' + (dbNameQ ? 'No invoices found for "' + dbNameQ + '".' : 'No invoices saved yet.') + '</td></tr>';
     document.getElementById('dbSubCount').textContent = '0 invoices';
     return;
   }
@@ -6889,24 +6930,10 @@ function renderDB() {
                 + ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();saveExcelField(\'' + oNum + '\',\'total_bill\',this.value);hideTbEdit(\'' + oNum + '\');}"'
                 + ' onblur="hideTbEdit(\'' + oNum + '\')" title="Enter new total, press Enter">'))
         + '</td>'
-        + '<td class="mono green">Rs.' + fmt(row.received) + (_isInvoiceLocked(row.date) ? ' 🔒' : '') + '</td>'
-        + '<td style="text-align:center;overflow:hidden;">'
-        +   (function(){
-              var r1Total = row.received_entries && row.received_entries.length > 0
-                ? row.received_entries.reduce(function(s,e){return s+(e.amount||0);},0)
-                : (row.received1||0);
-              var cnt = row.received_entries ? row.received_entries.length : (row.received1 ? 1 : 0);
-              var label = r1Total ? ('Rs.' + Math.round(r1Total).toLocaleString('en-PK') + (cnt>1 ? '<br><span style="font-size:0.62rem;font-weight:600;">(' + cnt + ')</span>' : '')) : '— Add';
-              return '<span onclick="showExcelR1Popover(this,\'' + oNum + '\')" style="display:block;">' + _dbBadge('💵', label, '#16a34a', !!r1Total) + '</span>';
-            })()
-        + '</td>'
         + '<td style="text-align:center;overflow:hidden;">'
         +   (_isInvoiceLocked(row.date)
               ? '<span style="display:block;" title="🔒 Locked — 40+ days old">' + _dbBadge('🔒', row.discount ? ('Rs.' + fmt(row.discount)) : 'Rs.0', '#d97706', !!row.discount) + '</span>'
               : '<span onclick="showExcelDiscPopover(this,\'' + oNum + '\',' + (row.discount||0) + ')" style="display:block;">' + _dbBadge('🏷️', row.discount ? ('Rs.' + fmt(row.discount)) : '— Set', '#d97706', !!row.discount) + '</span>')
-        + '</td>'
-        + '<td style="text-align:center;overflow:hidden;">'
-        +   '<span onclick="showExcelBdPopover(this,\'' + oNum + '\',' + (row.bad_debt||0) + ')" style="display:block;">' + _dbBadge('⚠️', row.bad_debt ? ('Rs.' + fmt(row.bad_debt)) : '— Set', '#dc2626', !!row.bad_debt) + '</span>'
         + '</td>'
         + '<td class="mono" style="color:' + remColor + ';font-weight:600;">' + (effRemaining < 0 ? '-' : '') + 'Rs.' + fmt(Math.abs(effRemaining)) + '</td>'
         + '<td><div class="db-action-row">'
@@ -6929,21 +6956,7 @@ function renderDB() {
         <td class="mono">${inv.phone || '—'}</td>
         <td class="mono gold">${inv.invNum}${statusBadge}</td>
         <td class="mono gold">${inv.isNull ? '<span style="color:#e74c3c">—</span>' : 'Rs.' + fmt(inv.afterDiscount ?? inv.total) + (_isInvoiceLocked(inv.date) ? ' 🔒' : '')}</td>
-        <td class="mono green">Rs.${fmt(inv.received)}${_isInvoiceLocked(inv.date) ? ' 🔒' : ''}</td>
-        <td style="text-align:center;overflow:hidden;">
-          ${(function(){
-            var r1Total = (inv.received1Entries && inv.received1Entries.length > 0)
-              ? inv.received1Entries.reduce(function(s,e){return s+(e.amount||0);},0)
-              : (parseFloat(inv.received1)||0);
-            var cnt = inv.received1Entries ? inv.received1Entries.length : (inv.received1 ? 1 : 0);
-            var label = r1Total ? ('Rs.' + Math.round(r1Total).toLocaleString('en-PK') + (cnt>1 ? '<br><span style="font-size:0.62rem;font-weight:600;">(' + cnt + ')</span>' : '')) : '— Add';
-            return '<span onclick="showInvR1Popover(this,' + idx + ')" style="display:block;">' + _dbBadge('💵', label, '#16a34a', !!r1Total) + '</span>';
-          })()}
-        </td>
         <td class="mono" style="color:#f39c12">Rs.${fmt(inv.discount||0)}${_isInvoiceLocked(inv.date) ? ' 🔒' : ''}</td>
-        <td style="text-align:center;overflow:hidden;">
-          <span onclick="showInvBdPopover(this,${idx},${inv.badDebt||0})" style="display:block;">${_dbBadge('⚠️', inv.badDebt ? ('Rs.' + fmt(inv.badDebt)) : '— Set', '#dc2626', !!inv.badDebt)}</span>
-        </td>
         <td class="mono red">Rs.${fmt(row._remaining)}</td>
         <td>
           <div class="db-action-row">
@@ -10834,76 +10847,12 @@ function _dbBadge(icon, label, color, hasValue) {
 }
 
 // ── Received1 popover — EXCEL rows ──
-function showExcelR1Popover(btnEl, orderNum) {
-  var row = (_excelDBCache||[]).find(function(r){ return (r.order_num||'') === orderNum; });
-  var entries = row ? row.received_entries : [];
-  var received1 = row ? (parseFloat(row.received1)||0) : 0;
-  var html = '<div style="font-size:0.72rem;font-weight:700;color:#065f46;margin-bottom:6px;">Received 1 — ' + orderNum + '</div>';
-  if (entries && entries.length > 0) {
-    entries.forEach(function(e, ei) {
-      var d = _r1DaysOld(e.date), lk = d >= 40;
-      var tp = lk ? 'Entry recorded on ' + (e.date||'') + '. Deletion was disabled after 40 days.' : 'Entry recorded on ' + (e.date||'') + '. Deletion allowed for ' + (40-d) + ' more ' + ((40-d)===1?'day.':'days.');
-      html += '<div style="font-size:0.7rem;color:#2ecc71;white-space:nowrap;margin-bottom:3px;" title="' + tp + '">Rs.' + Math.round(e.amount||0).toLocaleString('en-PK') + ' <span style="color:#94a3b8;font-size:0.62rem;">' + (e.date||'') + '</span>' + (lk ? '' : ' <button onclick="deleteExcelReceivedEntry(\'' + orderNum + '\',' + ei + ');_dbClosePopover();" style="background:rgba(231,76,60,0.15);color:#e74c3c;border:none;border-radius:3px;cursor:pointer;font-size:0.62rem;padding:0 4px;margin-left:2px;" title="' + tp + '">&#x2715;</button>') + '</div>';
-    });
-  } else if (received1) {
-    html += '<div style="font-size:0.7rem;color:#2ecc71;margin-bottom:3px;">Rs.' + Math.round(received1).toLocaleString('en-PK') + ' <span style="color:#94a3b8;font-size:0.62rem;font-style:italic;">historical</span></div>';
-  }
-  html += '<div style="display:flex;gap:6px;margin-top:6px;">'
-    + '<input type="number" id="_dbPopR1Inp" placeholder="Amount" style="width:90px;height:28px;font-size:0.75rem;border:1.5px solid #cbd5e1;border-radius:6px;padding:0 6px;">'
-    + '<button onclick="var v=document.getElementById(\'_dbPopR1Inp\').value;if(v){saveExcelField(\'' + orderNum + '\',\'received1\',v);}_dbClosePopover();" style="height:28px;padding:0 10px;border:none;border-radius:6px;background:#059669;color:#fff;font-size:0.75rem;font-weight:700;cursor:pointer;">Add</button>'
-    + '</div>';
-  _dbOpenPopover(btnEl, html);
-}
-
-// ── Received1 popover — NEW invoice rows ──
-function showInvR1Popover(btnEl, idx) {
-  var inv = database[idx];
-  var entries = inv.received1Entries;
-  var received1 = parseFloat(inv.received1)||0;
-  var html = '<div style="font-size:0.72rem;font-weight:700;color:#065f46;margin-bottom:6px;">Received 1 — ' + (inv.invNum||'') + '</div>';
-  if (entries && entries.length > 0) {
-    entries.forEach(function(e, ei) {
-      var d = _r1DaysOld(e.date), lk = d >= 40;
-      var tp = lk ? 'Entry recorded on ' + (e.date||'') + '. Deletion was disabled after 40 days.' : 'Entry recorded on ' + (e.date||'') + '. Deletion allowed for ' + (40-d) + ' more ' + ((40-d)===1?'day.':'days.');
-      html += '<div style="font-size:0.7rem;color:#2ecc71;white-space:nowrap;margin-bottom:3px;" title="' + tp + '">Rs.' + Math.round(e.amount||0).toLocaleString('en-PK') + ' <span style="color:#94a3b8;font-size:0.62rem;">' + (e.date||'') + '</span>' + (lk ? '' : ' <button onclick="deleteReceived1Entry(' + idx + ',' + ei + ');_dbClosePopover();" style="background:rgba(231,76,60,0.15);color:#e74c3c;border:none;border-radius:3px;cursor:pointer;font-size:0.62rem;padding:0 4px;margin-left:2px;" title="' + tp + '">&#x2715;</button>') + '</div>';
-    });
-  } else if (received1) {
-    html += '<div style="font-size:0.7rem;color:#2ecc71;margin-bottom:3px;">Rs.' + Math.round(received1).toLocaleString('en-PK') + '</div>';
-  }
-  html += '<div style="display:flex;gap:6px;margin-top:6px;">'
-    + '<input type="number" id="_dbPopR1Inp" placeholder="Amount" style="width:90px;height:28px;font-size:0.75rem;border:1.5px solid #cbd5e1;border-radius:6px;padding:0 6px;">'
-    + '<button onclick="var v=document.getElementById(\'_dbPopR1Inp\').value;if(v){saveDBField(' + idx + ',\'received1\',v);renderSummary();}_dbClosePopover();" style="height:28px;padding:0 10px;border:none;border-radius:6px;background:#059669;color:#fff;font-size:0.75rem;font-weight:700;cursor:pointer;">Add</button>'
-    + '</div>';
-  _dbOpenPopover(btnEl, html);
-}
-
 // ── Discount popover — EXCEL rows ──
 function showExcelDiscPopover(btnEl, orderNum, discount) {
   var html = '<div style="font-size:0.72rem;font-weight:700;color:#92400e;margin-bottom:6px;">Discount — ' + orderNum + '</div>'
     + '<div style="display:flex;gap:6px;">'
     + '<input type="number" id="_dbPopDiscInp" value="' + (discount||'') + '" placeholder="Amount" style="width:90px;height:28px;font-size:0.75rem;border:1.5px solid #cbd5e1;border-radius:6px;padding:0 6px;">'
     + '<button onclick="var v=document.getElementById(\'_dbPopDiscInp\').value;saveExcelField(\'' + orderNum + '\',\'discount\',v);_dbClosePopover();" style="height:28px;padding:0 10px;border:none;border-radius:6px;background:#d97706;color:#fff;font-size:0.75rem;font-weight:700;cursor:pointer;">Save</button>'
-    + '</div>';
-  _dbOpenPopover(btnEl, html);
-}
-
-// ── Bad Debt popover — EXCEL rows ──
-function showExcelBdPopover(btnEl, orderNum, badDebt) {
-  var html = '<div style="font-size:0.72rem;font-weight:700;color:#991b1b;margin-bottom:6px;">Bad Debt — ' + orderNum + '</div>'
-    + '<div style="display:flex;gap:6px;">'
-    + '<input type="number" id="_dbPopBdInp" value="' + (badDebt||'') + '" placeholder="Amount" style="width:90px;height:28px;font-size:0.75rem;border:1.5px solid #cbd5e1;border-radius:6px;padding:0 6px;">'
-    + '<button onclick="var v=document.getElementById(\'_dbPopBdInp\').value;saveExcelField(\'' + orderNum + '\',\'bad_debt\',v);_dbClosePopover();" style="height:28px;padding:0 10px;border:none;border-radius:6px;background:#dc2626;color:#fff;font-size:0.75rem;font-weight:700;cursor:pointer;">Save</button>'
-    + '</div>';
-  _dbOpenPopover(btnEl, html);
-}
-
-// ── Bad Debt popover — NEW invoice rows ──
-function showInvBdPopover(btnEl, idx, badDebt) {
-  var inv = database[idx];
-  var html = '<div style="font-size:0.72rem;font-weight:700;color:#991b1b;margin-bottom:6px;">Bad Debt — ' + (inv.invNum||'') + '</div>'
-    + '<div style="display:flex;gap:6px;">'
-    + '<input type="number" id="_dbPopBdInp2" value="' + (badDebt||'') + '" placeholder="Amount" style="width:90px;height:28px;font-size:0.75rem;border:1.5px solid #cbd5e1;border-radius:6px;padding:0 6px;">'
-    + '<button onclick="var v=document.getElementById(\'_dbPopBdInp2\').value;saveDBField(' + idx + ',\'badDebt\',v);renderSummary();_dbClosePopover();" style="height:28px;padding:0 10px;border:none;border-radius:6px;background:#dc2626;color:#fff;font-size:0.75rem;font-weight:700;cursor:pointer;">Save</button>'
     + '</div>';
   _dbOpenPopover(btnEl, html);
 }
