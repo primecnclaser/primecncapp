@@ -3017,7 +3017,8 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
       <h2 style="font-family:Montserrat,sans-serif;font-size:1.1rem;color:#1e293b;margin-bottom:16px;">💰 Receive Payment</h2>
 
       <div style="display:flex;gap:10px;margin-bottom:16px;">
-        <input type="text" id="rpSearchName" name="search_field_no_autofill_xyz123" autocomplete="new-password" placeholder="🔍 Search by customer name" oninput="rpSearchByName(this.value)" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
+        <input type="text" id="rpSearchName" autocomplete="off" placeholder="🔍 Search by customer name" oninput="rpSearchByName(this.value)" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
+        <input type="text" id="rpSearchPhone" autocomplete="off" placeholder="🔍 Search by phone number" oninput="this.value=this.value.replace(/[^0-9]/g,'');rpSearchByPhone(this.value)" onfocus="rpSearchByPhone(this.value)" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
         <input type="text" id="rpSearchInv" placeholder="🔍 Search by invoice number" oninput="this.value=this.value.replace(/[^0-9]/g,'');rpSearchByInv(this.value)" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
       </div>
       <div id="rpNameDropdown" style="display:none;position:relative;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;max-height:220px;overflow-y:auto;margin-top:-10px;margin-bottom:16px;"></div>
@@ -7974,23 +7975,39 @@ async function renderSummary() {
         _scDateTo = yearV + '-12-31';
       }
       if (_scDateFrom && _scDateTo) {
-        var _scRows = [];
         if (sb && navigator.onLine) {
-          var _res = await sb.from('finance_ledger')
-            .select('entry_date,category,entry_type,amount')
-            .gte('entry_date', _scDateFrom)
-            .lte('entry_date', _scDateTo)
-            .eq('category', 'Sheets Cutting')
-            .in('entry_type', ['income','invoice_income']);
-          _scRows = _res.data || [];
+          // Read from customer_payments — single source of truth for live dates
+          try {
+            var _cpRes = await sb.from('customer_payments')
+              .select('amount,payment_date')
+              .gte('payment_date', _scDateFrom)
+              .lte('payment_date', _scDateTo)
+              .eq('type', 'payment');
+            (_cpRes.data || []).forEach(function(p){ _scAmount += (parseFloat(p.amount)||0); });
+          } catch(_cpE) {
+            // Fallback to finance_ledger if customer_payments fails
+            try {
+              var _flRes = await sb.from('finance_ledger')
+                .select('entry_date,amount')
+                .gte('entry_date', _scDateFrom)
+                .lte('entry_date', _scDateTo)
+                .eq('category', 'Sheets Cutting')
+                .in('entry_type', ['income','invoice_income']);
+              (_flRes.data || []).forEach(function(e){ _scAmount += (parseFloat(e.amount)||0); });
+            } catch(_flE) { console.warn('Summary SC fetch failed:', _flE); }
+          }
         } else {
-          _scRows = (_finLedgerLocal||[]).filter(function(e){
-            return e.category === 'Sheets Cutting'
-              && (e.entry_type === 'income' || e.entry_type === 'invoice_income')
-              && e.entry_date >= _scDateFrom && e.entry_date <= _scDateTo;
+          // Offline — use local database received amounts
+          (database || []).forEach(function(inv) {
+            if (inv.isNull || inv.isDraft) return;
+            var invDate = parseDateStr ? parseDateStr(inv.date) : inv.date;
+            if (!invDate || invDate < _scDateFrom || invDate > _scDateTo) return;
+            var r1sum = Array.isArray(inv.received1Entries)
+              ? inv.received1Entries.reduce(function(s,e){ return s+(e.amount||0); }, 0)
+              : (parseFloat(inv.received1)||0);
+            _scAmount += (parseFloat(inv.received)||0) + r1sum;
           });
         }
-        _scRows.forEach(function(e){ _scAmount += (parseFloat(e.amount)||0); });
         var _scEl = document.getElementById('sumSheetCuttingVal');
         if (_scEl) _scEl.textContent = 'Rs. ' + fmt(_scAmount);
       }
@@ -14080,24 +14097,33 @@ function _rpInvalidateSummaryCache() {
 
 function rpClearPanel() {
   var nameField = document.getElementById('rpSearchName');
+  var phoneField = document.getElementById('rpSearchPhone');
   var invField = document.getElementById('rpSearchInv');
   nameField.value = '';
+  phoneField.value = '';
   invField.value = '';
   nameField.disabled = false;
   nameField.style.opacity = '1';
+  phoneField.disabled = false;
+  phoneField.style.opacity = '1';
   invField.disabled = false;
   invField.style.opacity = '1';
   document.getElementById('rpNameDropdown').style.display = 'none';
-  document.getElementById('rpCustomerPanel').innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;font-family:Montserrat,sans-serif;font-size:0.85rem;">Search a customer by name or invoice number above.</div>';
+  document.getElementById('rpCustomerPanel').innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;font-family:Montserrat,sans-serif;font-size:0.85rem;">Search a customer by name, phone or invoice number above.</div>';
   _rpCurrentCustomer = null;
 }
 
 async function rpSearchByName(val) {
+  var phoneField = document.getElementById('rpSearchPhone');
   var invField = document.getElementById('rpSearchInv');
   if (val.trim().length > 0) {
+    phoneField.disabled = true;
+    phoneField.style.opacity = '0.5';
     invField.disabled = true;
     invField.style.opacity = '0.5';
   } else {
+    phoneField.disabled = false;
+    phoneField.style.opacity = '1';
     invField.disabled = false;
     invField.style.opacity = '1';
   }
@@ -14122,12 +14148,17 @@ async function rpSearchByName(val) {
 
 async function rpSearchByInv(val) {
   var nameField = document.getElementById('rpSearchName');
+  var phoneField = document.getElementById('rpSearchPhone');
   if (val.trim().length > 0) {
     nameField.disabled = true;
     nameField.style.opacity = '0.5';
+    phoneField.disabled = true;
+    phoneField.style.opacity = '0.5';
   } else {
     nameField.disabled = false;
     nameField.style.opacity = '1';
+    phoneField.disabled = false;
+    phoneField.style.opacity = '1';
   }
   var q = val.trim().toUpperCase().replace(/^[A-Z]+-/,'');
   if (!q) { rpClearPanel(); return; }
@@ -14140,6 +14171,39 @@ async function rpSearchByInv(val) {
     var foundEx = _excelDBCache.find(function(r){ return String(r.order_num||'').replace(/^[A-Za-z]+-/,'').toUpperCase() === q; });
     if (foundEx && foundEx.customer_name) { rpSelectCustomer(encodeURIComponent(foundEx.customer_name), encodeURIComponent(foundEx.phone||'')); return; }
   }
+}
+
+async function rpSearchByPhone(val) {
+  var nameField = document.getElementById('rpSearchName');
+  var invField = document.getElementById('rpSearchInv');
+  if (val.trim().length > 0) {
+    nameField.disabled = true;
+    nameField.style.opacity = '0.5';
+    invField.disabled = true;
+    invField.style.opacity = '0.5';
+  } else {
+    nameField.disabled = false;
+    nameField.style.opacity = '1';
+    invField.disabled = false;
+    invField.style.opacity = '1';
+  }
+  var drop = document.getElementById('rpNameDropdown');
+  var q = val.trim().replace(/[^0-9]/g, '');
+  if (!q || q.length < 4) {
+    drop.style.display = 'none';
+    if (!q) rpClearPanel();
+    return;
+  }
+  var list = await _buildSearchNameList();
+  var matches = list.filter(function(c){ return (c.phone||'').replace(/[^0-9]/g,'').includes(q); }).slice(0, 15);
+  if (!matches.length) { drop.style.display = 'none'; return; }
+  drop.innerHTML = matches.map(function(c) {
+    var eName = encodeURIComponent(c.name);
+    var ePhone = encodeURIComponent(c.phone || '');
+    return '<div onclick="rpSelectCustomer(\'' + eName + '\',\'' + ePhone + '\')" style="padding:9px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-family:Montserrat,sans-serif;font-size:0.82rem;" onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\'#fff\'">' +
+      c.name + (c.phone ? ' <span style="color:#94a3b8;font-size:0.72rem;">📞 ' + c.phone + '</span>' : '') + '</div>';
+  }).join('');
+  drop.style.display = '';
 }
 
 async function rpSelectCustomer(eName, ePhone) {
