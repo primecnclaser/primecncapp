@@ -14680,6 +14680,32 @@ async function _renderSearchByInv(invNum) {
     return;
   }
 
+  // ── LIVE PAYMENT DATA: fetch from customer_payments for each matched invoice ──
+  if (typeof sb !== 'undefined' && sb) {
+    try {
+      for (var _mi = 0; _mi < matchedInvoices.length; _mi++) {
+        var _inv = matchedInvoices[_mi];
+        var _invRef = _inv.invNum.toString().toUpperCase().startsWith('INV-')
+          ? _inv.invNum : ('INV-' + _inv.invNum);
+        var _cpRes = await sb.from('customer_payments')
+          .select('amount,type')
+          .eq('invoice_ref', _invRef);
+        if (_cpRes.data && _cpRes.data.length > 0) {
+          var _liveRecv = 0, _liveDisc = 0, _liveBD = 0;
+          _cpRes.data.forEach(function(p) {
+            if (p.type === 'payment') _liveRecv += parseFloat(p.amount)||0;
+            else if (p.type === 'discount') _liveDisc += parseFloat(p.amount)||0;
+            else if (p.type === 'bad_debt') _liveBD += parseFloat(p.amount)||0;
+          });
+          matchedInvoices[_mi].recv = _liveRecv;
+          matchedInvoices[_mi].r1sum = 0;
+          matchedInvoices[_mi].disc = (_inv.disc||0) + _liveDisc;
+          matchedInvoices[_mi].remaining = Math.max(0, _inv.bill - matchedInvoices[_mi].disc - _liveRecv - _liveBD);
+        }
+      }
+    } catch(_cpE) { console.warn('_renderSearchByInv live payment fetch:', _cpE); }
+  }
+
   // Build a focused single-invoice result panel
   var thS = 'padding:7px 10px;font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#cbd5e1;white-space:nowrap;';
   var tdS = 'padding:8px 10px;font-family:Montserrat,sans-serif;font-size:0.78rem;';
@@ -14693,7 +14719,12 @@ async function _renderSearchByInv(invNum) {
         ? '<span style="background:#4f46e5;color:#fff;font-size:0.5rem;font-weight:700;padding:1px 4px;border-radius:3px;margin-left:4px;">CLOUD</span>'
         : '<span style="background:#0ea5e9;color:#fff;font-size:0.5rem;font-weight:700;padding:1px 4px;border-radius:3px;margin-left:4px;">NEW</span>');
     var remColor = r.remaining > 0 ? '#dc2626' : r.remaining < 0 ? '#8e44ad' : '#059669';
-    return '<tr style="background:'+bg+';border-bottom:1px solid #f1f5f9;">'
+    var localIdx = database.findIndex(function(d){ return (d.invNum||'').toUpperCase() === (r.invNum||'').toUpperCase(); });
+    var isClickable = localIdx !== -1 && r.source !== 'excel';
+    var rowStyle = 'background:'+bg+';border-bottom:1px solid #f1f5f9;' + (isClickable ? 'cursor:pointer;' : '');
+    var rowClick = isClickable ? 'onclick="viewInvoice('+localIdx+')"' : '';
+    var rowHover = isClickable ? 'onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\''+bg+'\'"' : '';
+    return '<tr style="'+rowStyle+'" '+rowClick+' '+rowHover+'>'
       + '<td style="'+tdS+'text-align:center;color:#94a3b8;">'+(i+1)+'</td>'
       + '<td style="'+tdS+'white-space:nowrap;color:#475569;">'+dateD+'</td>'
       + '<td style="'+tdS+'font-weight:700;color:#4f46e5;">'+r.invNum+srcBadge+'</td>'
