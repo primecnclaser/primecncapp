@@ -6271,33 +6271,35 @@ async function doSubmit(data) {
       (async function() {
         try {
           var newAmount = parseFloat(data.received) || 0;
-          console.log('[CP-EDIT] invoice:', data.invNum, 'amount:', newAmount);
           var cpRes = await sb.from('customer_payments').select('id,amount').eq('invoice_ref', data.invNum).eq('type','payment').limit(1);
-          console.log('[CP-EDIT] existing:', cpRes.data ? cpRes.data.length : 0, cpRes.error || '');
           if (cpRes.data && cpRes.data.length > 0) {
             if (newAmount > 0) {
               if (Math.abs(cpRes.data[0].amount - newAmount) > 0.01) {
                 await sb.from('customer_payments').update({ amount: newAmount }).eq('id', cpRes.data[0].id);
-                console.log('[CP-EDIT] updated to', newAmount);
               }
             } else {
               await sb.from('customer_payments').delete().eq('id', cpRes.data[0].id);
-              console.log('[CP-EDIT] deleted (received=0)');
             }
           } else if (newAmount > 0) {
-            var insRes = await sb.from('customer_payments').insert({
-              customer_name: data.custName || 'Unknown',
-              phone: data.phone || null,
-              amount: newAmount,
-              payment_date: parseDateStr ? parseDateStr(data.date) : data.date,
-              type: 'payment',
-              source: 'non_imported',
-              note: 'Invoice payment — ' + data.invNum,
-              invoice_ref: data.invNum,
-              created_by: currentUser || 'unknown'
-            });
-            if (insRes.error) throw insRes.error;
-            console.log('[CP-EDIT] inserted', newAmount);
+            // Double-check no duplicate exists before inserting
+            var _dupCheck = await sb.from('customer_payments').select('id').eq('invoice_ref', data.invNum).eq('type','payment');
+            if (_dupCheck.data && _dupCheck.data.length > 0) {
+              // Row exists — update instead of insert to prevent duplicates
+              await sb.from('customer_payments').update({ amount: newAmount }).eq('invoice_ref', data.invNum).eq('type','payment');
+            } else {
+              var insRes = await sb.from('customer_payments').insert({
+                customer_name: data.custName || 'Unknown',
+                phone: data.phone || null,
+                amount: newAmount,
+                payment_date: parseDateStr ? parseDateStr(data.date) : data.date,
+                type: 'payment',
+                source: 'non_imported',
+                note: 'Invoice payment — ' + data.invNum,
+                invoice_ref: data.invNum,
+                created_by: currentUser || 'unknown'
+              });
+              if (insRes.error) throw insRes.error;
+            }
           }
           if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
           if (typeof _searchNameList !== 'undefined') _searchNameList = null;
@@ -6363,53 +6365,6 @@ async function doSubmit(data) {
         if (idx2 !== -1) { database[idx2]._supaId = supaId; localStorage.setItem('inv_database', JSON.stringify(database)); }
         toast('✅ Invoice ' + data.invNum + ' updated & synced!'); _pbCustCache = null;
 
-        // Update matching customer_payments entry if received amount changed
-        if (typeof sb !== 'undefined' && sb && data.invNum) {
-          (async function() {
-            try {
-              console.log('[CP-SYNC] Starting for', data.invNum, 'received:', data.received);
-              var cpRes = await sb.from('customer_payments').select('id,amount,payment_date').eq('invoice_ref', data.invNum).eq('type','payment').limit(1);
-              console.log('[CP-SYNC] existing rows:', cpRes.data ? cpRes.data.length : 'error', cpRes.error || '');
-              var newAmount = parseFloat(data.received) || 0;
-              console.log('[CP-SYNC] newAmount:', newAmount);
-              if (cpRes.data && cpRes.data.length > 0) {
-                var existing = cpRes.data[0];
-                if (Math.abs(existing.amount - newAmount) > 0.01) {
-                  await sb.from('customer_payments').update({ amount: newAmount }).eq('id', existing.id);
-                  if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-                  alert('⚠️ Payment amount updated for ' + data.invNum + '.\n\nPlease also check and update Finance tab → Daily Entry for ' + existing.payment_date + ' (Sheets Cutting) to keep the ledger accurate.');
-                }
-              } else if (newAmount > 0) {
-                var insRes = await sb.from('customer_payments').insert({
-                  customer_name: data.custName || 'Unknown',
-                  phone: data.phone || null,
-                  amount: newAmount,
-                  payment_date: parseDateStr ? parseDateStr(data.date) : data.date,
-                  type: 'payment',
-                  source: 'non_imported',
-                  note: 'Added via edit — ' + data.invNum,
-                  invoice_ref: data.invNum,
-                  created_by: currentUser || 'unknown'
-                });
-                if (insRes.error) throw insRes.error;
-                if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-                if (typeof _searchNameList !== 'undefined') _searchNameList = null;
-              } else if (newAmount === 0) {
-                // received set to 0 — delete any existing invoice_ref payment
-                await sb.from('customer_payments').delete().eq('invoice_ref', data.invNum).eq('type','payment');
-                if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-              }
-              if (typeof _rpAutoRefreshFinanceTab === 'function') {
-                var _epDate = parseDateStr ? parseDateStr(data.date) : data.date;
-                if (_epDate) _rpAutoRefreshFinanceTab(_epDate);
-              }
-            } catch(e) {
-              console.warn('customer_payments edit-sync failed:', e);
-              if (typeof Sentry !== 'undefined') Sentry.captureException(e);
-              alert('⚠️ Invoice saved but payment sync failed: ' + (e.message || e));
-            }
-          })();
-        }
       } else {
         addToPendingQueue({ ...data, _supaId: prevSupaId });
         toast('Invoice ' + data.invNum + ' updated locally — cloud sync pending.');
