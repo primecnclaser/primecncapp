@@ -8363,36 +8363,51 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
 
   // ── Current Month Cash Collection (Sheets Cutting + Scrap) ──
   const _nowYM = new Date().toISOString().slice(0, 7); // e.g. "2026-06"
+  const _mFirstDay = _nowYM + '-01';
+  const _mLastDay2 = new Date(new Date(_mFirstDay).getFullYear(), new Date(_mFirstDay).getMonth()+1, 0).getDate();
+  const _mLastDay  = _nowYM + '-' + String(_mLastDay2).padStart(2,'0');
   let _curMonthCutting = 0;
   let _curMonthScrap   = 0;
   try {
-    const allEntriesForMonth = await fetchEntriesWithCorrectInvoiceAmounts({});
-    allEntriesForMonth.forEach(function(e) {
-      if (!e.entry_date || e.entry_date.slice(0,7) !== _nowYM) return;
-      if (e.entry_type !== 'income' && e.entry_type !== 'invoice_income') return;
-      if (e.category === 'Sheets Cutting') _curMonthCutting += (e.amount || 0);
-      else if (e.category === 'Scrap')     _curMonthScrap   += (e.amount || 0);
-    });
     if (sb && navigator.onLine) {
+      // Sheets Cutting — single source of truth: customer_payments
       try {
-        const _mLastDay = new Date(new Date(_nowYM + '-01').getFullYear(), new Date(_nowYM + '-01').getMonth()+1, 0).getDate();
-        const { data: _mRows } = await sb.from('finance_ledger')
-          .select('entry_type,category,amount,entry_date,source')
-          .gte('entry_date', _nowYM + '-01')
-          .lte('entry_date', _nowYM + '-' + String(_mLastDay).padStart(2,'0'))
-          .in('category', ['Sheets Cutting', 'Scrap']);
-        (_mRows || []).forEach(function(e) {
-          const alreadyLocal = (_finLedgerLocal||[]).some(function(l){
-            return l.entry_date === e.entry_date && l.category === e.category
-              && Math.abs((l.amount||0) - (e.amount||0)) < 0.5;
-          });
-          if (alreadyLocal) return;
-          if (e.entry_type === 'income' || e.entry_type === 'invoice_income') {
-            if (e.category === 'Sheets Cutting') _curMonthCutting += (e.amount||0);
-            else if (e.category === 'Scrap')     _curMonthScrap   += (e.amount||0);
-          }
-        });
-      } catch(_me) { console.warn('[curMonth] supabase fetch:', _me); }
+        const _cpMonth = await sb.from('customer_payments')
+          .select('amount')
+          .gte('payment_date', _mFirstDay)
+          .lte('payment_date', _mLastDay)
+          .eq('type', 'payment');
+        (_cpMonth.data || []).forEach(function(p){ _curMonthCutting += (parseFloat(p.amount)||0); });
+      } catch(_cpMe) { console.warn('[curMonth SC] customer_payments fetch:', _cpMe); }
+
+      // Scrap — still from finance_ledger (no customer_payments for scrap)
+      try {
+        const _scrapRes = await sb.from('finance_ledger')
+          .select('amount')
+          .gte('entry_date', _mFirstDay)
+          .lte('entry_date', _mLastDay)
+          .eq('category', 'Scrap')
+          .in('entry_type', ['income', 'invoice_income']);
+        (_scrapRes.data || []).forEach(function(e){ _curMonthScrap += (parseFloat(e.amount)||0); });
+      } catch(_scrapE) { console.warn('[curMonth scrap] fetch:', _scrapE); }
+    } else {
+      // Offline — use local database received amounts for Sheets Cutting
+      (database || []).forEach(function(inv) {
+        if (inv.isNull || inv.isDraft) return;
+        var invDate = parseDateStr ? parseDateStr(inv.date) : inv.date;
+        if (!invDate || invDate.slice(0,7) !== _nowYM) return;
+        var r1sum = Array.isArray(inv.received1Entries)
+          ? inv.received1Entries.reduce(function(s,e){ return s+(e.amount||0); }, 0)
+          : (parseFloat(inv.received1)||0);
+        _curMonthCutting += (parseFloat(inv.received)||0) + r1sum;
+      });
+      // Scrap offline — from _finLedgerLocal
+      (_finLedgerLocal||[]).forEach(function(e){
+        if (!e.entry_date || e.entry_date.slice(0,7) !== _nowYM) return;
+        if (e.category === 'Scrap' && (e.entry_type === 'income' || e.entry_type === 'invoice_income')) {
+          _curMonthScrap += (parseFloat(e.amount)||0);
+        }
+      });
     }
   } catch(_ce) { console.warn('[curMonth cutting] error:', _ce); }
   const _curMonthTotal = _curMonthCutting + _curMonthScrap;
