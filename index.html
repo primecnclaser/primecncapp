@@ -4587,6 +4587,36 @@ async function flushPendingQueue() {
         successCount++;
         pendingQueue = pendingQueue.filter(q => q.data.invNum !== entry.data.invNum);
         savePendingQueue();
+
+        // ── Sync customer_payments for this invoice ──
+        if (typeof sb !== 'undefined' && sb && entry.data.invNum) {
+          try {
+            const _cpAmt = parseFloat(entry.data.received) || 0;
+            const _cpDate = parseDateStr ? parseDateStr(entry.data.date) : entry.data.date;
+            const _cpChk = await sb.from('customer_payments')
+              .select('id,amount').eq('invoice_ref', entry.data.invNum).eq('type','payment').limit(1);
+            if (_cpChk.data && _cpChk.data.length > 0) {
+              if (_cpAmt > 0) {
+                await sb.from('customer_payments').update({ amount: _cpAmt }).eq('id', _cpChk.data[0].id);
+              } else {
+                await sb.from('customer_payments').delete().eq('id', _cpChk.data[0].id);
+              }
+            } else if (_cpAmt > 0) {
+              await sb.from('customer_payments').insert({
+                customer_name: entry.data.custName || 'Unknown',
+                phone: entry.data.phone || null,
+                amount: _cpAmt,
+                payment_date: _cpDate,
+                type: 'payment',
+                source: 'non_imported',
+                note: 'Invoice payment — ' + entry.data.invNum,
+                invoice_ref: entry.data.invNum,
+                created_by: entry.data.createdBy || currentUser || 'unknown'
+              });
+            }
+            if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+          } catch(_cpE) { console.warn('customer_payments sync failed for', entry.data.invNum, _cpE); }
+        }
       }
     } catch(e) {
       console.warn('Pending sync failed for', entry.data.invNum, e);
@@ -4615,6 +4645,30 @@ window.addEventListener('online', async () => {
   await new Promise(r => setTimeout(r, 1500)); // wait for session
   await flushPendingUpdates();
   await flushPendingQueue();
+  // Flush cp_pending_sync (customer_payments edited offline)
+  try {
+    var _cpPend = JSON.parse(localStorage.getItem('cp_pending_sync') || '[]');
+    if (_cpPend.length && typeof sb !== 'undefined' && sb) {
+      for (var _cpi = 0; _cpi < _cpPend.length; _cpi++) {
+        var _cpe = _cpPend[_cpi];
+        var _cpc = await sb.from('customer_payments').select('id').eq('invoice_ref', _cpe.invoice_ref).eq('type','payment').limit(1);
+        if (_cpc.data && _cpc.data.length > 0) {
+          if (_cpe.amount > 0) await sb.from('customer_payments').update({ amount: _cpe.amount }).eq('id', _cpc.data[0].id);
+          else await sb.from('customer_payments').delete().eq('id', _cpc.data[0].id);
+        } else if (_cpe.amount > 0) {
+          await sb.from('customer_payments').insert({
+            customer_name: _cpe.customer_name, phone: _cpe.phone || null,
+            amount: _cpe.amount, payment_date: _cpe.payment_date,
+            type: 'payment', source: 'non_imported',
+            note: 'Invoice payment — ' + _cpe.invoice_ref,
+            invoice_ref: _cpe.invoice_ref, created_by: _cpe.created_by || 'unknown'
+          });
+        }
+      }
+      localStorage.removeItem('cp_pending_sync');
+      if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+    }
+  } catch(_cpFlushE) { console.warn('cp_pending_sync online flush failed:', _cpFlushE); }
   if (_pbPendingEdits.length > 0 && sb) {
     var _toRetry = [..._pbPendingEdits];
     _pbPendingEdits = [];
@@ -6193,6 +6247,111 @@ async function doSubmit(data) {
     if (document.getElementById('summaryTab') && document.getElementById('summaryTab').style.display !== 'none') renderSummary();
     clearForm();
 
+    // ── AUTO-SYNC customer_payments on edit (runs independently of invoice sync) ──
+    // Store received amount in localStorage so it can sync when back online
+    if (data.invNum && typeof data.received !== 'undefined') {
+      try {
+        var _cpPending = JSON.parse(localStorage.getItem('cp_pending_sync') || '[]');
+        // Remove any existing entry for this invoice
+        _cpPending = _cpPending.filter(function(e) { return e.invoice_ref !== data.invNum; });
+        // Add new entry
+        _cpPending.push({
+          invoice_ref: data.invNum,
+          customer_name: data.custName || 'Unknown',
+          phone: data.phone || null,
+          amount: parseFloat(data.received) || 0,
+          payment_date: parseDateStr ? parseDateStr(data.date) : data.date,
+          created_by: currentUser || 'unknown',
+          queued_at: new Date().toISOString()
+        });
+        localStorage.setItem('cp_pending_sync', JSON.stringify(_cpPending));
+      } catch(_cpE) { console.warn('cp_pending_sync save failed:', _cpE); }
+    }
+    if (navigator.onLine && typeof sb !== 'undefined' && sb && data.invNum) {
+      (async function() {
+        try {
+          var newAmount = parseFloat(data.received) || 0;
+          console.log('[CP-EDIT] invoice:', data.invNum, 'amount:', newAmount);
+          var cpRes = await sb.from('customer_payments').select('id,amount').eq('invoice_ref', data.invNum).eq('type','payment').limit(1);
+          console.log('[CP-EDIT] existing:', cpRes.data ? cpRes.data.length : 0, cpRes.error || '');
+          if (cpRes.data && cpRes.data.length > 0) {
+            if (newAmount > 0) {
+              if (Math.abs(cpRes.data[0].amount - newAmount) > 0.01) {
+                await sb.from('customer_payments').update({ amount: newAmount }).eq('id', cpRes.data[0].id);
+                console.log('[CP-EDIT] updated to', newAmount);
+              }
+            } else {
+              await sb.from('customer_payments').delete().eq('id', cpRes.data[0].id);
+              console.log('[CP-EDIT] deleted (received=0)');
+            }
+          } else if (newAmount > 0) {
+            var insRes = await sb.from('customer_payments').insert({
+              customer_name: data.custName || 'Unknown',
+              phone: data.phone || null,
+              amount: newAmount,
+              payment_date: parseDateStr ? parseDateStr(data.date) : data.date,
+              type: 'payment',
+              source: 'non_imported',
+              note: 'Invoice payment — ' + data.invNum,
+              invoice_ref: data.invNum,
+              created_by: currentUser || 'unknown'
+            });
+            if (insRes.error) throw insRes.error;
+            console.log('[CP-EDIT] inserted', newAmount);
+          }
+          if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+          if (typeof _searchNameList !== 'undefined') _searchNameList = null;
+          try {
+            var _cpP = JSON.parse(localStorage.getItem('cp_pending_sync') || '[]');
+            _cpP = _cpP.filter(function(e) { return e.invoice_ref !== data.invNum; });
+            localStorage.setItem('cp_pending_sync', JSON.stringify(_cpP));
+          } catch(_cpE2) {}
+          if (typeof _rpAutoRefreshFinanceTab === 'function') {
+            var _epDate = parseDateStr ? parseDateStr(data.date) : data.date;
+            if (_epDate) _rpAutoRefreshFinanceTab(_epDate);
+          }
+        } catch(e) {
+          console.warn('[CP-EDIT] failed:', e);
+          if (typeof Sentry !== 'undefined') Sentry.captureException(e);
+        }
+      })();
+    }
+
+    // ── FLUSH cp_pending_sync when online ──
+    if (navigator.onLine && typeof sb !== 'undefined' && sb) {
+      (async function() {
+        try {
+          var _cpPend = JSON.parse(localStorage.getItem('cp_pending_sync') || '[]');
+          if (!_cpPend.length) return;
+          for (var _i = 0; _i < _cpPend.length; _i++) {
+            var _pe = _cpPend[_i];
+            var _chk = await sb.from('customer_payments').select('id,amount').eq('invoice_ref', _pe.invoice_ref).eq('type','payment').limit(1);
+            if (_chk.data && _chk.data.length > 0) {
+              if (_pe.amount > 0) {
+                await sb.from('customer_payments').update({ amount: _pe.amount }).eq('id', _chk.data[0].id);
+              } else {
+                await sb.from('customer_payments').delete().eq('id', _chk.data[0].id);
+              }
+            } else if (_pe.amount > 0) {
+              await sb.from('customer_payments').insert({
+                customer_name: _pe.customer_name,
+                phone: _pe.phone || null,
+                amount: _pe.amount,
+                payment_date: _pe.payment_date,
+                type: 'payment',
+                source: 'non_imported',
+                note: 'Invoice payment — ' + _pe.invoice_ref,
+                invoice_ref: _pe.invoice_ref,
+                created_by: _pe.created_by || 'unknown'
+              });
+            }
+          }
+          localStorage.removeItem('cp_pending_sync');
+          if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+        } catch(_flushE) { console.warn('cp_pending_sync flush failed:', _flushE); }
+      })();
+    }
+
     // ── SYNC EDIT TO SUPABASE (was missing — caused edits to vanish after reload) ──
     if (navigator.onLine && currentUser) {
       setSyncStatus('syncing', '● Saving...');
@@ -6208,8 +6367,11 @@ async function doSubmit(data) {
         if (typeof sb !== 'undefined' && sb && data.invNum) {
           (async function() {
             try {
+              console.log('[CP-SYNC] Starting for', data.invNum, 'received:', data.received);
               var cpRes = await sb.from('customer_payments').select('id,amount,payment_date').eq('invoice_ref', data.invNum).eq('type','payment').limit(1);
+              console.log('[CP-SYNC] existing rows:', cpRes.data ? cpRes.data.length : 'error', cpRes.error || '');
               var newAmount = parseFloat(data.received) || 0;
+              console.log('[CP-SYNC] newAmount:', newAmount);
               if (cpRes.data && cpRes.data.length > 0) {
                 var existing = cpRes.data[0];
                 if (Math.abs(existing.amount - newAmount) > 0.01) {
@@ -6218,7 +6380,7 @@ async function doSubmit(data) {
                   alert('⚠️ Payment amount updated for ' + data.invNum + '.\n\nPlease also check and update Finance tab → Daily Entry for ' + existing.payment_date + ' (Sheets Cutting) to keep the ledger accurate.');
                 }
               } else if (newAmount > 0) {
-                await sb.from('customer_payments').insert({
+                var insRes = await sb.from('customer_payments').insert({
                   customer_name: data.custName || 'Unknown',
                   phone: data.phone || null,
                   amount: newAmount,
@@ -6229,10 +6391,23 @@ async function doSubmit(data) {
                   invoice_ref: data.invNum,
                   created_by: currentUser || 'unknown'
                 });
+                if (insRes.error) throw insRes.error;
                 if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-                alert('✅ New payment of Rs.' + newAmount + ' recorded for ' + data.invNum + '.\n\nPlease also check and update Finance tab → Daily Entry for ' + (parseDateStr ? parseDateStr(data.date) : data.date) + ' (Sheets Cutting) to keep the ledger accurate.');
+                if (typeof _searchNameList !== 'undefined') _searchNameList = null;
+              } else if (newAmount === 0) {
+                // received set to 0 — delete any existing invoice_ref payment
+                await sb.from('customer_payments').delete().eq('invoice_ref', data.invNum).eq('type','payment');
+                if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
               }
-            } catch(e) { console.warn('customer_payments edit-sync failed:', e); }
+              if (typeof _rpAutoRefreshFinanceTab === 'function') {
+                var _epDate = parseDateStr ? parseDateStr(data.date) : data.date;
+                if (_epDate) _rpAutoRefreshFinanceTab(_epDate);
+              }
+            } catch(e) {
+              console.warn('customer_payments edit-sync failed:', e);
+              if (typeof Sentry !== 'undefined') Sentry.captureException(e);
+              alert('⚠️ Invoice saved but payment sync failed: ' + (e.message || e));
+            }
           })();
         }
       } else {
@@ -6320,6 +6495,10 @@ async function doSubmit(data) {
           created_by: currentUser || 'unknown'
         });
         if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+        if (typeof _rpAutoRefreshFinanceTab === 'function') {
+          var _npDate = parseDateStr ? parseDateStr(data.date) : data.date;
+          if (_npDate) _rpAutoRefreshFinanceTab(_npDate);
+        }
       } catch(e) {
         console.warn('customer_payments auto-create failed:', e);
         if (typeof Sentry !== 'undefined') Sentry.captureException(e);
@@ -13945,8 +14124,14 @@ function _rpInvalidateSummaryCache() {
 }
 
 function rpClearPanel() {
-  document.getElementById('rpSearchName').value = '';
-  document.getElementById('rpSearchInv').value = '';
+  var nameField = document.getElementById('rpSearchName');
+  var invField = document.getElementById('rpSearchInv');
+  nameField.value = '';
+  invField.value = '';
+  nameField.disabled = false;
+  nameField.style.opacity = '1';
+  invField.disabled = false;
+  invField.style.opacity = '1';
   document.getElementById('rpNameDropdown').style.display = 'none';
   document.getElementById('rpCustomerPanel').innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;font-family:Montserrat,sans-serif;font-size:0.85rem;">Search a customer by name or invoice number above.</div>';
   _rpCurrentCustomer = null;
@@ -14052,15 +14237,21 @@ async function rpRenderCustomerPanel(name, phone) {
   var payRows = payments.filter(function(p){ return p.type === 'payment'; }).map(function(p){
     var typeLabel = '<span style="color:#059669;">Payment</span>';
     var isLocked = false;
-    if (p.source === 'imported') {
+    var lockReason = '';
+    if (p.invoice_ref) {
       isLocked = true;
+      lockReason = 'Recorded from invoice ' + p.invoice_ref + ' — edit the invoice to change this amount';
+    } else if (p.source === 'imported') {
+      isLocked = true;
+      lockReason = 'Imported entry — cannot be deleted';
     } else {
       var createdDate = new Date(p.created_at);
       var daysSince = (new Date() - createdDate) / (1000*60*60*24);
       isLocked = daysSince > 40;
+      lockReason = 'Locked after 40 days';
     }
     var deleteBtn = isLocked
-      ? '<span style="color:#cbd5e1;font-size:0.7rem;" title="Locked after 40 days">🔒</span>'
+      ? '<span style="color:#cbd5e1;font-size:0.7rem;" title="' + lockReason + '">🔒</span>'
       : '<span onclick="rpDeletePayment(\'' + p.id + '\',\'' + encodeURIComponent(_rpCurrentCustomer.name) + '\')" style="cursor:pointer;color:#dc2626;font-weight:700;font-size:0.85rem;" title="Delete this entry">✕</span>';
     return '<tr><td style="padding:6px 8px;font-size:0.78rem;">' + fmtDateDisplay(p.payment_date) + '</td><td style="padding:6px 8px;font-size:0.78rem;">' + typeLabel + '</td><td style="padding:6px 8px;font-size:0.78rem;text-align:right;">Rs.' + fmt(p.amount) + '</td><td style="padding:6px 8px;text-align:center;">' + deleteBtn + '</td></tr>';
   }).join('');
@@ -14170,6 +14361,9 @@ async function rpAddEntry() {
     status.textContent = '✅ Entry added successfully!'; status.style.color = '#059669';
     document.getElementById('rpEntryAmount').value = '';
     await rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
+    if (type === 'payment' && typeof _rpAutoRefreshFinanceTab === 'function') {
+      _rpAutoRefreshFinanceTab(date);
+    }
 
   } catch(e) {
     console.error('rpAddEntry error:', e);
@@ -14198,6 +14392,46 @@ async function rpDeletePayment(paymentId, encodedName) {
     if (typeof Sentry !== 'undefined') Sentry.captureException(e);
     alert('Failed to delete: ' + (e.message || e));
   }
+}
+
+async function _rpAutoRefreshFinanceTab(paymentDate) {
+  try {
+    console.log('[RP-REFRESH] called for date:', paymentDate);
+    if (typeof sb === 'undefined' || !sb) { console.log('[RP-REFRESH] no sb'); return; }
+
+    var cpRes = await sb.from('customer_payments')
+      .select('amount,customer_name')
+      .eq('payment_date', paymentDate)
+      .eq('type', 'payment');
+    if (cpRes.error) { console.log('[RP-REFRESH] cpRes error:', cpRes.error); return; }
+    var total = (cpRes.data || []).reduce(function(s, p) { return s + (parseFloat(p.amount)||0); }, 0);
+    var rounded = Math.round(total);
+    console.log('[RP-REFRESH] total from customer_payments:', rounded);
+
+    if (typeof _finLedgerLocal !== 'undefined') {
+      var localIdx = _finLedgerLocal.findIndex(function(e) {
+        return e.entry_date === paymentDate && e.entry_type === 'income' && e.category === 'Sheets Cutting' && !e._deleted;
+      });
+      console.log('[RP-REFRESH] _finLedgerLocal entry index:', localIdx, localIdx !== -1 ? 'amount was: ' + _finLedgerLocal[localIdx].amount : 'not found');
+      if (localIdx !== -1) {
+        _finLedgerLocal[localIdx].amount = rounded;
+        if (typeof _savefinLocal === 'function') _savefinLocal();
+        console.log('[RP-REFRESH] cache updated to:', rounded);
+      }
+    }
+
+    var _dEl = document.getElementById('dailyDate');
+    var _cEl = document.getElementById('dailyCat');
+    var _tEl = document.getElementById('dailyType');
+    console.log('[RP-REFRESH] Finance tab date:', _dEl ? _dEl.value : 'no element', 'cat:', _cEl ? _cEl.value : 'no element', 'type:', _tEl ? _tEl.value : 'no element');
+    if (!_dEl || !_cEl || !_tEl) { console.log('[RP-REFRESH] Finance tab elements not found'); return; }
+    if (_tEl.value !== 'income' || _cEl.value !== 'Sheets Cutting') { console.log('[RP-REFRESH] Finance tab not on Sheets Cutting - skipping UI update'); return; }
+    if (_dEl.value !== paymentDate) { console.log('[RP-REFRESH] Finance tab date mismatch:', _dEl.value, '!==', paymentDate); return; }
+
+    console.log('[RP-REFRESH] calling onDailyCatChange');
+    if (typeof onDailyCatChange === 'function') onDailyCatChange();
+
+  } catch(e) { console.warn('[RP-REFRESH] error:', e); }
 }
 
 async function rpLookupByDate(dateVal) {
@@ -15892,7 +16126,6 @@ function onDailyCatChange() {
         e.entry_date===date && e.entry_type===type && e.category===cat && !e._deleted
       );
       if (existingLocal) {
-        amtInput.value = Math.round(existingLocal.amount);
         amtInput.readOnly = true;
         amtInput.style.background  = '#d1fae5';
         amtInput.style.color       = '#065f46';
@@ -15901,11 +16134,22 @@ function onDailyCatChange() {
         amtInput.style.borderColor = '#059669';
         amtInput.dataset.editLocalId = existingLocal.local_id;
         badge.style.display = 'none';
-        refreshBtn.style.display = 'none';
+        if (isSheetsCutting) {
+          refreshBtn.style.display = '';
+          refreshBtn.onclick = fetchAutoAmount;
+        } else {
+          refreshBtn.style.display = 'none';
+        }
         const _penBtn = document.getElementById('dailyAmtEditBtn');
         if (_penBtn) _penBtn.style.display = _shouldShowPen(type, cat, date, existingLocal.local_id) ? '' : 'none';
         if (saveBtn) { saveBtn.textContent = '✏️ Update Entry'; saveBtn.style.background = '#d97706'; }
-        if (info) { info.style.display=''; info.textContent=`✅ Recorded: Rs. ${Math.round(existingLocal.amount).toLocaleString('en-PK')} — click ✏️ to edit.`; info.style.color='#065f46'; }
+        if (isSheetsCutting) {
+          // Always fetch live amount from customer_payments — never use stale cache
+          fetchAutoAmount();
+        } else {
+          amtInput.value = Math.round(existingLocal.amount);
+          if (info) { info.style.display=''; info.textContent=`✅ Recorded: Rs. ${Math.round(existingLocal.amount).toLocaleString('en-PK')} — click ✏️ to edit.`; info.style.color='#065f46'; }
+        }
         return;
       }
       // Check Supabase
