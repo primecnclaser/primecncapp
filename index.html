@@ -925,7 +925,7 @@ body {
 #syncStatus.syncing  { background: #fef3c7; color: #d97706; }
 #syncStatus.offline  { background: #fee2e2; color: #dc2626; }
 @media print {
-  @page { size: A4 portrait; margin: 10mm; }
+  @page { size: A4 portrait; margin: 15mm 10mm 15mm 10mm; }
   body { background: white !important; padding: 0; margin: 0; width: 210mm; }
   .topnav, .tabs, .action-bar, .db-panel, .toast, .no-print { display: none !important; }
   #userBar, .tabs-sidebar { display: none !important; }
@@ -998,10 +998,10 @@ body {
   .items-section { overflow: visible !important; }
   .items-table { min-width: 0 !important; overflow: visible !important; }
 
-  /* ── Column widths for A4 (190mm usable) — 15 columns ── */
-  .items-table { font-size: 0.58rem !important; table-layout: fixed !important; width: 100% !important; }
-  .items-table thead th { padding: 3px 2px !important; font-size: 0.55rem !important; letter-spacing: 0 !important; }
-  .items-table td { padding: 3px 1px !important; font-size: 0.58rem !important; text-align: center !important; }
+  /* ── Column widths for A4 (180mm usable with 15mm margins) — 15 columns ── */
+  .items-table { font-size: 8pt !important; table-layout: fixed !important; width: 100% !important; }
+  .items-table thead th { padding: 4px 2px !important; font-size: 7.5pt !important; letter-spacing: 0 !important; }
+  .items-table td { padding: 4px 2px !important; font-size: 8pt !important; text-align: center !important; }
   .items-table td:nth-child(2) { text-align: center !important; }
 
   .items-table td:first-child,
@@ -1044,7 +1044,7 @@ body {
   .items-table td:nth-child(15)      { width: 22mm !important; }
   .amt-cell                          { font-size: 0.62rem !important; white-space: nowrap !important; text-align: center !important; }
 
-  .items-table tbody tr { break-inside: avoid; }
+  .items-table tbody tr { break-inside: avoid; page-break-inside: avoid; }
   .items-table tbody tr.empty-row { display: none !important; }
 
   /* Header layout */
@@ -1076,7 +1076,7 @@ body {
 
   /* Footer */
   .inv-footer { padding: 4px 8px !important; }
-  .inv-footer span { font-size: 0.52rem !important; }
+  .inv-footer span { font-size: 7pt !important; }
 }
 
 /* ─── MODAL ─── */
@@ -4670,6 +4670,58 @@ window.addEventListener('online', async () => {
       if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
     }
   } catch(_cpFlushE) { console.warn('cp_pending_sync online flush failed:', _cpFlushE); }
+  // Flush manual invoice pending queue
+  try {
+    var _manPend = JSON.parse(localStorage.getItem('manual_inv_pending') || '[]');
+    if (_manPend.length && typeof sb !== 'undefined' && sb) {
+      var _manStillPending = [];
+      for (var _mi = 0; _mi < _manPend.length; _mi++) {
+        var _me = _manPend[_mi];
+        try {
+          // Check not already saved
+          var _chk = await sb.from('excel_invoices').select('order_num').eq('order_num', _me.order_num).limit(1);
+          if (_chk.data && _chk.data.length > 0) continue; // already exists
+          var _insRow = {
+            customer_name:    _me.customer_name,
+            phone:            _me.phone || null,
+            order_num:        _me.order_num,
+            date:             _me.date,
+            total_bill:       _me.total_bill,
+            received:         _me.received,
+            bad_debt:         _me.bad_debt,
+            discount:         _me.discount,
+            remaining:        _me.remaining,
+            source:           'manual',
+            received_entries: _me.received_entries || null
+          };
+          var _insRes = await sb.from('excel_invoices').insert(_insRow).select().single();
+          if (_insRes.error) throw _insRes.error;
+          // Also sync customer_payments
+          var _invRef = 'INV-' + _me.order_num;
+          if (_me.received > 0) {
+            await sb.from('customer_payments').insert({ customer_name: _me.customer_name, phone: _me.phone||null, amount: _me.received, payment_date: _me.date, type: 'payment', source: 'non_imported', note: 'Initial payment — ' + _invRef, invoice_ref: _invRef, created_by: currentUser||'unknown' });
+          }
+          if (_me.recv1 > 0) {
+            await sb.from('customer_payments').insert({ customer_name: _me.customer_name, phone: _me.phone||null, amount: _me.recv1, payment_date: _me.date, type: 'payment', source: 'non_imported', note: 'Additional payment — ' + _invRef, invoice_ref: _invRef, created_by: currentUser||'unknown' });
+          }
+          if (_me.discount > 0) {
+            await sb.from('customer_payments').insert({ customer_name: _me.customer_name, phone: _me.phone||null, amount: _me.discount, payment_date: _me.date, type: 'discount', source: 'non_imported', note: 'Discount — ' + _invRef, invoice_ref: _invRef, created_by: currentUser||'unknown' });
+          }
+          if (_me.bad_debt > 0) {
+            await sb.from('customer_payments').insert({ customer_name: _me.customer_name, phone: _me.phone||null, amount: _me.bad_debt, payment_date: _me.date, type: 'bad_debt', source: 'non_imported', note: 'Bad debt — ' + _invRef, invoice_ref: _invRef, created_by: currentUser||'unknown' });
+          }
+          if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+        } catch(_meE) {
+          console.warn('Manual invoice flush failed:', _me.order_num, _meE);
+          _manStillPending.push(_me);
+        }
+      }
+      localStorage.setItem('manual_inv_pending', JSON.stringify(_manStillPending));
+      if (_manStillPending.length === 0 && _manPend.length > 0) {
+        toast('☁ ' + _manPend.length + ' manual invoice(s) synced to cloud');
+      }
+    }
+  } catch(_manFlushE) { console.warn('manual_inv_pending flush error:', _manFlushE); }
   if (_pbPendingEdits.length > 0 && sb) {
     var _toRetry = [..._pbPendingEdits];
     _pbPendingEdits = [];
@@ -7252,8 +7304,12 @@ async function saveExcelField(orderNum, field, value) {
   const amt = parseFloat(value);
   if (isNaN(amt) || amt < 0) { toast('❌ Invalid amount'); return; }
 
-  // Find the row in cache
-  const row = (_excelDBCache || []).find(function(r){ return r.order_num === orderNum; });
+  // Normalize orderNum — strip INV- prefix for Supabase queries
+  var _rawOrderNum = String(orderNum).replace(/^INV-/i, '');
+
+  // Find the row in cache (cache uses INV- prefix)
+  var _cacheKey = orderNum;
+  const row = (_excelDBCache || []).find(function(r){ return r.order_num === _cacheKey || r.order_num === ('INV-' + _rawOrderNum); });
   if (!row) { toast('❌ Row not found — reload DB tab'); return; }
 
   if (field === 'total_bill') {
@@ -7261,7 +7317,7 @@ async function saveExcelField(orderNum, field, value) {
     row.remaining = amt - (parseFloat(row.received)||0) - (parseFloat(row.received1)||0) - (parseFloat(row.discount)||0);
     try {
       if (typeof sb !== 'undefined' && sb)
-        await sb.from('excel_invoices').update({ total_bill: amt, remaining: row.remaining }).eq('order_num', orderNum);
+        await sb.from('excel_invoices').update({ total_bill: amt, remaining: row.remaining }).eq('order_num', _rawOrderNum);
       toast('✅ Total Bill updated to Rs.' + fmt(amt) + ' for ' + orderNum);
     } catch(e) { toast('❌ Save failed: ' + e.message); return; }
 
@@ -7281,10 +7337,9 @@ async function saveExcelField(orderNum, field, value) {
 
     if (typeof sb !== 'undefined' && sb) {
       // Always save remaining — use .select() so we can verify rows were actually updated
-      const _oNum = (parseInt(orderNum) == orderNum) ? parseInt(orderNum) : orderNum;
       const { data: _rd, error: _re } = await sb.from('excel_invoices')
         .update({ remaining: row.remaining })
-        .eq('order_num', _oNum)
+        .eq('order_num', _rawOrderNum)
         .select('order_num');
       if (_re) {
         // Revert in-memory change so cache stays consistent with DB
@@ -7300,7 +7355,7 @@ async function saveExcelField(orderNum, field, value) {
         toast('❌ Order ' + orderNum + ' not found in database — reload the DB tab and try again.'); return;
       }
       // Also save received_entries (best effort — column may not exist in all installs)
-      try { await sb.from('excel_invoices').update({ received_entries: JSON.stringify(row.received_entries) }).eq('order_num', _oNum); } catch(e) {}
+      try { await sb.from('excel_invoices').update({ received_entries: JSON.stringify(row.received_entries) }).eq('order_num', _rawOrderNum); } catch(e) {}
     }
     toast('✅ Rs.' + fmt(amt) + ' added on ' + entryDate + ' for order ' + orderNum);
     const _finDate2 = (document.getElementById('dailyDate')||{}).value||'';
@@ -7312,8 +7367,33 @@ async function saveExcelField(orderNum, field, value) {
     row.discount = amt;
     row.remaining = (parseFloat(row.total_bill)||0) - (parseFloat(row.received)||0) - (parseFloat(row.received1)||0) - amt - (parseFloat(row.bad_debt)||0);
     try {
-      if (typeof sb !== 'undefined' && sb)
-        await sb.from('excel_invoices').update({ discount: amt, remaining: row.remaining }).eq('order_num', orderNum);
+      if (typeof sb !== 'undefined' && sb) {
+        await sb.from('excel_invoices').update({ discount: amt, remaining: row.remaining }).eq('order_num', _rawOrderNum);
+        // Sync customer_payments discount entry
+        var _invRefD = 'INV-' + orderNum;
+        var _cpD = await sb.from('customer_payments').select('id').eq('invoice_ref', _invRefD).eq('type','discount').limit(1);
+        if (_cpD.data && _cpD.data.length > 0) {
+          if (amt > 0) {
+            await sb.from('customer_payments').update({ amount: amt }).eq('id', _cpD.data[0].id);
+          } else {
+            await sb.from('customer_payments').delete().eq('id', _cpD.data[0].id);
+          }
+        } else if (amt > 0) {
+          await sb.from('customer_payments').insert({
+            customer_name: row.customer_name,
+            phone: row.phone || null,
+            amount: amt,
+            payment_date: row.date,
+            type: 'discount',
+            source: 'non_imported',
+            note: 'Discount — ' + _invRefD,
+            invoice_ref: _invRefD,
+            created_by: currentUser || 'unknown'
+          });
+        }
+        if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+        if (typeof _searchNameList !== 'undefined') _searchNameList = null;
+      }
       toast('✅ Discount updated to Rs.' + fmt(amt) + ' for ' + orderNum);
     } catch(e) { toast('❌ Save failed: ' + e.message); return; }
 
@@ -7321,8 +7401,33 @@ async function saveExcelField(orderNum, field, value) {
     row.bad_debt = amt;
     row.remaining = (parseFloat(row.total_bill)||0) - (parseFloat(row.received)||0) - (parseFloat(row.received1)||0) - (parseFloat(row.discount)||0) - amt;
     try {
-      if (typeof sb !== 'undefined' && sb)
-        await sb.from('excel_invoices').update({ bad_debt: amt, remaining: row.remaining }).eq('order_num', orderNum);
+      if (typeof sb !== 'undefined' && sb) {
+        await sb.from('excel_invoices').update({ bad_debt: amt, remaining: row.remaining }).eq('order_num', _rawOrderNum);
+        // Sync customer_payments bad_debt entry
+        var _invRefB = 'INV-' + orderNum;
+        var _cpB = await sb.from('customer_payments').select('id').eq('invoice_ref', _invRefB).eq('type','bad_debt').limit(1);
+        if (_cpB.data && _cpB.data.length > 0) {
+          if (amt > 0) {
+            await sb.from('customer_payments').update({ amount: amt }).eq('id', _cpB.data[0].id);
+          } else {
+            await sb.from('customer_payments').delete().eq('id', _cpB.data[0].id);
+          }
+        } else if (amt > 0) {
+          await sb.from('customer_payments').insert({
+            customer_name: row.customer_name,
+            phone: row.phone || null,
+            amount: amt,
+            payment_date: row.date,
+            type: 'bad_debt',
+            source: 'non_imported',
+            note: 'Bad debt — ' + _invRefB,
+            invoice_ref: _invRefB,
+            created_by: currentUser || 'unknown'
+          });
+        }
+        if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+        if (typeof _searchNameList !== 'undefined') _searchNameList = null;
+      }
       toast('✅ Bad debt set to Rs.' + fmt(amt) + ' for order ' + orderNum);
     } catch(e) { toast('❌ Save failed: ' + e.message); return; }
   }
@@ -7384,21 +7489,51 @@ function editExcelInvoice(oNum) {
         var d  = (document.getElementById('_exedit_disc')||{}).value;
         var b  = (document.getElementById('_exedit_bd')||{}).value;
         closeModal();
+        var _anyChange = false;
         if (rv !== '') {
           var rvAmt = parseFloat(rv);
           if (!isNaN(rvAmt) && rvAmt >= 0) {
+            _anyChange = true;
             row.received = rvAmt;
             row.remaining = (parseFloat(row.total_bill)||0) - rvAmt - (parseFloat(row.received1)||0) - (parseFloat(row.discount)||0) - (parseFloat(row.bad_debt)||0);
             if (typeof sb !== 'undefined' && sb) {
-              try { await sb.from('excel_invoices').update({ received: rvAmt, remaining: row.remaining }).eq('order_num', oNum); }
-              catch(e) { toast('❌ Received save failed: ' + e.message); }
+              try {
+                await sb.from('excel_invoices').update({
+                  received: rvAmt,
+                  remaining: row.remaining
+                }).eq('order_num', oNum);
+                // Sync customer_payments
+                var _invRef = 'INV-' + oNum;
+                var _cpChk = await sb.from('customer_payments').select('id,amount').eq('invoice_ref', _invRef).eq('type','payment').limit(1);
+                if (_cpChk.data && _cpChk.data.length > 0) {
+                  if (rvAmt > 0) {
+                    await sb.from('customer_payments').update({ amount: rvAmt }).eq('id', _cpChk.data[0].id);
+                  } else {
+                    await sb.from('customer_payments').delete().eq('id', _cpChk.data[0].id);
+                  }
+                } else if (rvAmt > 0) {
+                  await sb.from('customer_payments').insert({
+                    customer_name: row.customer_name,
+                    phone: row.phone || null,
+                    amount: rvAmt,
+                    payment_date: row.date,
+                    type: 'payment',
+                    source: 'non_imported',
+                    note: 'Invoice payment — ' + _invRef,
+                    invoice_ref: _invRef,
+                    created_by: currentUser || 'unknown'
+                  });
+                }
+                if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+                if (typeof _searchNameList !== 'undefined') _searchNameList = null;
+              } catch(e) { toast('❌ Received save failed: ' + e.message); }
             }
           }
         }
-        if (t !== '') saveExcelField(oNum, 'total_bill', t);
-        if (d !== '') saveExcelField(oNum, 'discount', d);
-        if (b !== '') saveExcelField(oNum, 'bad_debt', b);
-        renderDB(); renderSummary();
+        if (t !== '' && parseFloat(t) !== parseFloat(row.total_bill||0)) { _anyChange = true; await saveExcelField(oNum, 'total_bill', t); }
+        if (d !== '' && parseFloat(d) !== parseFloat(row.discount||0)) { _anyChange = true; await saveExcelField(oNum, 'discount', d); }
+        if (b !== '' && parseFloat(b) !== parseFloat(row.bad_debt||0)) { _anyChange = true; await saveExcelField(oNum, 'bad_debt', b); }
+        if (_anyChange) { renderDB(); renderSummary(); toast('✅ Invoice ' + oNum + ' updated successfully'); }
       }
     }
   ]);
@@ -10234,7 +10369,7 @@ function viewInvoice(idx) {
 </style>
 
 <style>
-  @page { size: A4 portrait; margin: 10mm; }
+  @page { size: A4 portrait; margin: 15mm 10mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font-family: 'Montserrat', sans-serif; background: white; font-size: 0.82rem; width: 210mm; max-width: 210mm; }
 
@@ -10253,7 +10388,7 @@ function viewInvoice(idx) {
   table.items { width: 100%; border-collapse: collapse; table-layout: fixed; }
   table.items thead tr { background: ${_ps.c1}; }
   table.items thead th {
-    color: rgba(255,255,255,0.85); padding: 5px 3px; font-size: 0.56rem; font-weight: 600;
+    color: rgba(255,255,255,0.85); padding: 5px 3px; font-size: 7.5pt; font-weight: 600;
     text-align: center; border-right: 1px solid rgba(255,255,255,0.08);
     font-family: 'JameelNooriNastaliq',serif; direction: rtl; line-height: 1.9;
   }
@@ -10276,7 +10411,7 @@ function viewInvoice(idx) {
   table.items thead th.sqft-th    { background: rgba(26,122,74,0.12); color: #a8dfc0; }
   table.items thead th.amt-th     { color: #f0c96e; }
 
-  table.items tbody td { padding: 4px 3px; font-size: 0.66rem; color: #0f1e45;
+  table.items tbody td { padding: 4px 3px; font-size: 8pt; color: #0f1e45;
                          border-bottom: 1px solid #ede6d8; text-align: center; }
   table.items tbody tr:nth-child(even) { background: #f5ede0 !important; }
 
@@ -11568,15 +11703,33 @@ async function addHistoricalInvoice() {
       received_entries: recv1 > 0 ? JSON.stringify([{ amount: recv1, date: date }]) : null
     };
 
-    if (sb) {
-      var res = await sb.from('excel_invoices').insert(newRow).select().single();
-      if (res.error) throw res.error;
-      newRow.id = res.data.id;
+    // ── OFFLINE-FIRST: save to pending queue immediately ──
+    var _manualPending = JSON.parse(localStorage.getItem('manual_inv_pending') || '[]');
+    var _pendingEntry = Object.assign({}, newRow, { recv1: recv1, _queuedAt: new Date().toISOString() });
+    _manualPending.push(_pendingEntry);
+    localStorage.setItem('manual_inv_pending', JSON.stringify(_manualPending));
+
+    // Add to local cache immediately so uniqueness checks work
+    if (Array.isArray(_excelDBCache)) {
+      _excelDBCache.push(Object.assign({}, newRow, { received1: recv1, order_num: 'INV-' + orderNo }));
     }
 
-    // Add to local cache so subsequent uniqueness checks work
-    if (Array.isArray(_excelDBCache)) {
-      _excelDBCache.push(Object.assign({}, newRow, { received1: recv1 }));
+    // Try Supabase sync if online
+    if (sb && navigator.onLine) {
+      try {
+        var res = await sb.from('excel_invoices').insert(newRow).select().single();
+        if (res.error) throw res.error;
+        newRow.id = res.data.id;
+        // Success — remove from pending queue
+        var _mp2 = JSON.parse(localStorage.getItem('manual_inv_pending') || '[]');
+        _mp2 = _mp2.filter(function(e){ return e.order_num !== orderNo; });
+        localStorage.setItem('manual_inv_pending', JSON.stringify(_mp2));
+      } catch(_syncE) {
+        console.warn('Manual invoice Supabase sync failed, queued:', _syncE);
+        toast('📴 Saved locally — will sync when online');
+      }
+    } else {
+      toast('📴 Offline — saved locally, will sync when online');
     }
 
     // Add to session recent list
@@ -11584,6 +11737,74 @@ async function addHistoricalInvoice() {
     if (_histRecent.length > 20) _histRecent.pop();
 
     toast('✅ Saved: ' + name + ' — Invoice #' + orderNo + '  Remaining: Rs.' + Math.round(rem).toLocaleString('en-PK'));
+
+    // ── Auto-create customer_payments entries for received amounts ──
+    if (sb && (recv > 0 || recv1 > 0)) {
+      var _invRef = 'INV-' + orderNo;
+      try {
+        // Primary received amount
+        if (recv > 0) {
+          await sb.from('customer_payments').insert({
+            customer_name: name,
+            phone:         phone || null,
+            amount:        recv,
+            payment_date:  date,
+            type:          'payment',
+            source:        'non_imported',
+            note:          'Initial payment — ' + _invRef,
+            invoice_ref:   _invRef,
+            created_by:    currentUser || 'unknown'
+          });
+        }
+        // Secondary received amount (recv1)
+        if (recv1 > 0) {
+          await sb.from('customer_payments').insert({
+            customer_name: name,
+            phone:         phone || null,
+            amount:        recv1,
+            payment_date:  date,
+            type:          'payment',
+            source:        'non_imported',
+            note:          'Additional payment — ' + _invRef,
+            invoice_ref:   _invRef,
+            created_by:    currentUser || 'unknown'
+          });
+        }
+        // Bad debt entry
+        if (bd > 0) {
+          await sb.from('customer_payments').insert({
+            customer_name: name,
+            phone:         phone || null,
+            amount:        bd,
+            payment_date:  date,
+            type:          'bad_debt',
+            source:        'non_imported',
+            note:          'Bad debt — ' + _invRef,
+            invoice_ref:   _invRef,
+            created_by:    currentUser || 'unknown'
+          });
+        }
+        // Discount entry
+        if (disc > 0) {
+          await sb.from('customer_payments').insert({
+            customer_name: name,
+            phone:         phone || null,
+            amount:        disc,
+            payment_date:  date,
+            type:          'discount',
+            source:        'non_imported',
+            note:          'Discount — ' + _invRef,
+            invoice_ref:   _invRef,
+            created_by:    currentUser || 'unknown'
+          });
+        }
+        if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+        if (typeof _searchNameList !== 'undefined') _searchNameList = null;
+      } catch(_cpE) {
+        console.warn('customer_payments auto-create (manual invoice) failed:', _cpE);
+        if (typeof Sentry !== 'undefined') Sentry.captureException(_cpE);
+      }
+    }
 
     // Clear fields (keep date for quick consecutive entries)
     ['histName','histPhone','histOrder','histBill','histRecv','histRecv1','histDisc','histBd'].forEach(function(id) {
