@@ -1,7 +1,7 @@
 <!--
 ╔══════════════════════════════════════════════════════════╗
 ║           PRIME CNC — index.html STRUCTURE MAP           ║
-║                    v1.0.2 | Jun 2026                     ╠
+║                    v1.0.4 | Jun 2026                     ╠
 ╠══════════════════════════════════════════════════════════╣
 ║  1.  HEAD / META                          ~line 1        ║
 ║  2.  CSS STYLES                           ~line 20       ║
@@ -2210,7 +2210,7 @@ body {
 <!-- ║  SECTION 8 — USER BAR / HEADER                     ║ -->
 <!-- ═══════════════════════════════════════════════════════ -->
 <div id="userBar">
-  <div id="_ubBrand"><span id="_ubBrandText">⚙️ Complete Shop System</span><span id="_appVersionLabel" style="font-size:0.6rem;font-weight:700;color:#f59e0b;font-family:Montserrat,sans-serif;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:middle;">v1.0.3-STAGING</span></div>
+  <div id="_ubBrand"><span id="_ubBrandText">⚙️ Complete Shop System</span><span id="_appVersionLabel" style="font-size:0.6rem;font-weight:700;color:#f59e0b;font-family:Montserrat,sans-serif;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:middle;">v1.0.4-STAGING</span></div>
   <div id="topShopName"></div>
   <!-- Col 3: all SPAN children — no div:last-child matches inside -->
   <div id="_ubProfile">
@@ -4832,8 +4832,8 @@ let _dbPage = 1;               // pagination page for submitted tab
 let _dbExactName = null;       // exact name selected from dropdown (null = partial/type search)
 let _searchPage = 1;           // pagination page for search tab
 
-const APP_VERSION = '1.0.3';
-Sentry.setTag("app_version", "1.0.3");
+const APP_VERSION = '1.0.4';
+Sentry.setTag("app_version", "1.0.4");
 const storedVersion = localStorage.getItem('app_version');
 if (storedVersion !== APP_VERSION) {
   localStorage.removeItem('fin_ledger_local');
@@ -6658,7 +6658,7 @@ function _savePDFEl(el, filename) {
     margin: 5,
     filename: _fname,
     image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true, logging: false, letterRendering: true, allowTaint: true, backgroundColor: '#ffffff' },
+    html2canvas: { scale: 3, useCORS: true, logging: false, letterRendering: true, allowTaint: true, backgroundColor: '#ffffff' },
     jsPDF: { unit: 'mm', format: 'a4', orientation: _orient, compress: true },
     pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
   }).from(el).outputPdf('blob').then(function(blob) {
@@ -6698,7 +6698,7 @@ function _savePDFMainInvoice() {
     margin: 5,
     filename: 'Prime-CNC-' + invNum + '.pdf',
     image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true, logging: false, letterRendering: true, allowTaint: true, backgroundColor: '#ffffff' },
+    html2canvas: { scale: 3, useCORS: true, logging: false, letterRendering: true, allowTaint: true, backgroundColor: '#ffffff' },
     jsPDF: { unit: 'mm', format: 'a4', orientation: _mainOrient, compress: true },
     pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
   }).from(el).save().then(() => {
@@ -9570,17 +9570,19 @@ function printRemainingList(mode) {
     + '<title>Remaining in Market<\/title>'
     + '<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">'
     + '<style>'
-    + '@page{size:A4 portrait;margin:10mm;}'
+    + '@page{size:A4 portrait;margin:15mm 10mm;}'
     + '*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
     + 'body{font-family:Montserrat,Arial,sans-serif;background:#fff;color:#1e293b;font-size:13px;width:210mm;}'
+    + ''
     + _rHdrCSS
     + '.page-body{padding:20px 24px;}'
     + 'table{width:100%;border-collapse:collapse;}'
     + 'thead{display:table-header-group;}'
     + 'thead tr{background:#1e293b;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
-    + 'thead th{padding:8px 10px;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap;}'
+    + 'thead th{padding:8px 10px;font-size:8pt;text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap;}'
     + 'tbody tr:nth-child(even){background:#fff8f8;}'
-    + 'tbody td{padding:7px 10px;border-bottom:1px solid #f0e0e0;}'
+    + 'tbody tr{page-break-inside:avoid;break-inside:avoid;}'
+    + 'tbody td{padding:7px 10px;border-bottom:1px solid #f0e0e0;font-size:8pt;}'
     + '.grand-total{background:#1e293b;color:#fff;display:grid;grid-template-columns:1fr auto auto auto auto;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
     + '.gt-label{padding:9px 10px;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:rgba(255,255,255,0.6);}'
     + '.gt-val{padding:9px 10px;font-size:0.82rem;font-weight:800;text-align:right;white-space:nowrap;}'
@@ -9604,6 +9606,7 @@ function printRemainingList(mode) {
     + '<div class="gt-val" style="color:#f87171;">Rs.&nbsp;' + Math.round(d.grandRem).toLocaleString('en-PK') + '<\/div>'
     + '<\/div><\/div>'
     + _rFtrHTML
+    + ''
     + '<\/body><\/html>';
   if (mode === 'pdf') { _silentPDFFromHtml(_rHtml, 'Remaining-in-Market.pdf'); return; }
   if (typeof navigator !== 'undefined' && /Electron\//.test(navigator.userAgent)) { _electronPrintHtml(_rHtml); return; }
@@ -10393,12 +10396,12 @@ function viewInvoice(idx) {
     font-family: 'JameelNooriNastaliq',serif; direction: rtl; line-height: 1.9;
   }
   table.items thead th.en {
-    font-family: 'Montserrat', sans-serif; direction: ltr; font-size: 0.55rem;
+    font-family: 'Montserrat', sans-serif; direction: ltr; font-size: 7.5pt;
     text-transform: uppercase; letter-spacing: 0.3px; line-height: 1.4;
   }
   /* Sub-header row */
   table.items thead tr.sub-head th {
-    font-size: 0.58rem; padding: 3px 2px;
+    font-size: 7.5pt; padding: 3px 2px;
     border-top: 1px solid rgba(255,255,255,0.12);
     font-family: 'JameelNooriNastaliq',serif; direction: rtl; line-height: 1.8;
   }
@@ -10475,6 +10478,7 @@ function viewInvoice(idx) {
   .print-btn .p-btn { background: #0f1e45; color: #f0c96e; }
   .print-btn .c-btn { background: #ccc; color: #333; }
   @font-face { font-family: "JameelNooriNastaliq"; font-display: block; src: url("JameelNooriNastaleeq.ttf") format("truetype"); }
+  tbody tr { page-break-inside: avoid; break-inside: avoid; }
   @media print { .print-btn { display: none !important; } }
 </style>
 </head>
@@ -15107,13 +15111,13 @@ function _printSearchPanel(mode) {
     var recH  = r.recv  > 0 ? Math.round(r.recv).toLocaleString('en-PK')  : '—';
     var r1H   = r.r1sum > 0 ? Math.round(r.r1sum).toLocaleString('en-PK') : '—';
     return '<tr style="'+even+'border-bottom:1px solid #e2e8f0;">'
-      + '<td style="padding:6px 8px;text-align:center;color:#94a3b8;font-size:0.72rem;">'+(i+1)+'</td>'
-      + '<td style="padding:6px 8px;font-size:0.75rem;white-space:nowrap;">'+dateD+'</td>'
-      + '<td style="padding:6px 8px;font-size:0.75rem;color:#4f46e5;font-weight:700;">'+r.invNum+'</td>'
-      + '<td style="padding:6px 8px;font-size:0.78rem;font-weight:700;text-align:right;">'+Math.round(r.bill).toLocaleString('en-PK')+'</td>'
-      + '<td style="padding:6px 8px;font-size:0.75rem;color:#059669;text-align:right;">'+recH+'</td>'
-      + '<td style="padding:6px 8px;font-size:0.75rem;color:#0f766e;text-align:right;">'+r1H+'</td>'
-      + '<td style="padding:6px 8px;font-size:0.75rem;color:#d97706;text-align:right;">'+discH+'</td>'
+      + '<td style="padding:6px 8px;text-align:center;color:#94a3b8;font-size:8pt;">'+(i+1)+'</td>'
+      + '<td style="padding:6px 8px;font-size:8pt;white-space:nowrap;">'+dateD+'</td>'
+      + '<td style="padding:6px 8px;font-size:8pt;color:#4f46e5;font-weight:700;">'+r.invNum+'</td>'
+      + '<td style="padding:6px 8px;font-size:8pt;font-weight:700;text-align:right;">'+Math.round(r.bill).toLocaleString('en-PK')+'</td>'
+      + '<td style="padding:6px 8px;font-size:8pt;color:#059669;text-align:right;">'+recH+'</td>'
+      + '<td style="padding:6px 8px;font-size:8pt;color:#0f766e;text-align:right;">'+r1H+'</td>'
+      + '<td style="padding:6px 8px;font-size:8pt;color:#d97706;text-align:right;">'+discH+'</td>'
       + '</tr>';
   }).join('');
 
@@ -15147,8 +15151,9 @@ function _printSearchPanel(mode) {
     + 'table{width:100%;border-collapse:collapse;}'
     + 'thead{display:table-header-group;}'
     + 'thead tr{background:#1e293b;}'
-    + 'thead th{padding:8px 8px;color:#cbd5e1;font-size:0.58rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;white-space:nowrap;}'
+    + 'thead th{padding:8px 8px;color:#cbd5e1;font-size:8pt;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;white-space:nowrap;}'
     + 'tbody tr:nth-child(even){background:#f8fafc;}'
+    + 'tbody tr{page-break-inside:avoid;break-inside:avoid;}'
     + 'tbody td{padding:6px 8px;border-bottom:1px solid #f1f5f9;vertical-align:middle;}'
 
     // tfoot only on last page
@@ -15157,9 +15162,10 @@ function _printSearchPanel(mode) {
     + 'tfoot td{padding:8px 8px;color:#fff;font-weight:800;font-size:0.78rem;}'
 
     + '.footer{padding:10px 20px;font-size:0.6rem;color:#94a3b8;text-align:center;border-top:1px solid #f1f5f9;margin-top:4px;}'
+    + ''
     + '@media print{'
-    +   '@page{size:A4 portrait;margin:10mm;}'
-    +   'body{padding:0;width:210mm;}'
+    +   '@page{size:A4 portrait;margin:15mm 10mm;}'
+    +   'body{padding:0;width:190mm;}'
     +   'thead{display:table-header-group;}'
     +   'tfoot{display:table-footer-group;}'
     +   '.no-print{display:none;}'
@@ -15226,6 +15232,7 @@ function _printSearchPanel(mode) {
     + '<\/table>');
 
   var _spFooter = '<div class="footer">'+shopNameEn+' &nbsp;|&nbsp; Printed: '+new Date().toLocaleString('en-PK')+' &nbsp;|&nbsp; Invoice record from April 2025 to present. Computer-generated — no signature required.<\/div>'
+    + ''
     + '<div class="no-print" style="display:flex;gap:10px;justify-content:center;padding:14px;background:#f8fafc;border-top:1px solid #e2e8f0;">'
     + '<button onclick="window.print()" style="padding:9px 22px;border:none;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:700;background:#1e40af;color:#fff;font-family:Montserrat,sans-serif;">🖨️ Print<\/button>'
     + '<\/div>'
@@ -15243,7 +15250,7 @@ function _printSearchPanel(mode) {
   } else {
     var _spOrient = _getPageOrientation(pw.document.body);
     var _spStyle = pw.document.createElement('style');
-    _spStyle.textContent = '@page{size:A4 ' + _spOrient + ';margin:10mm;}body{width:210mm;}';
+    _spStyle.textContent = '@page{size:A4 ' + _spOrient + ';margin:15mm 10mm;}body{width:190mm;}';
     pw.document.head.appendChild(_spStyle);
     var _doPrintSP = function(){ try{pw.print();}catch(e){} };
     if (pw.document.fonts) { pw.document.fonts.ready.then(_doPrintSP); }
@@ -18590,11 +18597,12 @@ function printLedger(mode) {
     + '.sub{font-size:0.78rem;color:#64748b;margin-bottom:14px;padding:4px 28px;}'
     + '.kpi{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;padding:0 28px;}'
     + '.wrap{padding:0 28px;}'
-    + 'table{width:100%;border-collapse:collapse;font-size:0.78rem;}thead tr{background:#1e293b;color:#fff;}'
-    + 'th{padding:7px 10px;text-align:left;font-size:0.65rem;text-transform:uppercase;}'
-    + 'tbody tr:nth-child(even){background:#f8fafc;}td{padding:6px 10px;border-bottom:1px solid #e2e8f0;}'
+    + 'table{width:100%;border-collapse:collapse;font-size:8pt;}thead tr{background:#1e293b;color:#fff;}'
+    + 'th{padding:7px 10px;text-align:left;font-size:7.5pt;text-transform:uppercase;}'
+    + 'tbody tr{page-break-inside:avoid;break-inside:avoid;}tbody tr:nth-child(even){background:#f8fafc;}td{padding:6px 10px;border-bottom:1px solid #e2e8f0;font-size:8pt;}'
     + 'td:last-child{text-align:right;}.footer{margin-top:18px;font-size:0.68rem;color:#94a3b8;text-align:right;padding:10px 28px;}'
-    + '@page{size:A4 portrait;margin:10mm;}body{width:210mm;}'
+    + '@page{size:A4 portrait;margin:15mm 10mm;}body{width:190mm;}'
+    + ''
     + '@media print{body{padding:0;}}'
     + '<\/style><\/head><body>'
     + _printHeaderHtml(_ls, _ledRightHtml)
@@ -18605,13 +18613,15 @@ function printLedger(mode) {
     + '<table><thead><tr><th>Date<\/th><th>Source<\/th><th>Type<\/th><th>Category<\/th><th>Note<\/th><th style="text-align:right;">Amount (Rs.)<\/th><\/tr><\/thead>'
     + '<tbody>'+tableRows+'<\/tbody><\/table>'
     + '<div class="footer">'+_ls.en+' &nbsp;|&nbsp; '+new Date().toLocaleDateString('en-PK')+'<\/div>'
-    + '<\/div><\/body><\/html>';
+    + '<\/div>'
+    + ''
+    + '<\/body><\/html>';
   if (mode === 'pdf') { _silentPDFFromHtml(_ledHtml, _ledFname); return; }
   if (typeof navigator !== 'undefined' && /Electron\//.test(navigator.userAgent)) { _electronPrintHtml(_ledHtml); return; }
   const pw = window.open('','_blank');
   if (!pw) { toast('Allow popups to print'); return; }
   var _ledOrient = _getPageOrientation(_ledHtml);
-  _ledHtml = _ledHtml.replace(/@page\s*\{[^}]*\}/g, '@page{size:A4 '+_ledOrient+';margin:10mm;}');
+  _ledHtml = _ledHtml.replace(/@page\s*\{[^}]*\}/g, '@page{size:A4 '+_ledOrient+';margin:15mm 10mm;}');
   pw.document.write(_ledHtml);
   pw.document.close();
   _applyPrintLogo(pw, _ls.logo);
@@ -20945,36 +20955,38 @@ function salPdfExport(mode){
   var _salHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Salary Report — '+empName+'<\/title>'
   +'<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">'
   +'<style>'
-  +'@page{size:A4 portrait;margin:10mm;}'
+  +'@page{size:A4 portrait;margin:15mm 10mm;}'
   +'*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
   +'body{font-family:Montserrat,Segoe UI,sans-serif;background:#fff;color:#1e293b;font-size:13px;width:210mm;}'
   + _printHeaderCSS(_salS)
   +'tfoot{display:table-row-group!important;}'
   +'.page-body{padding:16px 28px;}'
   +'table{width:100%;border-collapse:collapse;}'
-  +'thead tr:first-child th{background:#1e293b;color:#fff;padding:8px 10px;font-size:0.75rem;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
+  +'thead tr:first-child th{background:#1e293b;color:#fff;padding:8px 10px;font-size:8pt;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
   +'thead tr:first-child th:first-child{text-align:left;}'
   +'thead tr:last-child td{background:#334155;color:#64748b;padding:2px 10px;font-size:0.6rem;text-align:right;}'
   +'thead tr:last-child td:first-child{text-align:left;}'
   +'tbody tr:nth-child(even){background:#f8fafc;}'
-  +'tbody td{padding:7px 10px;font-size:0.78rem;border-bottom:1px solid #e2e8f0;text-align:right;}'
+  +'tbody td{padding:7px 10px;font-size:8pt;border-bottom:1px solid #e2e8f0;text-align:right;page-break-inside:avoid;break-inside:avoid;}'
   +'tbody td:first-child{text-align:left;font-weight:600;}'
   +'tfoot td{background:#1e293b;color:#fff;padding:9px 10px;font-size:0.8rem;font-weight:700;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
   +'tfoot td:first-child{text-align:left;}'
   +'@media print{button,input,select{display:none!important;}}'
+  +''
   +'<\/style><\/head><body>'
   + _printHeaderHtml(_salS, _salRight)
   +'<div class="page-body">'
   + contentHtml
   +'<\/div>'
   + _buildPrintFooterHtml(_salS)
+  + ''
   +'<\/body><\/html>';
   if (mode === 'pdf') { _silentPDFFromHtml(_salHtml, _salFname); return; }
   if (typeof navigator !== 'undefined' && /Electron\//.test(navigator.userAgent)) { _electronPrintHtml(_salHtml); return; }
   const w = window.open('','_blank','width=900,height=700');
   if (!w) { toast('Allow popups to print'); return; }
   var _salOrient = _getPageOrientation(_salHtml);
-  _salHtml = _salHtml.replace(/@page\s*\{[^}]*\}/g, '@page{size:A4 '+_salOrient+';margin:10mm;}');
+  _salHtml = _salHtml.replace(/@page\s*\{[^}]*\}/g, '@page{size:A4 '+_salOrient+';margin:15mm 10mm;}');
   w.document.write(_salHtml);
   w.document.close();
   _applyPrintLogo(w, _salS.logo);
@@ -22514,10 +22526,11 @@ async function printCustStatement(mode) {
     + '.sc:last-child{border-right:none;}'
     + 'table{width:100%;border-collapse:collapse;table-layout:fixed;}'
     + 'thead tr{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
-    + 'thead th{padding:5px 6px;font-size:0.58rem;text-transform:uppercase;letter-spacing:0.4px;font-weight:700;white-space:nowrap;overflow:hidden;}'
+    + 'thead th{padding:5px 6px;font-size:8pt;text-transform:uppercase;letter-spacing:0.4px;font-weight:700;white-space:nowrap;overflow:hidden;}'
     + 'tbody tr{page-break-inside:avoid!important;break-inside:avoid!important;}'
     + 'tbody td{padding:4px 6px;border-bottom:1px solid #f1f5f9;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
     + '.footer{margin-top:10px;font-size:0.55rem;color:#94a3b8;text-align:center;border-top:1px solid #f1f5f9;padding-top:6px;}'
+    + ''
     + '.grand-total{page-break-inside:avoid;break-inside:avoid;margin-top:10px;border:1.5px solid #1e293b;border-radius:8px;overflow:hidden;}'
     + '.grand-total .gt-head{background:#1e293b;padding:5px 12px;font-size:0.55rem;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#94a3b8;}'
     + '.grand-total .gt-body{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;}'
@@ -22525,7 +22538,7 @@ async function printCustStatement(mode) {
     + '.grand-total .gt-cell:last-child{border-right:none;}'
     + '.grand-total .gt-lbl{font-size:0.55rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;display:block;margin-bottom:3px;}'
     + '.grand-total .gt-val{font-size:0.88rem;font-weight:800;display:block;}'
-    + '@page{size:A4 portrait;margin:8mm;}'
+    + '@page{size:A4 portrait;margin:15mm 10mm;}'
     + '@media print{html,body{width:194mm;}.page-body{padding:6px 8px;}}'
     + '<\/style><\/head><body>'
 
@@ -22612,7 +22625,7 @@ async function printCustStatement(mode) {
   var pw = window.open('', '_blank', 'width=960,height=720');
   if (!pw) { alert('Please allow popups for this site to print.'); return; }
   var _csOrient = _getPageOrientation(_csHtml);
-  _csHtml = _csHtml.replace(/@page\s*\{[^}]*\}/g, '@page{size:A4 '+_csOrient+';margin:10mm;}');
+  _csHtml = _csHtml.replace(/@page\s*\{[^}]*\}/g, '@page{size:A4 '+_csOrient+';margin:15mm 10mm;}');
   pw.document.write(_csHtml);
   pw.document.close();
   var _stmtLogo = _ctrlLogo || localStorage.getItem('inv_logo') || d.logo || '';
