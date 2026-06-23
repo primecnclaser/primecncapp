@@ -2971,8 +2971,6 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
               <th>Phone</th>
               <th>Invoice #</th>
               <th>Total Bill</th>
-              <th>Discount</th>
-              <th>Remaining</th>
               <th>Action</th>
             </tr>
           </thead>
@@ -6924,7 +6922,7 @@ function renderDB() {
   if (_activeDbTab === 'draft') {
     // ── DRAFT TAB ──
     if (draftsDB.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="9" class="empty-db">No drafts saved. Click "Save as Draft" on an invoice to save it here.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" class="empty-db">No drafts saved. Click "Save as Draft" on an invoice to save it here.</td></tr>`;
       document.getElementById('dbSubCount').textContent = '0 drafts';
       return;
     }
@@ -6940,8 +6938,6 @@ function renderDB() {
         <td class="mono">${inv.phone || '—'}</td>
         <td class="mono" style="color:#e67e22;font-weight:700;">${inv.invNum}</td>
         <td class="mono gold">Rs.${fmt(inv.afterDiscount ?? inv.total)}</td>
-        <td class="mono" style="color:#f39c12">Rs.${fmt(inv.discount||0)}</td>
-        <td class="mono red">Rs.${fmt(remaining)}</td>
         <td>
           <div class="db-action-row" style="flex-wrap:wrap;">
             <button class="db-icon-btn submit" title="Submit" onclick="submitDraft(${draftIdx})">✅</button>
@@ -6960,7 +6956,7 @@ function renderDB() {
     const oldLM2 = document.getElementById('dbLoadMore');
     if (oldLM2) oldLM2.remove();
     if (advanceInvs.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="9" class="empty-db">No advance payments yet. When a customer pays in advance (received amount entered but no items added), the invoice appears here automatically.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" class="empty-db">No advance payments yet. When a customer pays in advance (received amount entered but no items added), the invoice appears here automatically.</td></tr>`;
       document.getElementById('dbSubCount').textContent = '0 advance payments';
       return;
     }
@@ -6977,8 +6973,6 @@ function renderDB() {
         <td>${inv.custName || '—'}</td>
         <td class="mono">${inv.phone || '—'}</td>
         <td class="mono" style="color:#8e44ad;font-weight:700;">${inv.invNum} <span style="background:#8e44ad;color:#fff;font-size:0.55rem;padding:1px 5px;border-radius:3px;margin-left:3px;">ADVANCE</span></td>
-        <td class="mono" style="color:#8a8a9a;">— (pending)</td>
-        <td class="mono" style="color:#f39c12">Rs.${fmt(inv.discount||0)}</td>
         <td class="mono" style="color:#8e44ad;font-weight:700;">Rs.${fmt(totalAdvance)} <span style="font-size:0.58rem;color:#8a8a9a;">(advance)</span></td>
         <td>
           <div class="db-action-row">
@@ -7086,8 +7080,8 @@ function renderDB() {
   if (mergedRows.length === 0) {
     const isLoading = _excelDBCache === null;
     tbody.innerHTML = isLoading
-      ? '<tr><td colspan="9" class="empty-db">⏳ Loading invoices...</td></tr>'
-      : '<tr><td colspan="9" class="empty-db">' + (dbNameQ ? 'No invoices found for "' + dbNameQ + '".' : 'No invoices saved yet.') + '</td></tr>';
+      ? '<tr><td colspan="7" class="empty-db">⏳ Loading invoices...</td></tr>'
+      : '<tr><td colspan="7" class="empty-db">' + (dbNameQ ? 'No invoices found for "' + dbNameQ + '".' : 'No invoices saved yet.') + '</td></tr>';
     document.getElementById('dbSubCount').textContent = '0 invoices';
     return;
   }
@@ -7117,15 +7111,8 @@ function renderDB() {
                 + ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();saveExcelField(\'' + oNum + '\',\'total_bill\',this.value);hideTbEdit(\'' + oNum + '\');}"'
                 + ' onblur="hideTbEdit(\'' + oNum + '\')" title="Enter new total, press Enter">'))
         + '</td>'
-        + '<td style="text-align:center;overflow:hidden;">'
-        +   (_isInvoiceLocked(row.date)
-              ? '<span style="display:block;" title="🔒 Locked — 40+ days old">' + _dbBadge('🔒', row.discount ? ('Rs.' + fmt(row.discount)) : 'Rs.0', '#d97706', !!row.discount) + '</span>'
-              : '<span onclick="showExcelDiscPopover(this,\'' + oNum + '\',' + (row.discount||0) + ')" style="display:block;">' + _dbBadge('🏷️', row.discount ? ('Rs.' + fmt(row.discount)) : '— Set', '#d97706', !!row.discount) + '</span>')
-        + '</td>'
-        + '<td class="mono" style="color:' + remColor + ';font-weight:600;">' + (effRemaining < 0 ? '-' : '') + 'Rs.' + fmt(Math.abs(effRemaining)) + '</td>'
         + '<td><div class="db-action-row">'
         +   '<button class="db-icon-btn" title="View" onclick="viewExcelInvoice(\'' + oNum + '\')">👁</button>'
-        +   '<button class="db-icon-btn edit2" title="Edit" onclick="editExcelInvoice(\'' + oNum + '\')">✎</button>'
         + '</div></td>'
         + '</tr>';
     } else {
@@ -7143,8 +7130,6 @@ function renderDB() {
         <td class="mono">${inv.phone || '—'}</td>
         <td class="mono gold">${inv.invNum}${statusBadge}</td>
         <td class="mono gold">${inv.isNull ? '<span style="color:#e74c3c">—</span>' : 'Rs.' + fmt(inv.afterDiscount ?? inv.total) + (_isInvoiceLocked(inv.date) ? ' 🔒' : '')}</td>
-        <td class="mono" style="color:#f39c12">Rs.${fmt(inv.discount||0)}${_isInvoiceLocked(inv.date) ? ' 🔒' : ''}</td>
-        <td class="mono red">Rs.${fmt(row._remaining)}</td>
         <td>
           <div class="db-action-row">
             <button class="db-icon-btn" title="View" onclick="viewInvoice(${idx})">👁</button>
