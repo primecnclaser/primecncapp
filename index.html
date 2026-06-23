@@ -3015,9 +3015,9 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
       <h2 style="font-family:Montserrat,sans-serif;font-size:1.1rem;color:#1e293b;margin-bottom:16px;">💰 Receive Payment</h2>
 
       <div style="display:flex;gap:10px;margin-bottom:16px;">
-        <input type="text" id="rpSearchName" autocomplete="off" placeholder="🔍 Search by customer name" oninput="rpSearchByName(this.value)" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
-        <input type="text" id="rpSearchPhone" autocomplete="off" placeholder="🔍 Search by phone number" oninput="this.value=this.value.replace(/[^0-9]/g,'');rpSearchByPhone(this.value)" onfocus="rpSearchByPhone(this.value)" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
-        <input type="text" id="rpSearchInv" placeholder="🔍 Search by invoice number" oninput="this.value=this.value.replace(/[^0-9]/g,'');rpSearchByInv(this.value)" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
+        <input type="text" id="rpSearchName" autocomplete="new-password" placeholder="🔍 Search by customer name" oninput="rpSearchByName(this.value)" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
+        <input type="text" id="rpSearchPhone" autocomplete="new-password" placeholder="🔍 Search by phone number" oninput="this.value=this.value.replace(/[^0-9]/g,'');rpSearchByPhone(this.value)" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
+        <input type="text" id="rpSearchInv" autocomplete="new-password" placeholder="🔍 Search by invoice number" oninput="this.value=this.value.replace(/[^0-9]/g,'');rpSearchByInv(this.value)" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
       </div>
       <div id="rpNameDropdown" style="display:none;position:relative;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;max-height:220px;overflow-y:auto;margin-top:-10px;margin-bottom:16px;"></div>
 
