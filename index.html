@@ -14210,9 +14210,9 @@ async function rpGetCustomerSummary(name) {
 
   // Fetch imported invoices
   try {
-    var eRes = await sb.from('excel_invoices').select('order_num,date,total_bill,discount').ilike('customer_name', name);
+    var eRes = await sb.from('excel_invoices').select('order_num,date,total_bill,discount,bad_debt').ilike('customer_name', name);
     result.exInvs = (eRes.data || []).map(function(r){
-      return { order_num: r.order_num, date: r.date, total_bill: r.total_bill, discount: r.discount };
+      return { order_num: r.order_num, date: r.date, total_bill: r.total_bill, discount: r.discount, bad_debt: r.bad_debt };
     });
   } catch(e) { console.warn('rpGetCustomerSummary excel_invoices fetch:', e); }
 
@@ -14241,8 +14241,8 @@ async function rpGetCustomerSummary(name) {
 
   // Final formula: Remaining = TotalBilled - TotalDiscount - TotalPaid - TotalBadDebt
   result.totalDiscount = result.invoiceDiscountSum + result.manualDiscount;
-  result.remaining = Math.max(0, result.totalBilled - result.totalDiscount - result.totalPaid - result.totalBadDebt);
-  result.advanceCredit = Math.max(0, result.totalPaid - (result.totalBilled - result.totalDiscount - result.totalBadDebt));
+  result.remaining = result.totalBilled - result.totalDiscount - result.totalPaid - result.totalBadDebt;
+  result.advanceCredit = result.remaining < 0 ? Math.abs(result.remaining) : 0;
 
   return result;
 }
@@ -14324,7 +14324,7 @@ async function buildAllCustomerSummaries() {
 
   Object.keys(summaries).forEach(function(k){
     var c = summaries[k];
-    c.remaining = Math.max(0, c.totalBilled - c.totalDiscount - c.totalPaid - c.totalBadDebt);
+    c.remaining = c.totalBilled - c.totalDiscount - c.totalPaid - c.totalBadDebt;
   });
 
   _allCustomerSummaryCache = summaries;
@@ -14476,9 +14476,9 @@ async function rpRenderCustomerPanel(name, phone) {
   exInvs.sort(dateSorter);
 
   var allInvList = newInvs.map(function(inv){
-    return { invNum: inv.invNum, date: inv.date, total: inv.total, _sortDate: new Date(inv.date) };
+    return { invNum: inv.invNum, date: inv.date, total: inv.total, _sortDate: new Date(inv.date), _isNew: true };
   }).concat(exInvs.map(function(r){
-    return { invNum: normalizeOrderNum(r.order_num), date: r.date, total: r.total_bill, _sortDate: new Date(r.date) };
+    return { invNum: normalizeOrderNum(r.order_num), date: r.date, total: r.total_bill, _sortDate: new Date(r.date), _isNew: false };
   }));
 
   function getInvNumValue(inv) {
@@ -14490,42 +14490,94 @@ async function rpRenderCustomerPanel(name, phone) {
   });
 
   var invRows = allInvList.map(function(inv){
-    return '<tr><td style="padding:6px 8px;font-size:0.78rem;">' + fmtDateDisplay(inv.date) + '</td><td style="padding:6px 8px;font-size:0.78rem;">' + inv.invNum + '</td><td style="padding:6px 8px;font-size:0.78rem;text-align:right;">Rs.' + fmt(inv.total) + '</td></tr>';
+    var _isExcel = !inv._isNew;
+    var _editBtn = '';
+    if (_isExcel) {
+      var _invDaysSince = (new Date() - new Date(inv.date)) / (1000*60*60*24);
+      if (_invDaysSince > 40) {
+        _editBtn = '<span style="color:#cbd5e1;font-size:0.65rem;margin-left:4px;" title="Locked after 40 days from invoice date">🔒</span>';
+      } else {
+        _editBtn = '<button onclick="rpEditExcelTotal(\'' + String(inv.invNum).replace(/^INV-/i,'') + '\',\'' + inv.total + '\')" style="padding:1px 6px;background:#eff6ff;border:1px solid #3b82f6;border-radius:4px;color:#1d4ed8;font-size:0.65rem;cursor:pointer;font-family:Montserrat,sans-serif;margin-left:4px;">✏️</button>';
+      }
+    } else {
+      _editBtn = '<span style="color:#cbd5e1;font-size:0.65rem;margin-left:4px;" title="Edit from Database tab">🔒</span>';
+    }
+    return '<tr><td style="padding:6px 8px;font-size:0.78rem;">' + fmtDateDisplay(inv.date) + '</td><td style="padding:6px 8px;font-size:0.78rem;">' + inv.invNum + _editBtn + '</td><td style="padding:6px 8px;font-size:0.78rem;text-align:right;">Rs.' + fmt(inv.total) + '</td></tr>';
   }).join('');
 
   var payRows = payments.filter(function(p){ return p.type === 'payment'; }).map(function(p){
     var typeLabel = '<span style="color:#059669;">Payment</span>';
-    var isLocked = false;
-    var lockReason = '';
-    if (p.invoice_ref) {
-      isLocked = true;
-      lockReason = 'Recorded from invoice ' + p.invoice_ref + ' — edit the invoice to change this amount';
-    } else if (p.source === 'imported') {
-      isLocked = true;
-      lockReason = 'Imported entry — cannot be deleted';
+    var _daysSince = (new Date() - new Date(p.created_at)) / (1000*60*60*24);
+    var actionBtn = '';
+    if (p.source === 'imported') {
+      actionBtn = '<button onclick="rpEditPayment(\'' + p.id + '\',\'' + p.amount + '\',\'' + encodeURIComponent(name) + '\',\'payment\',true)" style="padding:2px 8px;background:#f0fdf4;border:1px solid #059669;border-radius:5px;color:#059669;font-size:0.72rem;cursor:pointer;font-family:Montserrat,sans-serif;" title="Edit amount only">✏️ Edit</button>';
+    } else if (p.invoice_ref) {
+      actionBtn = '<span style="color:#cbd5e1;font-size:0.7rem;" title="Recorded from invoice ' + p.invoice_ref + ' — edit the invoice to change this amount">🔒</span>';
+    } else if (_daysSince > 40) {
+      actionBtn = '<span style="color:#cbd5e1;font-size:0.7rem;" title="Locked after 40 days — no further edits allowed">🔒 Locked</span>';
     } else {
-      var createdDate = new Date(p.created_at);
-      var daysSince = (new Date() - createdDate) / (1000*60*60*24);
-      isLocked = daysSince > 40;
-      lockReason = 'Locked after 40 days';
+      var _daysLeft = Math.ceil(40 - _daysSince);
+      actionBtn = '<button onclick="rpEditPayment(\'' + p.id + '\',\'' + p.amount + '\',\'' + encodeURIComponent(name) + '\',\'payment\',false)" style="padding:2px 8px;background:#f0fdf4;border:1px solid #059669;border-radius:5px;color:#059669;font-size:0.72rem;cursor:pointer;font-family:Montserrat,sans-serif;" title="Editable for ' + _daysLeft + ' more day(s)">✏️ Edit</button>';
     }
-    var deleteBtn = isLocked
-      ? '<span style="color:#cbd5e1;font-size:0.7rem;" title="' + lockReason + '">🔒</span>'
-      : '<span onclick="rpDeletePayment(\'' + p.id + '\',\'' + encodeURIComponent(_rpCurrentCustomer.name) + '\')" style="cursor:pointer;color:#dc2626;font-weight:700;font-size:0.85rem;" title="Delete this entry">✕</span>';
-    return '<tr><td style="padding:6px 8px;font-size:0.78rem;">' + fmtDateDisplay(p.payment_date) + '</td><td style="padding:6px 8px;font-size:0.78rem;">' + typeLabel + '</td><td style="padding:6px 8px;font-size:0.78rem;text-align:right;">Rs.' + fmt(p.amount) + '</td><td style="padding:6px 8px;text-align:center;">' + deleteBtn + '</td></tr>';
+    return '<tr><td style="padding:6px 8px;font-size:0.78rem;">' + fmtDateDisplay(p.payment_date) + '</td><td style="padding:6px 8px;font-size:0.78rem;">' + typeLabel + '</td><td style="padding:6px 8px;font-size:0.78rem;text-align:right;">Rs.' + fmt(p.amount) + '</td><td style="padding:6px 8px;text-align:center;">' + actionBtn + '</td></tr>';
+  }).join('');
+
+  // Build discount rows — from customer_payments + excel_invoices
+  var _exDiscRows = exInvs.filter(function(r){ return parseFloat(r.discount||0) > 0; }).map(function(r){
+    var _invRef = 'INV-' + String(r.order_num).replace(/^INV-/i,'');
+    var _alreadyInCP = payments.some(function(p){ return p.type === 'discount' && p.invoice_ref === _invRef; });
+    if (_alreadyInCP) return '';
+    var _eDate = r.date || '';
+    var _eAmt = parseFloat(r.discount)||0;
+    var _oNum = String(r.order_num).replace(/^INV-/i,'');
+    return '<tr style="background:#faf5ff;">'
+      + '<td style="padding:6px 8px;font-size:0.78rem;">' + fmtDateDisplay(_eDate) + '</td>'
+      + '<td style="padding:6px 8px;font-size:0.78rem;color:#94a3b8;font-size:0.7rem;">' + _invRef + '</td>'
+      + '<td style="padding:6px 8px;font-size:0.78rem;text-align:right;color:#7c3aed;">Rs.' + fmt(_eAmt) + '</td>'
+      + '<td style="padding:6px 8px;text-align:center;">'
+      +   '<button onclick="rpEditExcelDisc(\'' + _oNum + '\',\'' + _eAmt + '\',\'' + encodeURIComponent(_eDate) + '\')" style="padding:2px 8px;background:#f5f3ff;border:1px solid #7c3aed;border-radius:5px;color:#7c3aed;font-size:0.72rem;cursor:pointer;font-family:Montserrat,sans-serif;" title="Edit or Delete">✏️ Edit</button>'
+      + '</td></tr>';
   }).join('');
 
   var discRows = payments.filter(function(p){ return p.type === 'discount'; }).map(function(p){
-    var delBtn = '<span onclick="rpDeletePayment(\'' + p.id + '\',\'' + encodeURIComponent(_rpCurrentCustomer.name) + '\')" style="cursor:pointer;color:#dc2626;font-weight:700;font-size:0.85rem;" title="Delete this entry">✕</span>';
-    return '<tr><td style="padding:6px 8px;font-size:0.78rem;">' + fmtDateDisplay(p.payment_date) + '</td><td style="padding:6px 8px;font-size:0.78rem;text-align:right;color:#7c3aed;">Rs.' + fmt(p.amount) + '</td><td style="padding:6px 8px;text-align:center;">' + delBtn + '</td></tr>';
+    var _invLabel = p.invoice_ref ? '<span style="color:#94a3b8;font-size:0.7rem;">' + p.invoice_ref + '</span>' : '';
+    var actionBtn = '<button onclick="rpEditPayment(\'' + p.id + '\',\'' + p.amount + '\',\'' + encodeURIComponent(name) + '\',\'discount\',false)" style="padding:2px 8px;background:#f5f3ff;border:1px solid #7c3aed;border-radius:5px;color:#7c3aed;font-size:0.72rem;cursor:pointer;font-family:Montserrat,sans-serif;" title="Edit or Delete">✏️ Edit</button>';
+    return '<tr>'
+      + '<td style="padding:6px 8px;font-size:0.78rem;">' + fmtDateDisplay(p.payment_date) + '</td>'
+      + '<td style="padding:6px 8px;font-size:0.78rem;">' + _invLabel + '</td>'
+      + '<td style="padding:6px 8px;font-size:0.78rem;text-align:right;color:#7c3aed;">Rs.' + fmt(p.amount) + '</td>'
+      + '<td style="padding:6px 8px;text-align:center;">' + actionBtn + '</td></tr>';
+  }).join('');
+
+  // Build bad debt rows — from customer_payments + excel_invoices
+  var _exBdRows = exInvs.filter(function(r){ return parseFloat(r.bad_debt||0) > 0; }).map(function(r){
+    var _invRef = 'INV-' + String(r.order_num).replace(/^INV-/i,'');
+    var _alreadyInCP = payments.some(function(p){ return p.type === 'bad_debt' && p.invoice_ref === _invRef; });
+    if (_alreadyInCP) return '';
+    var _eDate = r.date || '';
+    var _eAmt = parseFloat(r.bad_debt)||0;
+    var _oNum = String(r.order_num).replace(/^INV-/i,'');
+    return '<tr style="background:#fff7ed;">'
+      + '<td style="padding:6px 8px;font-size:0.78rem;">' + fmtDateDisplay(_eDate) + '</td>'
+      + '<td style="padding:6px 8px;font-size:0.78rem;color:#94a3b8;font-size:0.7rem;">' + _invRef + '</td>'
+      + '<td style="padding:6px 8px;font-size:0.78rem;text-align:right;color:#ea580c;">Rs.' + fmt(_eAmt) + '</td>'
+      + '<td style="padding:6px 8px;text-align:center;">'
+      +   '<button onclick="rpEditExcelBd(\'' + _oNum + '\',\'' + _eAmt + '\',\'' + encodeURIComponent(_eDate) + '\')" style="padding:2px 8px;background:#fff7ed;border:1px solid #ea580c;border-radius:5px;color:#ea580c;font-size:0.72rem;cursor:pointer;font-family:Montserrat,sans-serif;" title="Edit or Delete">✏️ Edit</button>'
+      + '</td></tr>';
   }).join('');
 
   var badDebtRows = payments.filter(function(p){ return p.type === 'bad_debt'; }).map(function(p){
-    var delBtn = '<span onclick="rpDeletePayment(\'' + p.id + '\',\'' + encodeURIComponent(_rpCurrentCustomer.name) + '\')" style="cursor:pointer;color:#dc2626;font-weight:700;font-size:0.85rem;" title="Delete this entry">✕</span>';
-    return '<tr><td style="padding:6px 8px;font-size:0.78rem;">' + fmtDateDisplay(p.payment_date) + '</td><td style="padding:6px 8px;font-size:0.78rem;text-align:right;color:#ea580c;">Rs.' + fmt(p.amount) + '</td><td style="padding:6px 8px;text-align:center;">' + delBtn + '</td></tr>';
+    var _invLabel = p.invoice_ref ? '<span style="color:#94a3b8;font-size:0.7rem;">' + p.invoice_ref + '</span>' : '';
+    var actionBtn = '<button onclick="rpEditPayment(\'' + p.id + '\',\'' + p.amount + '\',\'' + encodeURIComponent(name) + '\',\'bad_debt\',false)" style="padding:2px 8px;background:#fff7ed;border:1px solid #ea580c;border-radius:5px;color:#ea580c;font-size:0.72rem;cursor:pointer;font-family:Montserrat,sans-serif;" title="Edit or Delete">✏️ Edit</button>';
+    return '<tr>'
+      + '<td style="padding:6px 8px;font-size:0.78rem;">' + fmtDateDisplay(p.payment_date) + '</td>'
+      + '<td style="padding:6px 8px;font-size:0.78rem;">' + _invLabel + '</td>'
+      + '<td style="padding:6px 8px;font-size:0.78rem;text-align:right;color:#ea580c;">Rs.' + fmt(p.amount) + '</td>'
+      + '<td style="padding:6px 8px;text-align:center;">' + actionBtn + '</td></tr>';
   }).join('');
 
   panel.innerHTML =
+    '<div style="font-size:0.72rem;color:#64748b;padding:8px 12px;background:#f8fafc;border-radius:8px;margin-bottom:10px;border:1px solid #e2e8f0;">ℹ️ Invoice totals & payment entries lock automatically after 40 days. Discounts & bad debts can be edited anytime.</div>' +
     '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:14px;">' +
       '<div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.95rem;color:#1e293b;margin-bottom:12px;">' + name + (phone ? ' <span style="font-weight:400;color:#64748b;font-size:0.78rem;">📞 ' + phone + '</span>' : '') + '</div>' +
       '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">' +
@@ -14533,7 +14585,7 @@ async function rpRenderCustomerPanel(name, phone) {
         '<div style="background:#f5f3ff;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Discount</div><div style="font-size:1.1rem;font-weight:700;color:#7c3aed;">Rs.' + fmt(totalDiscount) + '</div></div>' +
         '<div style="background:#f0fdf4;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Received</div><div style="font-size:1.1rem;font-weight:700;color:#059669;">Rs.' + fmt(totalPaid) + '</div></div>' +
         '<div style="background:#fff7ed;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Bad Debt</div><div style="font-size:1.1rem;font-weight:700;color:#ea580c;">Rs.' + fmt(totalBadDebt) + '</div></div>' +
-        '<div style="background:#fef2f2;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Remaining</div><div style="font-size:1.1rem;font-weight:700;color:#dc2626;">Rs.' + fmt(remaining) + '</div></div>' +
+        '<div style="background:' + (remaining > 0 ? '#fef2f2' : remaining < 0 ? '#f5f3ff' : '#f0fdf4') + ';border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Remaining</div><div style="font-size:1.1rem;font-weight:700;color:' + (remaining > 0 ? '#dc2626' : remaining < 0 ? '#7c3aed' : '#059669') + ';">' + (remaining < 0 ? '-' : '') + 'Rs.' + fmt(Math.abs(remaining)) + '</div></div>' +
       '</div>' +
       (advanceCredit > 0 ? '<div style="margin-top:10px;background:#ede9fe;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#6d28d9;text-transform:uppercase;">Advance Credit</div><div style="font-size:1.1rem;font-weight:700;color:#6d28d9;">Rs.' + fmt(advanceCredit) + '</div></div>' : '') +
     '</div>' +
@@ -14545,19 +14597,19 @@ async function rpRenderCustomerPanel(name, phone) {
       '</div>' +
       '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;">' +
         '<div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.8rem;color:#475569;margin-bottom:10px;">💵 Payment History (' + payments.filter(function(p){return p.type==='payment';}).length + ')</div>' +
-        '<div style="font-size:0.65rem;color:#94a3b8;margin-bottom:8px;font-style:italic;">ℹ️ Payment entries can be deleted within 40 days of being added. After that, they lock automatically for record integrity.</div>' +
+        '' +
         '<div style="max-height:220px;overflow-y:auto;"><table style="width:100%;border-collapse:collapse;">' + (payRows || '<tr><td style="padding:10px;color:#94a3b8;font-size:0.78rem;">No payments recorded yet.</td></tr>') + '</table></div>' +
       '</div>' +
     '</div>' +
 
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
       '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;">' +
-        '<div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.8rem;color:#7c3aed;margin-bottom:10px;">🏷️ Discount Entries (' + payments.filter(function(p){return p.type==='discount';}).length + ')</div>' +
-        '<div style="max-height:150px;overflow-y:auto;"><table style="width:100%;border-collapse:collapse;">' + (discRows || '<tr><td style="padding:10px;color:#94a3b8;font-size:0.78rem;">No discount entries.</td></tr>') + '</table></div>' +
+        '<div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.8rem;color:#7c3aed;margin-bottom:10px;">🏷️ Discount Entries (' + (payments.filter(function(p){return p.type==='discount';}).length + exInvs.filter(function(r){var _ref='INV-'+String(r.order_num).replace(/^INV-/i,'');return parseFloat(r.discount||0)>0 && !payments.some(function(p){return p.type==='discount'&&p.invoice_ref===_ref;});}).length) + ')</div>' +
+        '<div style="max-height:200px;overflow-y:auto;"><table style="width:100%;border-collapse:collapse;">' + (_exDiscRows + discRows || '<tr><td style="padding:10px;color:#94a3b8;font-size:0.78rem;">No discount entries.</td></tr>') + '</table></div>' +
       '</div>' +
       '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;">' +
-        '<div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.8rem;color:#ea580c;margin-bottom:10px;">⚠️ Bad Debt Entries (' + payments.filter(function(p){return p.type==='bad_debt';}).length + ')</div>' +
-        '<div style="max-height:150px;overflow-y:auto;"><table style="width:100%;border-collapse:collapse;">' + (badDebtRows || '<tr><td style="padding:10px;color:#94a3b8;font-size:0.78rem;">No bad debt entries.</td></tr>') + '</table></div>' +
+        '<div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.8rem;color:#ea580c;margin-bottom:10px;">⚠️ Bad Debt Entries (' + (payments.filter(function(p){return p.type==='bad_debt';}).length + exInvs.filter(function(r){var _ref='INV-'+String(r.order_num).replace(/^INV-/i,'');return parseFloat(r.bad_debt||0)>0 && !payments.some(function(p){return p.type==='bad_debt'&&p.invoice_ref===_ref;});}).length) + ')</div>' +
+        '<div style="max-height:200px;overflow-y:auto;"><table style="width:100%;border-collapse:collapse;">' + (_exBdRows + badDebtRows || '<tr><td style="padding:10px;color:#94a3b8;font-size:0.78rem;">No bad debt entries.</td></tr>') + '</table></div>' +
       '</div>' +
     '</div>' +
 
@@ -14651,6 +14703,193 @@ async function rpDeletePayment(paymentId, encodedName) {
     if (typeof Sentry !== 'undefined') Sentry.captureException(e);
     alert('Failed to delete: ' + (e.message || e));
   }
+}
+
+function rpEditPayment(paymentId, currentAmount, encodedName, entryType, noDelete) {
+  var _color = entryType === 'payment' ? '#059669' : entryType === 'bad_debt' ? '#ea580c' : '#7c3aed';
+  var _label = entryType === 'payment' ? 'Payment' : entryType === 'bad_debt' ? 'Bad Debt' : 'Discount';
+  var _lockMsg = (entryType === 'payment' && !noDelete)
+    ? '<div style="font-size:0.72rem;color:#94a3b8;margin-top:8px;padding:6px 10px;background:#f8fafc;border-radius:6px;">ℹ️ Payment entries lock automatically after 40 days and cannot be edited or deleted.</div>'
+    : '';
+  showModal('✏️ Edit ' + _label + ' Entry',
+    '<div style="font-size:0.85rem;color:#64748b;margin-bottom:14px;">Current amount: <strong style="color:' + _color + ';">Rs.' + currentAmount + '</strong></div>'
+    + '<div style="margin-bottom:10px;"><label style="font-size:0.78rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;">New Amount (Rs.)</label>'
+    + '<input type="number" id="_rpEditAmt" value="' + currentAmount + '" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;"></div>'
+    + _lockMsg,
+    [
+      { label: 'Cancel', cls: 'btn-outline', fn: closeModal },
+      ...(!noDelete ? [{ label: '🗑️ Delete', cls: 'btn-danger', fn: async function() {
+          closeModal();
+          if (!confirm('Are you sure you want to delete this ' + _label + ' entry?')) return;
+          try {
+            await sb.from('customer_payments').delete().eq('id', paymentId);
+            if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+            var name = decodeURIComponent(encodedName);
+            await rpRenderCustomerPanel(name, _rpCurrentCustomer ? _rpCurrentCustomer.phone : '');
+            toast && toast('✅ Entry deleted.');
+          } catch(e) { alert('Failed: ' + (e.message||e)); }
+        }
+      }] : []),
+      { label: '✅ Save', cls: 'btn-primary', fn: async function() {
+          var newAmt = parseFloat(document.getElementById('_rpEditAmt').value);
+          closeModal();
+          if (isNaN(newAmt) || newAmt < 0) { alert('Invalid amount'); return; }
+          try {
+            await sb.from('customer_payments').update({ amount: newAmt }).eq('id', paymentId);
+            if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+            var name = decodeURIComponent(encodedName);
+            await rpRenderCustomerPanel(name, _rpCurrentCustomer ? _rpCurrentCustomer.phone : '');
+            toast && toast('✅ Entry updated.');
+          } catch(e) { alert('Failed: ' + (e.message||e)); }
+        }
+      }
+    ]
+  );
+}
+
+function rpEditExcelDisc(orderNum, currentAmount, encodedDate) {
+  showModal('✏️ Edit Discount Entry',
+    '<div style="font-size:0.85rem;color:#64748b;margin-bottom:14px;">Current amount: <strong style="color:#7c3aed;">Rs.' + currentAmount + '</strong></div>'
+    + '<div style="margin-bottom:10px;"><label style="font-size:0.78rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;">New Amount (Rs.)</label>'
+    + '<input type="number" id="_rpEditDiscAmt" value="' + currentAmount + '" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;"></div>',
+    [
+      { label: 'Cancel', cls: 'btn-outline', fn: closeModal },
+      { label: '🗑️ Delete', cls: 'btn-danger', fn: async function() {
+          closeModal();
+          if (!confirm('Delete this discount entry?')) return;
+          await rpDeleteExcelDisc(orderNum, encodeURIComponent(_rpCurrentCustomer.name));
+        }
+      },
+      { label: '✅ Save', cls: 'btn-primary', fn: async function() {
+          var newAmt = parseFloat(document.getElementById('_rpEditDiscAmt').value);
+          closeModal();
+          if (isNaN(newAmt) || newAmt < 0) { alert('Invalid amount'); return; }
+          try {
+            var _rawNum = String(orderNum).replace(/^INV-/i,'');
+            var row = (_excelDBCache||[]).find(function(r){ return String(r.order_num).replace(/^INV-/i,'') === _rawNum; });
+            if (row) { row.discount = newAmt; }
+            await sb.from('excel_invoices').update({ discount: newAmt }).eq('order_num', _rawNum);
+            var _invRef = 'INV-' + _rawNum;
+            var _cpChk = await sb.from('customer_payments').select('id').eq('invoice_ref', _invRef).eq('type','discount').limit(1);
+            if (_cpChk.data && _cpChk.data.length > 0) {
+              await sb.from('customer_payments').update({ amount: newAmt }).eq('id', _cpChk.data[0].id);
+            } else if (newAmt > 0 && _rpCurrentCustomer) {
+              var _date = decodeURIComponent(encodedDate);
+              await sb.from('customer_payments').insert({ customer_name: _rpCurrentCustomer.name, phone: _rpCurrentCustomer.phone||null, amount: newAmt, payment_date: _date, type: 'discount', source: 'non_imported', note: 'Discount — ' + _invRef, invoice_ref: _invRef, created_by: currentUser||'unknown' });
+            }
+            if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+            await rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
+            toast && toast('✅ Discount updated.');
+          } catch(e) { alert('Failed: ' + (e.message||e)); }
+        }
+      }
+    ]
+  );
+}
+
+async function rpDeleteExcelDisc(orderNum, encodedName) {
+  if (!confirm('Delete this discount entry?')) return;
+  try {
+    if (typeof sb === 'undefined' || !sb) throw new Error('Not connected');
+    var _rawNum = String(orderNum).replace(/^INV-/i,'');
+    var row = (_excelDBCache||[]).find(function(r){ return String(r.order_num).replace(/^INV-/i,'') === _rawNum; });
+    if (row) { row.discount = 0; }
+    await sb.from('excel_invoices').update({ discount: 0 }).eq('order_num', _rawNum);
+    var _invRef = 'INV-' + _rawNum;
+    await sb.from('customer_payments').delete().eq('invoice_ref', _invRef).eq('type','discount');
+    if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+    var name = decodeURIComponent(encodedName);
+    await rpRenderCustomerPanel(name, _rpCurrentCustomer ? _rpCurrentCustomer.phone : '');
+    toast && toast('✅ Discount deleted.');
+  } catch(e) { alert('Failed: ' + (e.message||e)); }
+}
+
+function rpEditExcelBd(orderNum, currentAmount, encodedDate) {
+  showModal('✏️ Edit Bad Debt Entry',
+    '<div style="font-size:0.85rem;color:#64748b;margin-bottom:14px;">Current amount: <strong style="color:#ea580c;">Rs.' + currentAmount + '</strong></div>'
+    + '<div style="margin-bottom:10px;"><label style="font-size:0.78rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;">New Amount (Rs.)</label>'
+    + '<input type="number" id="_rpEditBdAmt" value="' + currentAmount + '" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;"></div>',
+    [
+      { label: 'Cancel', cls: 'btn-outline', fn: closeModal },
+      { label: '🗑️ Delete', cls: 'btn-danger', fn: async function() {
+          closeModal();
+          if (!confirm('Delete this bad debt entry?')) return;
+          await rpDeleteExcelBd(orderNum, encodeURIComponent(_rpCurrentCustomer.name));
+        }
+      },
+      { label: '✅ Save', cls: 'btn-primary', fn: async function() {
+          var newAmt = parseFloat(document.getElementById('_rpEditBdAmt').value);
+          closeModal();
+          if (isNaN(newAmt) || newAmt < 0) { alert('Invalid amount'); return; }
+          try {
+            var _rawNum = String(orderNum).replace(/^INV-/i,'');
+            var row = (_excelDBCache||[]).find(function(r){ return String(r.order_num).replace(/^INV-/i,'') === _rawNum; });
+            if (row) { row.bad_debt = newAmt; }
+            await sb.from('excel_invoices').update({ bad_debt: newAmt }).eq('order_num', _rawNum);
+            var _invRef = 'INV-' + _rawNum;
+            var _cpChk = await sb.from('customer_payments').select('id').eq('invoice_ref', _invRef).eq('type','bad_debt').limit(1);
+            if (_cpChk.data && _cpChk.data.length > 0) {
+              await sb.from('customer_payments').update({ amount: newAmt }).eq('id', _cpChk.data[0].id);
+            } else if (newAmt > 0 && _rpCurrentCustomer) {
+              var _date = decodeURIComponent(encodedDate);
+              await sb.from('customer_payments').insert({ customer_name: _rpCurrentCustomer.name, phone: _rpCurrentCustomer.phone||null, amount: newAmt, payment_date: _date, type: 'bad_debt', source: 'non_imported', note: 'Bad debt — ' + _invRef, invoice_ref: _invRef, created_by: currentUser||'unknown' });
+            }
+            if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+            await rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
+            toast && toast('✅ Bad debt updated.');
+          } catch(e) { alert('Failed: ' + (e.message||e)); }
+        }
+      }
+    ]
+  );
+}
+
+function rpEditExcelTotal(orderNum, currentTotal) {
+  var _rawNum = String(orderNum).replace(/^INV-/i,'');
+  showModal('✏️ Edit Invoice Total Bill',
+    '<div style="font-size:0.85rem;color:#64748b;margin-bottom:14px;">Invoice: <strong>INV-' + _rawNum + '</strong> &nbsp;|&nbsp; Current total: <strong style="color:#1e293b;">Rs.' + currentTotal + '</strong></div>'
+    + '<div style="margin-bottom:10px;"><label style="font-size:0.78rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;">New Total Bill (Rs.)</label>'
+    + '<input type="number" id="_rpEditTotalAmt" value="' + currentTotal + '" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;"></div>'
+    + '<div style="font-size:0.72rem;color:#94a3b8;margin-top:8px;padding:6px 10px;background:#f8fafc;border-radius:6px;">ℹ️ Invoice totals lock automatically after 40 days and cannot be edited.</div>',
+    [
+      { label: 'Cancel', cls: 'btn-outline', fn: closeModal },
+      { label: '✅ Save', cls: 'btn-primary', fn: async function() {
+          var newTotal = parseFloat(document.getElementById('_rpEditTotalAmt').value);
+          closeModal();
+          if (isNaN(newTotal) || newTotal < 0) { alert('Invalid amount'); return; }
+          try {
+            if (typeof sb === 'undefined' || !sb) throw new Error('Not connected');
+            var row = (_excelDBCache||[]).find(function(r){ return String(r.order_num).replace(/^INV-/i,'') === _rawNum; });
+            if (row) {
+              row.total_bill = newTotal;
+              row.remaining = newTotal - (parseFloat(row.received)||0) - (parseFloat(row.received1)||0) - (parseFloat(row.discount)||0) - (parseFloat(row.bad_debt)||0);
+            }
+            await sb.from('excel_invoices').update({ total_bill: newTotal }).eq('order_num', _rawNum);
+            if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+            await rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
+            toast && toast('✅ Invoice total updated.');
+          } catch(e) { alert('Failed: ' + (e.message||e)); }
+        }
+      }
+    ]
+  );
+}
+
+async function rpDeleteExcelBd(orderNum, encodedName) {
+  if (!confirm('Delete this bad debt entry?')) return;
+  try {
+    if (typeof sb === 'undefined' || !sb) throw new Error('Not connected');
+    var _rawNum = String(orderNum).replace(/^INV-/i,'');
+    var row = (_excelDBCache||[]).find(function(r){ return String(r.order_num).replace(/^INV-/i,'') === _rawNum; });
+    if (row) { row.bad_debt = 0; }
+    await sb.from('excel_invoices').update({ bad_debt: 0 }).eq('order_num', _rawNum);
+    var _invRef = 'INV-' + _rawNum;
+    await sb.from('customer_payments').delete().eq('invoice_ref', _invRef).eq('type','bad_debt');
+    if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+    var name = decodeURIComponent(encodedName);
+    await rpRenderCustomerPanel(name, _rpCurrentCustomer ? _rpCurrentCustomer.phone : '');
+    toast && toast('✅ Bad debt deleted.');
+  } catch(e) { alert('Failed: ' + (e.message||e)); }
 }
 
 async function _rpAutoRefreshFinanceTab(paymentDate) {
