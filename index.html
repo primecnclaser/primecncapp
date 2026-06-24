@@ -3053,8 +3053,8 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         </div>
         <div style="flex:1;min-width:200px;">
           <label style="font-size:0.78rem;font-weight:700;color:#f0c96e;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:8px;">📞 By Phone Number</label>
-          <input type="text" id="searchPhone" placeholder="Enter phone number..."
-            oninput="onSearchPhone(this.value)"
+          <input type="text" id="searchPhone" placeholder="Enter phone number..." inputmode="numeric" autocomplete="new-password"
+            oninput="this.value=this.value.replace(/[^0-9]/g,'');onSearchPhone(this.value)"
             style="width:100%;padding:11px 16px;background:rgba(255,255,255,0.09);border:1.5px solid rgba(201,168,76,0.45);border-radius:10px;color:#fff;font-family:Montserrat, sans-serif;font-size:0.94rem;outline:none;transition:border .2s;letter-spacing:0.5px;"
             onfocus="this.style.borderColor='#f0c96e';this.style.background='rgba(255,255,255,0.13)'"
             onblur="this.style.borderColor='rgba(201,168,76,0.45)';this.style.background='rgba(255,255,255,0.09)'">
@@ -3064,7 +3064,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
           <div style="position:relative;">
             <input type="text" id="searchName" placeholder="Type a name to see suggestions..."
               oninput="onSearchName(this.value)"
-              autocomplete="off"
+              autocomplete="new-password"
               style="width:100%;padding:11px 16px;background:rgba(255,255,255,0.09);border:1.5px solid rgba(167,139,250,0.45);border-radius:10px;color:#fff;font-family:Montserrat, sans-serif;font-size:0.94rem;outline:none;transition:border .2s;letter-spacing:0.5px;"
               onfocus="this.style.borderColor='#a78bfa';this.style.background='rgba(255,255,255,0.13)'"
               onblur="this.style.borderColor='rgba(167,139,250,0.45)';this.style.background='rgba(255,255,255,0.09)';setTimeout(function(){var d=document.getElementById('searchNameDrop');if(d)d.style.display='none';},200)">
@@ -3075,8 +3075,8 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         </div>
         <div style="flex:1;min-width:200px;">
           <label style="font-size:0.78rem;font-weight:700;color:#a8dfc0;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:8px;">🧾 By Invoice Number</label>
-          <input type="text" id="searchInv" placeholder="🔢 Invoice #..."
-            oninput="onSearchInv(this.value)"
+          <input type="text" id="searchInv" placeholder="🔢 Invoice #..." inputmode="numeric" autocomplete="new-password"
+            oninput="this.value=this.value.replace(/[^0-9]/g,'');onSearchInv(this.value)"
             style="width:100%;padding:11px 16px;background:rgba(255,255,255,0.09);border:1.5px solid rgba(46,204,113,0.4);border-radius:10px;color:#fff;font-family:Montserrat, sans-serif;font-size:0.94rem;outline:none;transition:border .2s;letter-spacing:0.5px;"
             onfocus="this.style.borderColor='#2ecc71';this.style.background='rgba(255,255,255,0.13)'"
             onblur="this.style.borderColor='rgba(46,204,113,0.4)';this.style.background='rgba(255,255,255,0.09)'">
@@ -6813,42 +6813,39 @@ function _silentPDFFromHtml(htmlStr, filename) {
   if (!pw) { if (typeof toast === 'function') toast('Allow popups in browser to save PDF, then try again.'); return; }
   pw.document.write(htmlStr);
   pw.document.close();
-  // Fit-to-page: html2pdf CROPS (not scales) content wider than page − margins.
-  // Printable width = A4 width − 2 × 10mm margin. Force body to exactly that
-  // so tables (width:100%) reflow to fit and nothing is clipped on the right.
   try {
     var _fitSt = pw.document.createElement('style');
-    _fitSt.textContent = 'html,body{width:210mm !important;max-width:210mm !important;margin:0 !important;padding:0 !important;}';
+    _fitSt.textContent = 'html,body{width:100% !important;max-width:100% !important;margin:0 !important;padding:0 !important;}table{width:100% !important;}';
     (pw.document.head || pw.document.documentElement).appendChild(_fitSt);
   } catch(e) {}
   var _logo2 = (typeof _ctrlLogo !== 'undefined' && _ctrlLogo) || localStorage.getItem('inv_logo') || '';
   try { var logoEl = pw.document.getElementById('printLogo'); if (logoEl && _logo2) { logoEl.src = _logo2; logoEl.style.display = 'block'; } } catch(e) {}
-  var s = pw.document.createElement('script');
-  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-  s.onload = function() {
-    pw.document.querySelectorAll('button,.no-print,.print-btn,.pdf-action-bar').forEach(function(el){ el.style.display='none'; });
-    var imgs = Array.from(pw.document.images);
-    var _imgsReady = Promise.all(imgs.map(function(img) {
-      if (img.complete) return Promise.resolve();
-      return new Promise(function(res) { img.onload = res; img.onerror = res; });
-    }));
-    var _fontsReady = (pw.document.fonts && pw.document.fonts.ready) ? pw.document.fonts.ready.catch(function(){}) : Promise.resolve();
-    Promise.all([_imgsReady, _fontsReady]).then(function() {
-      setTimeout(function() {
-        try {
-          pw.html2pdf().set({
-            margin: 0, filename: _fname,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true, logging: false, allowTaint: true, backgroundColor: '#ffffff' },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: _orient, compress: true },
-            pagebreak: { mode: ['css', 'legacy'] }
-          }).from(pw.document.documentElement).save().then(function() { pw.close(); });
-        } catch(e) { console.error('[PDF error]', e); }
-      }, 800);
-    });
-  };
-  s.onerror = function() { if (typeof toast === 'function') toast('PDF library CDN unreachable.'); setTimeout(function() { try { pw.print(); } catch(e) {} }, 600); };
-  pw.document.head.appendChild(s);
+  // Inject auto-PDF script directly into popup — runs inside popup context
+  var _autoScript = pw.document.createElement('script');
+  _autoScript.textContent = '(function(){'
+    + 'var fname=' + JSON.stringify(_fname) + ';'
+    + 'var orient=' + JSON.stringify(_orient) + ';'
+    + 'function doPdf(){'
+    +   'document.querySelectorAll("button,.no-print,.print-btn,.pdf-action-bar").forEach(function(el){el.style.display="none";});'
+    +   'html2pdf().set({'
+    +     'margin:[10,10,10,10],'
+    +     'filename:fname,'
+    +     'image:{type:"jpeg",quality:0.98},'
+    +     'html2canvas:{scale:3,useCORS:true,logging:false,allowTaint:true,backgroundColor:"#ffffff",windowWidth:794},'
+    +     'jsPDF:{unit:"mm",format:"a4",orientation:orient,compress:true},'
+    +     'pagebreak:{mode:["avoid-all","css","legacy"]}'
+    +   '}).from(document.body).save().then(function(){setTimeout(function(){window.close();},500);});'
+    + '}'
+    + 'if(typeof html2pdf==="function"){'
+    +   'setTimeout(doPdf,1500);'
+    + '}else{'
+    +   'var s=document.createElement("script");'
+    +   's.src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";'
+    +   's.onload=function(){setTimeout(doPdf,1500);};'
+    +   'document.head.appendChild(s);'
+    + '}'
+    + '})();';
+  pw.document.head.appendChild(_autoScript);
 }
 
 
@@ -10359,7 +10356,7 @@ function viewInvoice(idx) {
 <style>
   @page { size: A4 portrait; margin: 15mm 10mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  body { font-family: 'Montserrat', sans-serif; background: white; font-size: 0.82rem; width: 210mm; max-width: 210mm; }
+  body { font-family: 'Montserrat', sans-serif; background: white; font-size: 0.82rem; width: 100%; max-width: 100%; margin: 0; padding: 0; }
 
   /* ── HEADER — generated from drag-editor settings via _printHeaderCSS ── */
   ${_printHeaderCSS(_ps)}
@@ -10405,7 +10402,7 @@ function viewInvoice(idx) {
 
   /* Column widths */
   table.items td:nth-child(1),  table.items th:nth-child(1)  { width: 5mm; }
-  table.items td:nth-child(2),  table.items th:nth-child(2)  { width: 28mm; }
+  table.items td:nth-child(2),  table.items th:nth-child(2)  { width: 34mm; }
   table.items td:nth-child(3),  table.items td:nth-child(4),
   table.items td:nth-child(5),
   table.items th:nth-child(3),  table.items th:nth-child(4),
@@ -10420,7 +10417,7 @@ function viewInvoice(idx) {
   table.items td:nth-child(12), table.items th:nth-child(12) { width: 10mm; }
   table.items td:nth-child(13), table.items th:nth-child(13) { width: 14mm; }
   table.items td:nth-child(14), table.items th:nth-child(14) { width: 18mm; }
-  table.items td:nth-child(15), table.items th:nth-child(15) { width: 22mm; }
+  table.items td:nth-child(15), table.items th:nth-child(15) { width: 24mm; }
 
   /* ── TOTALS ── */
   .totals-section { display: grid; grid-template-columns: 1fr 160px; width: 100%; border-top: 2px solid #0f1e45; }
@@ -10429,7 +10426,7 @@ function viewInvoice(idx) {
                        letter-spacing: 0.5px; display: block; margin-bottom: 3px; margin-top: 8px; }
   .totals-left label:first-child { margin-top: 0; }
   .totals-left .tval { font-size: 0.88rem; font-family: 'Montserrat', sans-serif; color: #0f1e45; font-weight: 600; }
-  .totals-right { min-width: 165px; max-width: 210px; overflow: hidden; }
+  .totals-right { min-width: 155px; max-width: 165px; overflow: hidden; }
   .total-row { display: flex; justify-content: space-between; align-items: center;
                padding: 6px 12px; border-bottom: 1px solid #d4c5a9; gap: 8px; }
   .total-row:last-child { border-bottom: none; }
