@@ -13817,6 +13817,43 @@ async function ctrlSave() {
   // Save to Supabase
   if (typeof sb !== 'undefined' && sb) {
     try {
+      // ── Upload logo to Supabase Storage if it's a base64 data URI ──
+      if (vals.logo && vals.logo.startsWith('data:')) {
+        try {
+          // Convert base64 to blob
+          var _logoMime = vals.logo.split(';')[0].split(':')[1] || 'image/jpeg';
+          var _logoB64  = vals.logo.split(',')[1];
+          var _logoBin  = atob(_logoB64);
+          var _logoArr  = new Uint8Array(_logoBin.length);
+          for (var _li = 0; _li < _logoBin.length; _li++) _logoArr[_li] = _logoBin.charCodeAt(_li);
+          var _logoBlob = new Blob([_logoArr], { type: _logoMime });
+          var _logoExt  = _logoMime === 'image/png' ? 'png' : 'jpg';
+          var _logoPath = 'logo/shop-logo.' + _logoExt;
+          // Upload to storage (upsert = overwrite if exists)
+          var _upRes = await sb.storage.from('shop-assets').upload(_logoPath, _logoBlob, {
+            contentType: _logoMime, upsert: true
+          });
+          if (!_upRes.error) {
+            // Get public URL
+            var _urlRes = sb.storage.from('shop-assets').getPublicUrl(_logoPath);
+            var _logoUrl = _urlRes.data && _urlRes.data.publicUrl;
+            if (_logoUrl) {
+              // Store URL instead of base64
+              vals.logo = _logoUrl;
+              // Update localStorage to use URL too
+              localStorage.setItem('inv_logo', _logoUrl);
+              _ctrlLogo = _logoUrl;
+            }
+          } else {
+            console.warn('Logo upload to storage failed:', _upRes.error);
+            // Keep base64 as fallback
+          }
+        } catch(_logoUpE) {
+          console.warn('Logo storage upload error:', _logoUpE);
+          // Keep base64 as fallback
+        }
+      }
+
       var rows = Object.keys(vals).map(function(k) {
         return { key: k, value: vals[k], updated_at: new Date().toISOString() };
       });
@@ -23623,6 +23660,36 @@ async function dragEditorApply() {
 
   if (typeof sb !== 'undefined' && sb) {
     try {
+      // ── Upload logo to Supabase Storage if it's a base64 data URI ──
+      if (vals.logo && vals.logo.startsWith('data:')) {
+        try {
+          var _logoMime = vals.logo.split(';')[0].split(':')[1] || 'image/jpeg';
+          var _logoB64  = vals.logo.split(',')[1];
+          var _logoBin  = atob(_logoB64);
+          var _logoArr  = new Uint8Array(_logoBin.length);
+          for (var _li = 0; _li < _logoBin.length; _li++) _logoArr[_li] = _logoBin.charCodeAt(_li);
+          var _logoBlob = new Blob([_logoArr], { type: _logoMime });
+          var _logoExt  = _logoMime === 'image/png' ? 'png' : 'jpg';
+          var _logoPath = 'logo/shop-logo.' + _logoExt;
+          var _upRes = await sb.storage.from('shop-assets').upload(_logoPath, _logoBlob, {
+            contentType: _logoMime, upsert: true
+          });
+          if (!_upRes.error) {
+            var _urlRes = sb.storage.from('shop-assets').getPublicUrl(_logoPath);
+            var _logoUrl = _urlRes.data && _urlRes.data.publicUrl;
+            if (_logoUrl) {
+              vals.logo = _logoUrl;
+              localStorage.setItem('inv_logo', _logoUrl);
+              _ctrlLogo = _logoUrl;
+            }
+          } else {
+            console.warn('Logo upload to storage failed:', _upRes.error);
+          }
+        } catch(_logoUpE) {
+          console.warn('Logo storage upload error:', _logoUpE);
+        }
+      }
+
       var rows = Object.keys(vals).map(function(k){
         return { key: k, value: String(vals[k]), updated_at: new Date().toISOString() };
       });
