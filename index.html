@@ -48,6 +48,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="/logo.png">
+<link rel="shortcut icon" href="/favicon.ico">
 <meta name="theme-color" content="#1e293b">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -6661,6 +6663,13 @@ function printInvoice() {
   });
 
   window.print();
+  // Restore empty-row classes after print
+  window.addEventListener('afterprint', function _restorePrint() {
+    document.querySelectorAll('#itemsBody tr[id^="itemRow"]').forEach(function(tr) {
+      tr.classList.remove('empty-row');
+    });
+    window.removeEventListener('afterprint', _restorePrint);
+  });
 }
 
 // ══════════════════════════════════════════════
@@ -6756,6 +6765,14 @@ function _savePDFMainInvoice() {
   if (tabs) tabs.style.display = 'none';
   if (sidebar) sidebar.style.display = 'none';
   var _mainOrient = _getPageOrientation(el);
+  function _restoreUI() {
+    if (actionBar) actionBar.style.display = '';
+    if (topnav) topnav.style.display = '';
+    if (tabs) tabs.style.display = '';
+    if (sidebar) sidebar.style.display = '';
+  }
+  // Safety net — always restore after 15 seconds even if PDF fails
+  var _restoreTimer = setTimeout(_restoreUI, 15000);
   html2pdf().set({
     margin: 5,
     filename: 'Prime-CNC-' + invNum + '.pdf',
@@ -6763,11 +6780,13 @@ function _savePDFMainInvoice() {
     html2canvas: { scale: 3, useCORS: true, logging: false, letterRendering: true, allowTaint: true, backgroundColor: '#ffffff' },
     jsPDF: { unit: 'mm', format: 'a4', orientation: _mainOrient, compress: true },
     pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-  }).from(el).save().then(() => {
-    if (actionBar) actionBar.style.display = '';
-    if (topnav) topnav.style.display = '';
-    if (tabs) tabs.style.display = '';
-    if (sidebar) sidebar.style.display = '';
+  }).from(el).save().then(function() {
+    clearTimeout(_restoreTimer);
+    _restoreUI();
+  }).catch(function(e) {
+    clearTimeout(_restoreTimer);
+    _restoreUI();
+    console.error('[PDF Error]', e);
   });
 }
 
@@ -6891,14 +6910,23 @@ function _silentPDFFromHtml(htmlStr, filename) {
     + 'var orient=' + JSON.stringify(_orient) + ';'
     + 'function doPdf(){'
     +   'document.querySelectorAll("button,.no-print,.print-btn,.pdf-action-bar").forEach(function(el){el.style.display="none";});'
-    +   'html2pdf().set({'
-    +     'margin:[10,10,10,10],'
+    +   'var _opt={'
+    +     'margin:[10,10,15,10],'
     +     'filename:fname,'
     +     'image:{type:"jpeg",quality:0.98},'
     +     'html2canvas:{scale:3,useCORS:true,logging:false,allowTaint:true,backgroundColor:"#ffffff",windowWidth:794},'
     +     'jsPDF:{unit:"mm",format:"a4",orientation:orient,compress:true},'
     +     'pagebreak:{mode:["avoid-all","css","legacy"]}'
-    +   '}).from(document.body).save().then(function(){setTimeout(function(){window.close();},500);});'
+    +   '};'
+    +   'html2pdf().set(_opt).from(document.body).toPdf().get("pdf").then(function(pdf){'
+    +     'var total=pdf.internal.getNumberOfPages();'
+    +     'for(var i=1;i<=total;i++){'
+    +       'pdf.setPage(i);'
+    +       'pdf.setFontSize(7);'
+    +       'pdf.setTextColor(150);'
+    +       'pdf.text("Page "+i+" of "+total,pdf.internal.pageSize.getWidth()-25,pdf.internal.pageSize.getHeight()-5);'
+    +     '}'
+    +   '}).save().then(function(){setTimeout(function(){window.close();},500);});'
     + '}'
     + 'if(typeof html2pdf==="function"){'
     +   'setTimeout(doPdf,1500);'
@@ -10539,6 +10567,9 @@ function viewInvoice(idx) {
   .print-btn .c-btn { background: #ccc; color: #333; }
   @font-face { font-family: "JameelNooriNastaliq"; font-display: block; src: url("JameelNooriNastaleeq.ttf") format("truetype"); }
   tbody tr { page-break-inside: avoid; break-inside: avoid; }
+  .totals-section { page-break-inside: avoid; break-inside: avoid; }
+  .totals-left { page-break-inside: avoid; break-inside: avoid; }
+  .totals-right { page-break-inside: avoid; break-inside: avoid; }
   @media print { .print-btn { display: none !important; } }
 </style>
 </head>

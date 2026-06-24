@@ -8,7 +8,7 @@
   "theme_color": "#f59e0b",
   "icons": [
     {
-      "src": "logo.png",
+      "src": "https://libeiofmjbujudwrlmpx.supabase.co/storage/v1/object/public/shop-assets/logo/shop-logo.png",
       "sizes": "192x192",
       "type": "image/png"
     }
