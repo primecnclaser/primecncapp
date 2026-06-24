@@ -1,0 +1,16 @@
+{
+  "name": "Prime CNC Laser Works",
+  "short_name": "PrimeCNC",
+  "description": "Invoice & Payment Management System",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1e293b",
+  "theme_color": "#f59e0b",
+  "icons": [
+    {
+      "src": "logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}

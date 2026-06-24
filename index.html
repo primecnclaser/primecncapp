@@ -2210,7 +2210,7 @@ body {
 <!-- ║  SECTION 8 — USER BAR / HEADER                     ║ -->
 <!-- ═══════════════════════════════════════════════════════ -->
 <div id="userBar">
-  <div id="_ubBrand"><span id="_ubBrandText">⚙️ Complete Shop System</span><span id="_appVersionLabel" style="font-size:0.6rem;font-weight:700;color:#f59e0b;font-family:Montserrat,sans-serif;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:middle;">v1.0.4-STAGING</span></div>
+  <div id="_ubBrand"><span id="_ubBrandText">⚙️ Complete Shop System</span><span id="_appVersionLabel" style="font-size:0.6rem;font-weight:700;color:#f59e0b;font-family:Montserrat,sans-serif;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:middle;">v1.0.4</span></div>
   <div id="topShopName"></div>
   <!-- Col 3: all SPAN children — no div:last-child matches inside -->
   <div id="_ubProfile">
@@ -4827,10 +4827,67 @@ let _activeDbTab = 'submitted'; // 'submitted' | 'advance' | 'draft'
 let _excelDBCache = null; // cached excel_invoices rows for DB tab
 let _editingDraftIdx = null;    // index in draftsDB when editing a draft
 let _dbPage = 1;               // pagination page for submitted tab
+var _dbPageSize = 50;
 let _dbExactName = null;       // exact name selected from dropdown (null = partial/type search)
 let _searchPage = 1;           // pagination page for search tab
 
+// ── GLOBAL ERROR HANDLER ──────────────────────────────────────
+window.onerror = function(msg, src, line, col, err) {
+  console.error('[Global Error]', msg, 'at', src, line + ':' + col, err);
+  if (typeof Sentry !== 'undefined') Sentry.captureException(err || new Error(msg));
+  return false;
+};
+window.onunhandledrejection = function(e) {
+  console.error('[Unhandled Promise]', e.reason);
+  if (typeof Sentry !== 'undefined') Sentry.captureException(e.reason);
+};
+// Supabase connection monitor
+window._sbConnectionOk = true;
+window._checkSupabaseConnection = async function() {
+  try {
+    if (typeof sb === 'undefined' || !sb) return;
+    var _r = await sb.from('app_users').select('id').limit(1);
+    if (_r.error) throw _r.error;
+    if (!window._sbConnectionOk) {
+      window._sbConnectionOk = true;
+      if (typeof toast === 'function') toast('✅ Connected to cloud — syncing...');
+      if (typeof flushPendingQueue === 'function') flushPendingQueue();
+      if (typeof flushFinLedgerPending === 'function') flushFinLedgerPending();
+    }
+  } catch(e) {
+    if (window._sbConnectionOk) {
+      window._sbConnectionOk = false;
+      if (typeof toast === 'function') toast('⚠️ Cloud connection lost — working offline');
+    }
+  }
+};
+setInterval(window._checkSupabaseConnection, 30000);
+
 const APP_VERSION = '1.0.4';
+
+// ── SESSION TIMEOUT — auto logout after 8 hours of inactivity ──
+(function() {
+  var _SESSION_MS = 8 * 60 * 60 * 1000;
+  function _resetActivity() { localStorage.setItem('_lastActivity', Date.now()); }
+  function _checkSession() {
+    var _now = Date.now();
+    var _last = parseInt(localStorage.getItem('_lastActivity') || _now);
+    if (_now - _last > _SESSION_MS) {
+      localStorage.removeItem('_lastActivity');
+      if (typeof toast === 'function') toast('⚠️ Session expired — please log in again.');
+      setTimeout(function() {
+        localStorage.removeItem('currentUser');
+        localStorage.removeItem('currentUserRole');
+        window.location.reload();
+      }, 2000);
+    }
+  }
+  ['click','keydown','scroll','touchstart'].forEach(function(evt) {
+    document.addEventListener(evt, _resetActivity, { passive: true });
+  });
+  _resetActivity();
+  setInterval(_checkSession, 60000);
+})();
 Sentry.setTag("app_version", "1.0.4");
 const storedVersion = localStorage.getItem('app_version');
 if (storedVersion !== APP_VERSION) {
@@ -6184,6 +6241,13 @@ async function submitInvoice() {
 
   const hasIdentity = hasPhone || !!(data.custName || '').trim();
 
+  // Validate amounts
+  if ((data.received || 0) < 0) { toast('❌ Received amount cannot be negative'); return; }
+  if ((data.discount || 0) < 0) { toast('❌ Discount cannot be negative'); return; }
+  if ((data.received || 0) > (data.afterDiscount || 0) && (data.afterDiscount || 0) > 0) {
+    toast('❌ Received amount cannot exceed total bill'); return;
+  }
+
   // No identity + No items → do nothing, stay on page
   if (!hasIdentity && !hasItem) return;
 
@@ -6987,6 +7051,9 @@ function renderDB() {
   const dbNameQ = ((document.getElementById('dbNameSearch')||{}).value||'').trim().toLowerCase();
   const dbInvQ  = ((document.getElementById('dbInvSearch') ||{}).value||'').trim().toLowerCase();
 
+  // Reset to page 1 when actively searching
+  if (dbNameQ || dbInvQ) _dbPage = 1;
+
   // ── Phone edit banner (shows only on name search) ──
   (function() {
     var bannerEl = document.getElementById('dbPhoneEditBanner');
@@ -7137,12 +7204,23 @@ function renderDB() {
     }
   });
 
-  // ── SHOW ALL ROWS — scrollable container, no Load More ──
-  tbody.innerHTML = allRows.join('');
+  // Paginate — show _dbPage * _dbPageSize rows
+  var _visibleRows = allRows.slice(0, _dbPage * _dbPageSize);
+  tbody.innerHTML = _visibleRows.join('');
 
-  // Remove old load-more button if present
-  const oldLM = document.getElementById('dbLoadMore');
+  // Load More button
+  var oldLM = document.getElementById('dbLoadMore');
   if (oldLM) oldLM.remove();
+  if (allRows.length > _visibleRows.length) {
+    var _remaining = allRows.length - _visibleRows.length;
+    var _lmBtn = document.createElement('tr');
+    _lmBtn.id = 'dbLoadMore';
+    _lmBtn.innerHTML = '<td colspan="7" style="text-align:center;padding:14px;">'
+      + '<button onclick="_dbPage++;renderDB();" style="padding:9px 24px;background:#1e293b;color:#f59e0b;border:none;border-radius:8px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.82rem;cursor:pointer;">'
+      + '⬇ Load More (' + _remaining + ' remaining)'
+      + '</button></td>';
+    tbody.appendChild(_lmBtn);
+  }
 
   // Wrap table in scrollable container if not already done
   const tbl = tbody.closest('table');
@@ -10674,7 +10752,7 @@ function onSearchInv(val) {
 var _searchNameList = null;
 
 async function _buildSearchNameList() {
-  if (_searchNameList) return _searchNameList;
+  if (_searchNameList && _searchNameList.length > 0) return _searchNameList;
 
   var rawList = []; // all name+phone pairs before dedup
 
@@ -11939,7 +12017,7 @@ function deleteDraft(draftIdx) {
 
 function switchDbTab(tab) {
   _activeDbTab = tab;
-  if (tab === 'submitted') _dbPage = 1;
+  _dbPage = 1;
   const subBtn = document.getElementById('dbTabSubmitted');
   const advBtn = document.getElementById('dbTabAdvance');
   const dftBtn = document.getElementById('dbTabDraft');
