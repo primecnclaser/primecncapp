@@ -26347,9 +26347,18 @@ function _authApplyPermissions(sess) {
     var allowed = isAdmin || !!perm[tab];
     var sideEl  = document.querySelector(tabIds[tab]);
     var mobEl   = document.querySelector('#mobileBottomNav '+mobSels[tab]);
+    var mobMoreEl = document.querySelector('#mobMoreMenu '+mobSels[tab]);
     if(sideEl) sideEl.style.display = allowed ? '' : 'none';
     if(mobEl)  mobEl.style.display  = allowed ? '' : 'none';
+    if(mobMoreEl) mobMoreEl.style.display = allowed ? '' : 'none';
   });
+
+  // Hide More button if all items inside More menu are hidden
+  var moreMenuBtns = document.querySelectorAll('#mobMoreMenu .mob-nav-btn');
+  var anyMoreVisible = false;
+  moreMenuBtns.forEach(function(btn) { if(btn.style.display !== 'none') anyMoreVisible = true; });
+  var moreBtn = document.querySelector('[data-tab="more"]');
+  if(moreBtn) moreBtn.style.display = anyMoreVisible ? '' : 'none';
 
   // Finance view-only: hide add/edit/delete buttons in financeTab
   if(!isAdmin && perm.finance && !perm.finance_edit) {
