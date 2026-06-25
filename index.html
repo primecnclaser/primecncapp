@@ -48,6 +48,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="/logo.png">
 <link rel="shortcut icon" href="/favicon.ico">
+<link rel="apple-touch-icon" href="/logo.png">
 <meta name="theme-color" content="#1e293b">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1143,13 +1144,50 @@ body {
   touch-action: manipulation;
 }
 .mob-nav-btn .mnb-icon { font-size: 1.3rem; line-height: 1; }
-.mob-nav-btn.mnb-active                      { color: #1d4ed8; background: #eff6ff; }
-.mob-nav-btn.mnb-active[data-tab="invoice"]  { color: #1d4ed8; background: #dbeafe; }
-.mob-nav-btn.mnb-active[data-tab="database"] { color: #a16207; background: #fef9c3; }
-.mob-nav-btn.mnb-active[data-tab="search"]   { color: #9d174d; background: #fce7f3; }
-.mob-nav-btn.mnb-active[data-tab="summary"]  { color: #c2410c; background: #ffedd5; }
-.mob-nav-btn.mnb-active[data-tab="finance"]  { color: #15803d; background: #dcfce7; }
-.mob-nav-btn.mnb-active[data-tab="settings"] { color: #6d28d9; background: #f3e8ff; }
+.mob-nav-btn.mnb-active                         { color: #1d4ed8; background: #eff6ff; }
+.mob-nav-btn.mnb-active[data-tab="invoice"]     { color: #1d4ed8; background: #dbeafe; }
+.mob-nav-btn.mnb-active[data-tab="database"]    { color: #a16207; background: #fef9c3; }
+.mob-nav-btn.mnb-active[data-tab="search"]      { color: #9d174d; background: #fce7f3; }
+.mob-nav-btn.mnb-active[data-tab="summary"]     { color: #c2410c; background: #ffedd5; }
+.mob-nav-btn.mnb-active[data-tab="finance"]     { color: #15803d; background: #dcfce7; }
+.mob-nav-btn.mnb-active[data-tab="settings"]    { color: #6d28d9; background: #f3e8ff; }
+.mob-nav-btn.mnb-active[data-tab="payment"]     { color: #0369a1; background: #e0f2fe; }
+.mob-nav-btn.mnb-active[data-tab="production"]  { color: #6d28d9; background: #f3e8ff; }
+.mob-nav-btn.mnb-active[data-tab="more"]        { color: #475569; background: #f1f5f9; }
+
+/* ── More tray ── */
+#mobMoreBackdrop {
+  display: none; position: fixed; inset: 0; z-index: 8997;
+  background: rgba(0,0,0,0.35);
+}
+#mobMoreTray {
+  display: none; position: fixed; bottom: 62px; left: 0; right: 0; z-index: 8998;
+  background: #fff; border-top: 1.5px solid #e2e8f0;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -4px 24px rgba(30,41,59,0.15);
+  padding: 10px 0 env(safe-area-inset-bottom, 6px);
+}
+#mobMoreBackdrop.mmt-open { display: block; }
+#mobMoreTray.mmt-open     { display: block; }
+.mmt-handle {
+  width: 36px; height: 4px; background: #e2e8f0;
+  border-radius: 2px; margin: 0 auto 10px;
+}
+.mmt-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 13px 24px; cursor: pointer;
+  font-family: 'Montserrat', sans-serif; font-size: 0.88rem; font-weight: 600;
+  color: #475569; border: none; background: transparent; width: 100%;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.mmt-row:active                         { background: #f8fafc; }
+.mmt-row .mmt-icon                      { font-size: 1.3rem; width: 28px; text-align: center; }
+.mmt-row.mmt-active                     { color: #1d4ed8; }
+.mmt-row.mmt-active[data-tab="search"]   { color: #9d174d; }
+.mmt-row.mmt-active[data-tab="database"] { color: #a16207; }
+.mmt-row.mmt-active[data-tab="finance"]  { color: #15803d; }
+.mmt-row.mmt-active[data-tab="settings"] { color: #6d28d9; }
 
 /* ════════════════════════════════════════════════════════════
    PWA — MOBILE RESPONSIVE  (screen ≤ 767px)
@@ -5702,7 +5740,7 @@ function init() {
     updateDBCount();
     if (typeof seedLedger2026 === 'function') seedLedger2026();
     // Restore last tab — default to Summary on first load (Problem 1 fix).
-    var _validTabs = ['summary', 'invoice', 'search', 'database', 'finance', 'settings'];
+    var _validTabs = ['summary', 'invoice', 'search', 'database', 'finance', 'settings', 'payment', 'production'];
     var _lastTab   = localStorage.getItem('last_active_tab') || 'summary';
     if (_validTabs.indexOf(_lastTab) === -1) _lastTab = 'summary';
     var _tabEl = document.querySelector('.tab.tab-' + _lastTab);
@@ -5710,8 +5748,17 @@ function init() {
       switchTab(_lastTab, _tabEl);
       // Sync mobile bottom nav active highlight to match restored tab
       document.querySelectorAll('.mob-nav-btn').forEach(function(b) { b.classList.remove('mnb-active'); });
-      var _mobBtn = document.querySelector('.mob-nav-btn[data-tab="' + _lastTab + '"]');
-      if (_mobBtn) _mobBtn.classList.add('mnb-active');
+      document.querySelectorAll('.mmt-row').forEach(function(r) { r.classList.remove('mmt-active'); });
+      var _moreTabs = ['search','database','finance','settings'];
+      if (_moreTabs.indexOf(_lastTab) !== -1) {
+        var _moreBtn = document.getElementById('mobMoreBtn');
+        if (_moreBtn) _moreBtn.classList.add('mnb-active');
+        var _trayRow = document.querySelector('.mmt-row[data-tab="' + _lastTab + '"]');
+        if (_trayRow) _trayRow.classList.add('mmt-active');
+      } else {
+        var _mobBtn = document.querySelector('.mob-nav-btn[data-tab="' + _lastTab + '"]');
+        if (_mobBtn) _mobBtn.classList.add('mnb-active');
+      }
     }
   });
   if (typeof _probeReceived1EntriesCol === 'function') _probeReceived1EntriesCol();
@@ -25367,40 +25414,94 @@ setInterval(function() {
           onclick="_mobSwitchTab('invoice',this)">
     <span class="mnb-icon">📄</span><span>Invoice</span>
   </button>
-  <button class="mob-nav-btn" data-tab="search"
-          onclick="_mobSwitchTab('search',this)">
-    <span class="mnb-icon">🔍</span><span>Search</span>
+  <button class="mob-nav-btn" data-tab="payment"
+          onclick="_mobSwitchTab('payment',this)">
+    <span class="mnb-icon">💳</span><span>Payment</span>
   </button>
-  <button class="mob-nav-btn" data-tab="database"
-          onclick="_mobSwitchTab('database',this)">
-    <span class="mnb-icon">🗃️</span><span>Database</span>
+  <button class="mob-nav-btn" data-tab="production"
+          onclick="_mobSwitchTab('production',this)">
+    <span class="mnb-icon">🏭</span><span>Production</span>
   </button>
-  <button class="mob-nav-btn" data-tab="finance"
-          onclick="_mobSwitchTab('finance',this)">
-    <span class="mnb-icon">💰</span><span>Finance</span>
-  </button>
-  <button class="mob-nav-btn" data-tab="settings"
-          onclick="_mobSwitchTab('settings',this)">
-    <span class="mnb-icon">⚙️</span><span>Settings</span>
+  <button class="mob-nav-btn" data-tab="more" id="mobMoreBtn"
+          onclick="_mobMoreToggle()">
+    <span class="mnb-icon">•••</span><span>More</span>
   </button>
 </nav>
+
+<div id="mobMoreBackdrop" onclick="_mobMoreClose()"></div>
+<div id="mobMoreTray">
+  <div class="mmt-handle"></div>
+  <button class="mmt-row" data-tab="search"
+          onclick="_mobSwitchTab('search',null);_mobMoreClose()">
+    <span class="mmt-icon">🔍</span><span>Search</span>
+  </button>
+  <button class="mmt-row" data-tab="database"
+          onclick="_mobSwitchTab('database',null);_mobMoreClose()">
+    <span class="mmt-icon">🗃️</span><span>Database</span>
+  </button>
+  <button class="mmt-row" data-tab="finance"
+          onclick="_mobSwitchTab('finance',null);_mobMoreClose()">
+    <span class="mmt-icon">💰</span><span>Finance</span>
+  </button>
+  <button class="mmt-row" data-tab="settings"
+          onclick="_mobSwitchTab('settings',null);_mobMoreClose()">
+    <span class="mmt-icon">⚙️</span><span>Settings</span>
+  </button>
+</div>
 
 <script>
 /* ── PWA additions — all new code, no existing logic touched ── */
 
 /* 1. Mobile bottom-nav tab switcher
       Delegates to the existing sidebar switchTab() function, then
-      updates the mobile nav highlight independently. */
+      updates the mobile nav and More tray highlights. */
 function _mobSwitchTab(tab, btnEl) {
+  _mobMoreClose();
   var sideTab = document.querySelector('.tab.tab-' + tab);
   if (sideTab && typeof switchTab === 'function') {
     switchTab(tab, sideTab);
   }
-  document.querySelectorAll('.mob-nav-btn').forEach(function(b){
+  document.querySelectorAll('.mob-nav-btn').forEach(function(b) {
     b.classList.remove('mnb-active');
   });
-  if (btnEl) { btnEl.classList.add('mnb-active'); }
+  document.querySelectorAll('.mmt-row').forEach(function(r) {
+    r.classList.remove('mmt-active');
+  });
+  var moreTabs = ['search','database','finance','settings'];
+  if (moreTabs.indexOf(tab) !== -1) {
+    var moreBtn = document.getElementById('mobMoreBtn');
+    if (moreBtn) moreBtn.classList.add('mnb-active');
+    var trayRow = document.querySelector('.mmt-row[data-tab="' + tab + '"]');
+    if (trayRow) trayRow.classList.add('mmt-active');
+  } else if (btnEl) {
+    btnEl.classList.add('mnb-active');
+  }
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function _mobMoreToggle() {
+  var tray = document.getElementById('mobMoreTray');
+  if (tray && tray.classList.contains('mmt-open')) {
+    _mobMoreClose();
+  } else {
+    var bd  = document.getElementById('mobMoreBackdrop');
+    var btn = document.getElementById('mobMoreBtn');
+    if (tray) tray.classList.add('mmt-open');
+    if (bd)   bd.classList.add('mmt-open');
+    if (btn)  btn.classList.add('mnb-active');
+  }
+}
+
+function _mobMoreClose() {
+  var tray = document.getElementById('mobMoreTray');
+  var bd   = document.getElementById('mobMoreBackdrop');
+  if (tray) tray.classList.remove('mmt-open');
+  if (bd)   bd.classList.remove('mmt-open');
+  var anyTrayActive = document.querySelector('.mmt-row.mmt-active');
+  if (!anyTrayActive) {
+    var btn = document.getElementById('mobMoreBtn');
+    if (btn) btn.classList.remove('mnb-active');
+  }
 }
 
 /* 2. Mobile print → PDF redirect
