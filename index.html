@@ -2785,7 +2785,8 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
       <button class="btn btn-outline" onclick="clearForm()">🔄 Clear Form</button>
       <button class="btn btn-outline" onclick="_savePDFMainInvoice()">💾 Save as PDF</button>
       <button class="btn btn-outline" onclick="printInvoice()">🖨️ Print</button>
-      <button class="btn" style="background:#25D366;color:#fff;font-weight:600;" onclick="sendWhatsApp()">📲 WhatsApp</button>
+      <button class="btn" style="background:#0ea5e9;color:#fff;font-weight:600;" onclick="sendQuote('whatsapp')">📋 WhatsApp Quote</button>
+      <button class="btn" style="background:#7c3aed;color:#fff;font-weight:600;" onclick="sendQuote('print')">🖨️ Print Quote</button>
       <button class="btn" style="background:#e67e22;color:#fff;font-weight:700;border:none;letter-spacing:0.3px;" onclick="saveDraft()" title="Save this invoice as a draft — you can come back and submit it later">📋 Save as Draft</button>
       <button class="btn" style="background:#c0392b;color:#fff;font-weight:700;border:none;letter-spacing:0.3px;" onclick="recordAsNull()" title="Record this invoice number as NULL — preserves the sequence with no details">⛔ Record as Null</button>
       <button class="btn btn-primary" onclick="submitInvoice()">✅ Submit & Save Invoice</button>
@@ -6382,6 +6383,113 @@ function collectData() {
 }
 
 // ══════════════════════════════════════════════
+// QUOTE (WhatsApp / Print)
+// ══════════════════════════════════════════════
+function sendQuote(mode) {
+  var data = collectData();
+  if (!data) { toast('❌ No data to quote.'); return; }
+  if (!data.items || !data.items.some(function(x){ return x.sizes || x.amt > 0; })) {
+    toast('❌ Please add items before sending a quote.'); return;
+  }
+  var _shopPhone = localStorage.getItem('inv_shopphone') || '0300-1215218';
+  var _shopName = localStorage.getItem('inv_shopname_en') || 'Prime CNC Laser Works Jauharabad';
+  var _quoteRef = 'Q-' + new Date().getFullYear() + '-' + Date.now().toString().slice(-4);
+  var _sqft = data.items.reduce(function(s,it){ return s+(parseFloat(it.sqft)||0); }, 0);
+  var _kg   = data.items.reduce(function(s,it){ return s+(parseFloat(it.kg)||0); }, 0);
+
+  if (mode === 'whatsapp') {
+    var _waPhone = (data.phone || '').replace(/[^0-9]/g,'');
+    var _msg = 'السلام علیکم ' + (data.custName || '') + ' صاحب،\n\n'
+      + '📋 قیمت کا تخمینہ / PRICE QUOTE\n'
+      + 'حوالہ نمبر / Ref: ' + _quoteRef + '\n'
+      + '📅 تاریخ / Date: ' + (data.date || new Date().toLocaleDateString('en-PK')) + '\n\n'
+      + (_sqft > 0 ? '📐 کل مربع فٹ / Total Sq.Ft: ' + _sqft.toFixed(3) + ' ft²\n' : '')
+      + (_kg > 0   ? '⚖️ کل وزن / Total KG: ' + _kg.toFixed(2) + ' kg\n' : '')
+      + '💰 کل رقم / Total Bill: Rs.' + Math.round(data.total||0).toLocaleString('en-PK') + '\n'
+      + (data.discount > 0 ? '🏷️ رعایت / Discount: Rs.' + Math.round(data.discount).toLocaleString('en-PK') + '\n' : '')
+      + '✅ رعایت کے بعد / After Discount: Rs.' + Math.round(data.afterDiscount||data.total||0).toLocaleString('en-PK') + '\n\n'
+      + '⏳ یہ تخمینہ 7 دن کے لیے درست ہے۔\n'
+      + 'حتمی رقم پیمائش کے بعد تبدیل ہو سکتی ہے۔\n\n'
+      + '━━━━━━━━━━━━━━━━━━\n'
+      + _shopName + '\n'
+      + '📞 ' + _shopPhone + '\n'
+      + 'شکریہ 🙏';
+    var _url = _waPhone
+      ? 'https://wa.me/92' + _waPhone.replace(/^0/,'') + '?text=' + encodeURIComponent(_msg)
+      : 'https://wa.me/?text=' + encodeURIComponent(_msg);
+    window.open(_url, '_blank');
+    return;
+  }
+
+  if (mode === 'print') {
+    var _ps = _getFullPrintShop();
+    var _ftrHTML = _buildPrintFooterHtml(_ps);
+    var _hdrCSS  = _printHeaderCSS(_ps);
+    var _accent  = _ps.accent || '#f59e0b';
+    var _rightHtml = '<span style="font-size:0.58rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:rgba(148,163,184,0.9);font-family:Montserrat,sans-serif;">PRICE QUOTE</span><br>'
+      + '<span style="font-size:0.9rem;font-weight:800;color:' + _accent + ';font-family:Montserrat,sans-serif;">' + _quoteRef + '</span><br>'
+      + '<span style="font-size:0.72rem;font-weight:600;color:rgba(255,255,255,0.7);font-family:Montserrat,sans-serif;">' + (data.date||new Date().toLocaleDateString('en-PK')) + '</span>';
+    var _hdrHTML = _printHeaderHtml(_ps, _rightHtml);
+    var _urduFont = '@font-face{font-family:"JameelNooriNastaliq";font-display:block;src:url("JameelNooriNastaleeq.ttf") format("truetype");}';
+    var _html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Quote - ' + _quoteRef + '</title>'
+      + '<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">'
+      + '<style>'
+      + _urduFont
+      + '@page{size:A4 portrait;margin:10mm;}'
+      + '*{box-sizing:border-box;margin:0;padding:0;}'
+      + 'body{font-family:Montserrat,Arial,sans-serif;background:#fff;color:#1e293b;font-size:12px;}'
+      + _hdrCSS
+      + '.content{padding:16px 20px;}'
+      + '.customer-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px;}'
+      + '.cust-label{font-size:0.65rem;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;}'
+      + '.cust-val{font-size:0.9rem;font-weight:800;color:#1e293b;}'
+      + '.cust-urdu{font-family:"JameelNooriNastaliq",serif;direction:rtl;font-size:0.85rem;color:#1e293b;text-align:right;}'
+      + '.row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:0.82rem;}'
+      + '.row:last-child{border-bottom:none;}'
+      + '.label{color:#64748b;font-weight:600;}'
+      + '.label-urdu{font-family:"JameelNooriNastaliq",serif;direction:rtl;font-size:0.75rem;color:#94a3b8;margin-right:6px;}'
+      + '.value{font-weight:700;color:#1e293b;}'
+      + '.total-box{background:#1e293b;color:#fff;border-radius:10px;padding:14px 16px;margin-top:16px;display:flex;justify-content:space-between;align-items:center;}'
+      + '.total-urdu{font-family:"JameelNooriNastaliq",serif;direction:rtl;font-size:0.85rem;color:rgba(255,255,255,0.7);}'
+      + '.note{margin-top:12px;padding:10px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;font-size:0.7rem;color:#92400e;}'
+      + '.note-urdu{font-family:"JameelNooriNastaliq",serif;direction:rtl;font-size:0.78rem;color:#92400e;display:block;margin-top:4px;text-align:right;}'
+      + '@media print{button{display:none!important;}}'
+      + '</style></head><body>'
+      + _hdrHTML
+      + '<div class="content">'
+      + '<div class="customer-box">'
+      + '<div>'
+      +   '<div class="cust-label">Customer / گاہک</div>'
+      +   '<div class="cust-val">' + (data.custName||'—') + '</div>'
+      +   (data.phone ? '<div style="font-size:0.78rem;color:#64748b;margin-top:3px;">📞 ' + data.phone + '</div>' : '')
+      + '</div>'
+      + '<div style="text-align:right;">'
+      +   '<div class="cust-label" style="text-align:right;">Date / تاریخ</div>'
+      +   '<div class="cust-val">' + (data.date||new Date().toLocaleDateString('en-PK')) + '</div>'
+      +   '<div style="font-size:0.72rem;color:#64748b;margin-top:3px;">Ref: ' + _quoteRef + '</div>'
+      + '</div>'
+      + '</div>'
+      + (_sqft > 0 ? '<div class="row"><span class="label">📐 Total Sq.Ft &nbsp;<span class="label-urdu">کل مربع فٹ</span></span><span class="value">' + _sqft.toFixed(3) + ' ft²</span></div>' : '')
+      + (_kg > 0   ? '<div class="row"><span class="label">⚖️ Total KG &nbsp;<span class="label-urdu">کل وزن</span></span><span class="value">' + _kg.toFixed(2) + ' kg</span></div>' : '')
+      + '<div class="row"><span class="label">💰 Total Bill &nbsp;<span class="label-urdu">کل رقم</span></span><span class="value">Rs. ' + Math.round(data.total||0).toLocaleString('en-PK') + '</span></div>'
+      + (data.discount > 0 ? '<div class="row"><span class="label">🏷️ Discount &nbsp;<span class="label-urdu">رعایت</span></span><span class="value">Rs. ' + Math.round(data.discount).toLocaleString('en-PK') + '</span></div>' : '')
+      + '<div class="total-box">'
+      +   '<div><div style="font-size:0.7rem;font-weight:700;color:rgba(255,255,255,0.6);">AFTER DISCOUNT</div><div class="total-urdu">رعایت کے بعد</div></div>'
+      +   '<span style="font-size:1.2rem;font-weight:800;color:#f59e0b;">Rs. ' + Math.round(data.afterDiscount||data.total||0).toLocaleString('en-PK') + '</span>'
+      + '</div>'
+      + '<div class="note">'
+      +   '⏳ This quote is valid for 7 days. Final invoice amount may vary based on actual measurements. Computer-generated — no signature required.'
+      +   '<span class="note-urdu">یہ تخمینہ 7 دن کے لیے درست ہے۔ حتمی رقم پیمائش کے بعد تبدیل ہو سکتی ہے۔</span>'
+      + '</div>'
+      + '</div>'
+      + _ftrHTML
+      + '</body></html>';
+    _silentPDFFromHtml(_html, 'Quote-' + _quoteRef + '.pdf');
+    return;
+  }
+}
+
+// ══════════════════════════════════════════════
 // SUBMIT
 // ══════════════════════════════════════════════
 async function submitInvoice() {
@@ -6443,6 +6551,31 @@ async function submitInvoice() {
      ${isEdit ? '<span style="color:#e67e22;font-weight:600;">This will overwrite the existing invoice and mark it as EDITED.</span>' : 'Save this invoice and proceed to the next one?'}`,
     [
       { label: 'Cancel', cls: 'btn-outline', fn: closeModal },
+      { label: '📲 Save + WhatsApp', cls: 'btn-success', fn: () => {
+          closeModal();
+          doSubmit(data);
+          // Send WhatsApp after brief delay to allow save
+          setTimeout(function() {
+            var _waPhone = (data.phone || '').replace(/[^0-9]/g,'');
+            var _shopPhone = localStorage.getItem('inv_shopphone') || '0300-1215218';
+            var _shopName = localStorage.getItem('inv_shopname_en') || 'Prime CNC Laser Works Jauharabad';
+            var _msg = 'Dear ' + (data.custName || 'Customer') + ',\n\n'
+              + '📋 Invoice: ' + (data.invNum || '—') + '\n'
+              + '📅 Date: ' + (data.date || '') + '\n'
+              + '💰 Total Bill: Rs.' + Math.round(data.total||0).toLocaleString('en-PK') + '\n'
+              + (data.discount > 0 ? '🏷️ Discount: Rs.' + Math.round(data.discount).toLocaleString('en-PK') + '\n' : '')
+              + '✅ After Discount: Rs.' + Math.round(data.afterDiscount||data.total||0).toLocaleString('en-PK') + '\n'
+              + (data.received > 0 ? '💵 Received: Rs.' + Math.round(data.received).toLocaleString('en-PK') + '\n' : '')
+              + '⚠️ Remaining: Rs.' + Math.round(data.remaining||0).toLocaleString('en-PK') + '\n\n'
+              + _shopName + '\n'
+              + '📞 ' + _shopPhone;
+            var _url = _waPhone
+              ? 'https://wa.me/92' + _waPhone.replace(/^0/,'') + '?text=' + encodeURIComponent(_msg)
+              : 'https://wa.me/?text=' + encodeURIComponent(_msg);
+            window.open(_url, '_blank');
+          }, 1500);
+        }
+      },
       { label: isEdit ? 'Update & Save' : 'Submit & Save', cls: 'btn-primary', fn: () => { doSubmit(data); closeModal(); } }
     ]
   );
