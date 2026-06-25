@@ -4990,28 +4990,48 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
-// ── SESSION TIMEOUT — auto logout after 8 hours of inactivity ──
+// ── SESSION TIMEOUT ──────────────────────────────────────────
+// Admin: 30 minutes idle → auto logout
+// Staff: 30 days since last login → auto logout
 (function() {
-  var _SESSION_MS = 8 * 60 * 60 * 1000;
-  function _resetActivity() { localStorage.setItem('_lastActivity', Date.now()); }
+  var _ADMIN_TIMEOUT_MS = 30 * 60 * 1000;          // 30 minutes
+  var _USER_TIMEOUT_MS  = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+  function _resetActivity() {
+    localStorage.setItem('_lastActivity', Date.now());
+  }
+
   function _checkSession() {
     var _now = Date.now();
     var _last = parseInt(localStorage.getItem('_lastActivity') || _now);
-    if (_now - _last > _SESSION_MS) {
+
+    // Get current role
+    var _sess = null;
+    try { _sess = JSON.parse(sessionStorage.getItem('_authSession') || 'null'); } catch(e) {}
+    var _isAdmin = _sess && _sess.role === 'admin';
+
+    var _timeout = _isAdmin ? _ADMIN_TIMEOUT_MS : _USER_TIMEOUT_MS;
+
+    if (_now - _last > _timeout) {
       localStorage.removeItem('_lastActivity');
-      if (typeof toast === 'function') toast('⚠️ Session expired — please log in again.');
+      var _msg = _isAdmin
+        ? '⚠️ Admin session expired after 30 minutes idle. Please log in again.'
+        : '⚠️ Session expired after 30 days. Please log in again.';
+      if (typeof toast === 'function') toast(_msg);
       setTimeout(function() {
-        localStorage.removeItem('currentUser');
-        localStorage.removeItem('currentUserRole');
-        window.location.reload();
+        if (typeof doLogout === 'function') doLogout();
+        else window.location.reload();
       }, 2000);
     }
   }
+
+  // Reset activity on any interaction
   ['click','keydown','scroll','touchstart'].forEach(function(evt) {
     document.addEventListener(evt, _resetActivity, { passive: true });
   });
+
   _resetActivity();
-  setInterval(_checkSession, 60000);
+  setInterval(_checkSession, 60000); // check every minute
 })();
 Sentry.setTag("app_version", "1.0.4");
 const storedVersion = localStorage.getItem('app_version');
