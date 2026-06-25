@@ -5748,13 +5748,10 @@ function init() {
       switchTab(_lastTab, _tabEl);
       // Sync mobile bottom nav active highlight to match restored tab
       document.querySelectorAll('.mob-nav-btn').forEach(function(b) { b.classList.remove('mnb-active'); });
-      document.querySelectorAll('.mmt-row').forEach(function(r) { r.classList.remove('mmt-active'); });
-      var _moreTabs = ['search','database','finance','settings'];
+      var _moreTabs = ['database','finance','settings'];
       if (_moreTabs.indexOf(_lastTab) !== -1) {
-        var _moreBtn = document.getElementById('mobMoreBtn');
+        var _moreBtn = document.querySelector('.mob-nav-btn[data-tab="more"]');
         if (_moreBtn) _moreBtn.classList.add('mnb-active');
-        var _trayRow = document.querySelector('.mmt-row[data-tab="' + _lastTab + '"]');
-        if (_trayRow) _trayRow.classList.add('mmt-active');
       } else {
         var _mobBtn = document.querySelector('.mob-nav-btn[data-tab="' + _lastTab + '"]');
         if (_mobBtn) _mobBtn.classList.add('mnb-active');
@@ -25406,48 +25403,18 @@ setInterval(function() {
   <span id="mobSyncPill" class="msp-grey">— Checking...</span>
 </div>
 <nav class="mobile-bottom-nav" id="mobileBottomNav" aria-label="Main navigation">
-  <button class="mob-nav-btn mnb-active" data-tab="summary"
-          onclick="_mobSwitchTab('summary',this)">
-    <span class="mnb-icon">📊</span><span>Summary</span>
-  </button>
-  <button class="mob-nav-btn" data-tab="invoice"
-          onclick="_mobSwitchTab('invoice',this)">
-    <span class="mnb-icon">📄</span><span>Invoice</span>
-  </button>
-  <button class="mob-nav-btn" data-tab="payment"
-          onclick="_mobSwitchTab('payment',this)">
-    <span class="mnb-icon">💳</span><span>Payment</span>
-  </button>
-  <button class="mob-nav-btn" data-tab="production"
-          onclick="_mobSwitchTab('production',this)">
-    <span class="mnb-icon">🏭</span><span>Production</span>
-  </button>
-  <button class="mob-nav-btn" data-tab="more" id="mobMoreBtn"
-          onclick="_mobMoreToggle()">
-    <span class="mnb-icon">•••</span><span>More</span>
-  </button>
-</nav>
-
-<div id="mobMoreBackdrop" onclick="_mobMoreClose()"></div>
-<div id="mobMoreTray">
-  <div class="mmt-handle"></div>
-  <button class="mmt-row" data-tab="search"
-          onclick="_mobSwitchTab('search',null);_mobMoreClose()">
-    <span class="mmt-icon">🔍</span><span>Search</span>
-  </button>
-  <button class="mmt-row" data-tab="database"
-          onclick="_mobSwitchTab('database',null);_mobMoreClose()">
-    <span class="mmt-icon">🗃️</span><span>Database</span>
-  </button>
-  <button class="mmt-row" data-tab="finance"
-          onclick="_mobSwitchTab('finance',null);_mobMoreClose()">
-    <span class="mmt-icon">💰</span><span>Finance</span>
-  </button>
-  <button class="mmt-row" data-tab="settings"
-          onclick="_mobSwitchTab('settings',null);_mobMoreClose()">
-    <span class="mmt-icon">⚙️</span><span>Settings</span>
-  </button>
-</div>
+    <button class="mob-nav-btn" data-tab="invoice"    onclick="_mobSwitchTab('invoice',this)">📄<span>Invoice</span></button>
+    <button class="mob-nav-btn" data-tab="payment"    onclick="_mobSwitchTab('payment',this)">💰<span>Payment</span></button>
+    <button class="mob-nav-btn" data-tab="production" onclick="_mobSwitchTab('production',this)">🏭<span>Production</span></button>
+    <button class="mob-nav-btn mnb-active" data-tab="summary" onclick="_mobSwitchTab('summary',this)">📊<span>Summary</span></button>
+    <button class="mob-nav-btn" data-tab="search"     onclick="_mobSwitchTab('search',this)">🔍<span>Search</span></button>
+    <button class="mob-nav-btn" data-tab="more"       onclick="_mobShowMore()">⋯<span>More</span></button>
+  </nav>
+  <div id="mobMoreMenu" style="display:none;position:fixed;bottom:62px;left:0;right:0;background:#1e293b;border-top:2px solid #f59e0b;z-index:9998;padding:8px 0;">
+    <button class="mob-nav-btn" data-tab="database" onclick="_mobSwitchTab('database',this);_mobHideMore();" style="width:100%;flex-direction:row;gap:10px;padding:12px 20px;justify-content:flex-start;border-bottom:1px solid rgba(255,255,255,0.1);">🗃️ <span>Database</span></button>
+    <button class="mob-nav-btn" data-tab="finance"  onclick="_mobSwitchTab('finance',this);_mobHideMore();"  style="width:100%;flex-direction:row;gap:10px;padding:12px 20px;justify-content:flex-start;border-bottom:1px solid rgba(255,255,255,0.1);">💰 <span>Finance</span></button>
+    <button class="mob-nav-btn" data-tab="settings" onclick="_mobSwitchTab('settings',this);_mobHideMore();" style="width:100%;flex-direction:row;gap:10px;padding:12px 20px;justify-content:flex-start;">⚙️ <span>Settings</span></button>
+  </div>
 
 <script>
 /* ── PWA additions — all new code, no existing logic touched ── */
@@ -25456,7 +25423,7 @@ setInterval(function() {
       Delegates to the existing sidebar switchTab() function, then
       updates the mobile nav and More tray highlights. */
 function _mobSwitchTab(tab, btnEl) {
-  _mobMoreClose();
+  _mobHideMore();
   var sideTab = document.querySelector('.tab.tab-' + tab);
   if (sideTab && typeof switchTab === 'function') {
     switchTab(tab, sideTab);
@@ -25464,44 +25431,24 @@ function _mobSwitchTab(tab, btnEl) {
   document.querySelectorAll('.mob-nav-btn').forEach(function(b) {
     b.classList.remove('mnb-active');
   });
-  document.querySelectorAll('.mmt-row').forEach(function(r) {
-    r.classList.remove('mmt-active');
-  });
-  var moreTabs = ['search','database','finance','settings'];
+  var moreTabs = ['database','finance','settings'];
   if (moreTabs.indexOf(tab) !== -1) {
-    var moreBtn = document.getElementById('mobMoreBtn');
+    var moreBtn = document.querySelector('.mob-nav-btn[data-tab="more"]');
     if (moreBtn) moreBtn.classList.add('mnb-active');
-    var trayRow = document.querySelector('.mmt-row[data-tab="' + tab + '"]');
-    if (trayRow) trayRow.classList.add('mmt-active');
   } else if (btnEl) {
     btnEl.classList.add('mnb-active');
   }
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function _mobMoreToggle() {
-  var tray = document.getElementById('mobMoreTray');
-  if (tray && tray.classList.contains('mmt-open')) {
-    _mobMoreClose();
-  } else {
-    var bd  = document.getElementById('mobMoreBackdrop');
-    var btn = document.getElementById('mobMoreBtn');
-    if (tray) tray.classList.add('mmt-open');
-    if (bd)   bd.classList.add('mmt-open');
-    if (btn)  btn.classList.add('mnb-active');
-  }
+function _mobShowMore() {
+  var menu = document.getElementById('mobMoreMenu');
+  if (menu) menu.style.display = (menu.style.display === 'none' ? 'block' : 'none');
 }
 
-function _mobMoreClose() {
-  var tray = document.getElementById('mobMoreTray');
-  var bd   = document.getElementById('mobMoreBackdrop');
-  if (tray) tray.classList.remove('mmt-open');
-  if (bd)   bd.classList.remove('mmt-open');
-  var anyTrayActive = document.querySelector('.mmt-row.mmt-active');
-  if (!anyTrayActive) {
-    var btn = document.getElementById('mobMoreBtn');
-    if (btn) btn.classList.remove('mnb-active');
-  }
+function _mobHideMore() {
+  var menu = document.getElementById('mobMoreMenu');
+  if (menu) menu.style.display = 'none';
 }
 
 /* 2. Mobile print → PDF redirect
