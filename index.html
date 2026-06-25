@@ -2517,16 +2517,17 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
   <!-- SIDEBAR TABS -->
   <div class="tabs-sidebar">
     <div class="tabs">
-      <div class="tab tab-summary active" onclick="switchTab('summary',this)">📊 Summary</div>
-
       <div class="tab tab-invoice" onclick="switchTab('invoice',this)">📄 New Invoice</div>
       <div class="tab-sub-list" id="sublist-invoice">
         <div class="tab-sub-item active" onclick="_activateSubItem(this);switchInvTab('full')">📄 Full Invoice</div>
         <div class="tab-sub-item" onclick="_activateSubItem(this);switchInvTab('manual')">📜 Manual Invoice</div>
       </div>
 
-      <div class="tab tab-search" onclick="switchTab('search',this)">🔍 Search</div>
       <div class="tab tab-payment" onclick="switchTab('payment',this)">💰 Receive Payment</div>
+      <div class="tab tab-production" onclick="switchTab('production',this)">🏭 Production</div>
+
+      <div class="tab tab-summary active" onclick="switchTab('summary',this)">📊 Summary</div>
+      <div class="tab tab-search" onclick="switchTab('search',this)">🔍 Search</div>
 
       <div class="tab tab-database" onclick="switchTab('database',this)">🗃️ Database (<span id="dbCount">0</span>)</div>
       <div class="tab-sub-list" id="sublist-database">
@@ -2535,7 +2536,6 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         <div class="tab-sub-item" onclick="_activateSubItem(this);switchDbTab('draft')">📋 Drafts</div>
       </div>
 
-      <div class="tab tab-production" onclick="switchTab('production',this)">🏭 Production</div>
       <div class="tab tab-finance" onclick="switchTab('finance',this)">💰 Finance</div>
       <div class="tab-sub-list" id="sublist-finance">
         <div class="tab-sub-item active" onclick="_activateSubItem(this);switchFinTab('dashboard',this)">📊 Dashboard</div>
@@ -25753,7 +25753,9 @@ async function _authDoLogin() {
         summary:      !!data.tab_summary,
         finance:      !!data.tab_finance,
         finance_edit: !!data.finance_edit,
-        settings:     !!data.tab_settings
+        settings:     !!data.tab_settings,
+        payment:      data.tab_payment !== false,
+        production:   data.tab_production !== false
       },
       force_pw_change: !!data.force_pw_change
     };
@@ -26034,6 +26036,7 @@ async function _authDoSetup() {
       password_hash: hash, role: 'admin',
       tab_invoice:true, tab_database:true, tab_search:true,
       tab_summary:true, tab_finance:true,  tab_settings:true,
+      tab_payment:true, tab_production:true,
       finance_edit:true, force_pw_change:false,
       last_login: new Date().toISOString()
     }).select().single();
@@ -26048,7 +26051,7 @@ async function _authDoSetup() {
       id:res.data.id, username:res.data.username,
       display_name:res.data.display_name, role:'admin',
       email:'', phone:'', profile_setup:false,
-      permissions:{invoice:true,database:true,search:true,summary:true,finance:true,finance_edit:true,settings:true},
+      permissions:{invoice:true,database:true,search:true,summary:true,finance:true,finance_edit:true,settings:true,payment:true,production:true},
       force_pw_change:false
     };
     _authSetSession(sess);
@@ -26134,10 +26137,12 @@ function _authApplyPermissions(sess) {
 
   var tabIds  = {invoice:'.tab.tab-invoice',database:'.tab.tab-database',
                  search:'.tab.tab-search',  summary:'.tab.tab-summary',
-                 finance:'.tab.tab-finance', settings:'.tab.tab-settings'};
+                 finance:'.tab.tab-finance', settings:'.tab.tab-settings',
+                 payment:'.tab.tab-payment', production:'.tab.tab-production'};
   var mobSels = {invoice:'[data-tab="invoice"]', database:'[data-tab="database"]',
                  search:'[data-tab="search"]',   summary:'[data-tab="summary"]',
-                 finance:'[data-tab="finance"]',  settings:'[data-tab="settings"]'};
+                 finance:'[data-tab="finance"]',  settings:'[data-tab="settings"]',
+                 payment:'[data-tab="payment"]',  production:'[data-tab="production"]'};
 
   Object.keys(tabIds).forEach(function(tab) {
     var allowed = isAdmin || !!perm[tab];
@@ -26176,7 +26181,7 @@ function _authApplyPermissions(sess) {
   if(cashCustodySubTabSidebar) cashCustodySubTabSidebar.style.display = isAdmin ? '' : 'none';
 
   // Auto-switch to first permitted tab
-  var order = ['summary','invoice','search','database','finance','settings'];
+  var order = ['invoice','payment','production','summary','search','database','finance','settings'];
   var lastTab = localStorage.getItem('last_active_tab') || '';
   var allowed2 = isAdmin || (lastTab && !!perm[lastTab]);
   if(!allowed2 || !lastTab) lastTab = order.find(function(t){ return isAdmin||!!perm[t]; }) || 'summary';
@@ -26727,9 +26732,9 @@ window._authDoChangePw = _authDoChangePw;
 
 // ─── USERS & ACCESS PANEL HTML ───────────────────────────────
 function _authUsersPanelHTML() {
-  var tabs = ['invoice','database','search','summary','finance','settings'];
+  var tabs = ['invoice','database','search','summary','finance','settings','payment','production'];
   var togglesHtml = tabs.map(function(t){
-    var checked = (t==='invoice'||t==='database'||t==='search'||t==='summary') ? 'checked' : '';
+    var checked = (t==='invoice'||t==='database'||t==='search'||t==='summary'||t==='payment'||t==='production') ? 'checked' : '';
     return '<label class="auth-toggle-label" style="min-width:120px;">'+
       '<input type="checkbox" class="auth-toggle-cb" id="nuPerm_'+t+'" '+checked+' onchange="if(this.id===\'nuPerm_finance\'){var w=document.getElementById(\'nuFinanceEditWrap\');if(w)w.style.display=this.checked?\'\':\'none\';}">'+
       '<span class="auth-toggle-track"><span class="auth-toggle-thumb"></span></span>'+
@@ -26802,7 +26807,7 @@ async function _authCreateUser() {
   try {
     var hash = await hashPassword(pw);
     var perms = {};
-    ['invoice','database','search','summary','finance','settings'].forEach(function(t){
+    ['invoice','database','search','summary','finance','settings','payment','production'].forEach(function(t){
       var cb=document.getElementById('nuPerm_'+t); perms[t]=cb?cb.checked:false;
     });
     var fe=document.getElementById('nuPerm_finance_edit'); perms.finance_edit=fe?fe.checked:false;
@@ -26813,6 +26818,7 @@ async function _authCreateUser() {
       tab_invoice:perms.invoice, tab_database:perms.database,
       tab_search:perms.search,   tab_summary:perms.summary,
       tab_finance:perms.finance, tab_settings:perms.settings,
+      tab_payment:perms.payment, tab_production:perms.production,
       finance_edit:perms.finance_edit, force_pw_change:true
     });
     if(res.error){if(err){err.textContent='❌ '+(res.error.message||'Error');err.style.display='';}return;}
@@ -26874,10 +26880,11 @@ async function _authShowEditModal(userId) {
   _authEditTarget = res.data;
   _authEditTarget._mode = 'edit';
   var d = res.data;
-  var tabs=['invoice','database','search','summary','finance','settings'];
+  var tabs=['invoice','database','search','summary','finance','settings','payment','production'];
   var toggles = tabs.map(function(t){
+    var isChecked = (t==='payment'||t==='production') ? (d['tab_'+t]!==false) : !!d['tab_'+t];
     return '<label class="auth-toggle-label" style="min-width:120px;">'+
-      '<input type="checkbox" class="auth-toggle-cb" id="editPerm_'+t+'" '+(d['tab_'+t]?'checked':'')+' onchange="if(this.id===\'editPerm_finance\'){var w=document.getElementById(\'editFinWrap\');if(w)w.style.display=this.checked?\'\':\'none\';}">'+
+      '<input type="checkbox" class="auth-toggle-cb" id="editPerm_'+t+'" '+(isChecked?'checked':'')+' onchange="if(this.id===\'editPerm_finance\'){var w=document.getElementById(\'editFinWrap\');if(w)w.style.display=this.checked?\'\':\'none\';}">'+
       '<span class="auth-toggle-track"><span class="auth-toggle-thumb"></span></span>'+
       '<span style="font-size:0.78rem;font-weight:600;color:#334155;text-transform:capitalize;">'+t+'</span>'+
     '</label>';
@@ -26921,7 +26928,7 @@ async function _authSaveEdit() {
       email: editEmail||null, phone: editPhone||null,
       profile_setup: !!(editEmail||editPhone)
     };
-    ['invoice','database','search','summary','finance','settings'].forEach(function(t){
+    ['invoice','database','search','summary','finance','settings','payment','production'].forEach(function(t){
       var cb=document.getElementById('editPerm_'+t); updates['tab_'+t]=cb?cb.checked:false;
     });
     var fe=document.getElementById('editPerm_finance_edit'); updates.finance_edit=fe?fe.checked:false;
@@ -27077,7 +27084,7 @@ async function _authCheckPermissions() {
   _authPermPollRunning = true;
   try {
     var res = await window.sb.from('app_users')
-      .select('display_name,email,phone,tab_invoice,tab_database,tab_search,tab_summary,tab_finance,tab_settings,finance_edit,role,force_pw_change')
+      .select('display_name,email,phone,tab_invoice,tab_database,tab_search,tab_summary,tab_finance,tab_settings,tab_payment,tab_production,finance_edit,role,force_pw_change')
       .eq('id', sess.id)
       .single();
 
@@ -27142,13 +27149,15 @@ async function _authCheckPermissions() {
       summary:      !!d.tab_summary,
       finance:      !!d.tab_finance,
       finance_edit: !!d.finance_edit,
-      settings:     !!d.tab_settings
+      settings:     !!d.tab_settings,
+      payment:      d.tab_payment !== false,
+      production:   d.tab_production !== false
     };
 
     // Compare with current session permissions
     var oldPerm = sess.permissions || {};
     var changed = false;
-    var keys = ['invoice','database','search','summary','finance','finance_edit','settings'];
+    var keys = ['invoice','database','search','summary','finance','finance_edit','settings','payment','production'];
     keys.forEach(function(k) {
       if (!!oldPerm[k] !== !!newPerm[k]) changed = true;
     });
