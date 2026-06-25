@@ -4903,6 +4903,142 @@ var _dbPageSize = 50;
 let _dbExactName = null;       // exact name selected from dropdown (null = partial/type search)
 let _searchPage = 1;           // pagination page for search tab
 
+// ── OFFLINE DETECTION ─────────────────────────────────────────
+(function() {
+  var _offlineOverlay = null;
+
+  function _showOffline() {
+    if (_offlineOverlay) return;
+    _offlineOverlay = document.createElement('div');
+    _offlineOverlay.id = '_offlineOverlay';
+    _offlineOverlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#0f1e45;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:Montserrat,sans-serif;color:#fff;padding:30px;text-align:center;';
+    _offlineOverlay.innerHTML = ''
+      + '<div style="font-size:3rem;margin-bottom:16px;">📡</div>'
+      + '<div style="font-size:1.2rem;font-weight:800;margin-bottom:8px;">You\'re Offline</div>'
+      + '<div style="font-size:0.85rem;color:rgba(255,255,255,0.6);margin-bottom:8px;">آپ آف لائن ہیں</div>'
+      + '<div style="font-size:0.78rem;color:rgba(255,255,255,0.5);margin-bottom:24px;max-width:280px;line-height:1.6;">Don\'t worry — your data is safe. Please check your internet connection.</div>'
+      + '<button onclick="window.location.reload()" style="background:#f59e0b;color:#1e293b;border:none;padding:12px 28px;border-radius:10px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;cursor:pointer;">🔄 Retry Connection</button>'
+      + '<div style="margin-top:16px;font-size:0.7rem;color:rgba(255,255,255,0.3);">Prime CNC Laser Works</div>';
+    document.body.appendChild(_offlineOverlay);
+  }
+
+  function _hideOffline() {
+    if (_offlineOverlay) {
+      _offlineOverlay.remove();
+      _offlineOverlay = null;
+      if (typeof toast === 'function') toast('✅ Back online!');
+    }
+  }
+
+  window.addEventListener('online',  _hideOffline);
+  window.addEventListener('offline', _showOffline);
+  if (!navigator.onLine) setTimeout(_showOffline, 1000);
+})();
+
+// ── SWIPE GESTURES ────────────────────────────────────────────
+(function() {
+  var _tabOrder = ['invoice','payment','production','summary','search','database','finance','settings'];
+  var _touchStartX = 0;
+  var _touchStartY = 0;
+  var _touchStartTime = 0;
+
+  document.addEventListener('touchstart', function(e) {
+    _touchStartX = e.touches[0].clientX;
+    _touchStartY = e.touches[0].clientY;
+    _touchStartTime = Date.now();
+  }, { passive: true });
+
+  document.addEventListener('touchend', function(e) {
+    var dx = e.changedTouches[0].clientX - _touchStartX;
+    var dy = e.changedTouches[0].clientY - _touchStartY;
+    var dt = Date.now() - _touchStartTime;
+
+    // Must be fast (<350ms), horizontal (dx > dy), and long enough (>60px)
+    if (dt > 350 || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+
+    // Don't swipe if touching input, select, textarea, or scrollable element
+    var target = e.target;
+    while (target && target !== document.body) {
+      if (['INPUT','SELECT','TEXTAREA'].includes(target.tagName)) return;
+      if (target.scrollWidth > target.clientWidth + 5) return;
+      target = target.parentElement;
+    }
+
+    // Find current tab
+    var currentTab = window._currentTab || 'summary';
+    var permittedTabs = _tabOrder.filter(function(t) {
+      var btn = document.querySelector('[data-tab="' + t + '"]');
+      return btn && btn.style.display !== 'none';
+    });
+    var currentIdx = permittedTabs.indexOf(currentTab);
+    if (currentIdx === -1) return;
+
+    var nextIdx = dx < 0 ? currentIdx + 1 : currentIdx - 1;
+    if (nextIdx < 0 || nextIdx >= permittedTabs.length) return;
+
+    var nextTab = permittedTabs[nextIdx];
+    if (typeof _mobSwitchTab === 'function') {
+      var btn = document.querySelector('[data-tab="' + nextTab + '"]');
+      _mobSwitchTab(nextTab, btn);
+    } else if (typeof switchTab === 'function') {
+      var el = document.querySelector('.tab.tab-' + nextTab);
+      switchTab(nextTab, el);
+    }
+  }, { passive: true });
+})();
+
+// ── PULL TO REFRESH ───────────────────────────────────────────
+(function() {
+  if (window.innerWidth > 767) return; // mobile only
+  var _pullStart = 0;
+  var _pulling = false;
+  var _indicator = null;
+  var _threshold = 80;
+
+  function _createIndicator() {
+    _indicator = document.createElement('div');
+    _indicator.id = '_pullIndicator';
+    _indicator.style.cssText = 'position:fixed;top:0;left:0;right:0;height:0;background:#f59e0b;z-index:9997;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:height 0.1s;font-family:Montserrat,sans-serif;font-size:0.75rem;font-weight:700;color:#1e293b;';
+    _indicator.innerHTML = '↓ Pull to refresh';
+    document.body.appendChild(_indicator);
+  }
+
+  document.addEventListener('touchstart', function(e) {
+    if (window.scrollY === 0 && e.touches[0].clientY < 80) {
+      _pullStart = e.touches[0].clientY;
+      _pulling = true;
+      if (!_indicator) _createIndicator();
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchmove', function(e) {
+    if (!_pulling) return;
+    var dy = e.touches[0].clientY - _pullStart;
+    if (dy < 0) { _pulling = false; return; }
+    var h = Math.min(dy * 0.5, _threshold);
+    if (_indicator) {
+      _indicator.style.height = h + 'px';
+      _indicator.innerHTML = dy > _threshold * 2 ? '↑ Release to refresh' : '↓ Pull to refresh';
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchend', function(e) {
+    if (!_pulling) return;
+    var dy = e.changedTouches[0].clientY - _pullStart;
+    _pulling = false;
+    if (_indicator) _indicator.style.height = '0';
+    if (dy > _threshold * 2) {
+      if (_indicator) _indicator.innerHTML = '↻ Refreshing...';
+      if (_indicator) _indicator.style.height = '40px';
+      setTimeout(function() {
+        if (typeof loadFromSupabase === 'function') loadFromSupabase();
+        else window.location.reload();
+        if (_indicator) { _indicator.style.height = '0'; }
+      }, 600);
+    }
+  }, { passive: true });
+})();
+
 // ── GLOBAL ERROR HANDLER ──────────────────────────────────────
 window.onerror = function(msg, src, line, col, err) {
   console.error('[Global Error]', msg, 'at', src, line + ':' + col, err);
@@ -14648,6 +14784,7 @@ function switchTab(tab, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
   localStorage.setItem('last_active_tab', tab); // remember for next startup
+  window._currentTab = tab;
   // Hide all sub-lists, then open the active one unless toggling closed
   document.querySelectorAll('.tab-sub-list').forEach(function(l){ l.classList.remove('open'); });
   if (sublist && !(wasActive && wasOpen)) sublist.classList.add('open');
