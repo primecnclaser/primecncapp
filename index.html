@@ -25453,14 +25453,14 @@ window._forceAppRefresh = async function() {
 };
 
 // Unregister all service workers on every load to prevent caching issues
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && !/Electron/.test(navigator.userAgent)) {
   navigator.serviceWorker.getRegistrations().then(function(registrations) {
     registrations.forEach(function(reg) { reg.unregister(); });
   });
 }
 
 /* 3. Service worker registration for offline support */
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && !/Electron/.test(navigator.userAgent)) {
   window.addEventListener('load', function () {
     // One-time cleanup: delete any old/stale caches from previous SW versions
     if (window.caches && caches.keys) {
