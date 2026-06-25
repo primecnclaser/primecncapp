@@ -30,11 +30,9 @@
 <script>
   Sentry.init({
     dsn: "https://317f68cc231c2963fecc64666a38c10d@o4511585608073216.ingest.us.sentry.io/4511585619869696",
-    environment: "staging",
-    tracesSampleRate: 1.0,
-    beforeSend(event) {
-      return event;
-    }
+    environment: "production",
+    tracesSampleRate: 0.2,
+    ignoreErrors: ['ResizeObserver loop limit exceeded', 'Non-Error promise rejection']
   });
 </script>
 <meta charset="UTF-8">
@@ -23589,8 +23587,8 @@ function _initDragStaging() {
   // Prefer localStorage (source of truth for drag editor saves) over ctrl_ inputs
   var lsv = function(lsKey, ctrlId) {
     var stored = localStorage.getItem(lsKey);
-    if (stored !== null) return stored;          // use exactly what was saved (even empty string)
-    return gv(ctrlId);                           // fall back to ctrl_ input if key never saved
+    if (stored !== null && stored !== '') return stored;
+    return gv(ctrlId);
   };
   _dragTextTemp = {
     urdu:    lsv('inv_shopname_urdu', 'ctrl_urdu'),
