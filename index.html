@@ -8980,7 +8980,7 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
     let allInvRows = [], from2 = 0, done2 = false;
     while (!done2) {
       const { data: invRows, error: invErr } = await sb.from('invoices')
-        .select('cust_name,phone,total,discount,received,received1,received1_entries,bad_debt,remaining,inv_num')
+        .select('cust_name,phone,total,discount,received,received1,bad_debt,remaining,inv_num')
         .range(from2, from2 + batchSize - 1);
       if (invErr) { console.error('[invoices] fetch error:', invErr); break; }
       allInvRows = allInvRows.concat(invRows || []);
@@ -10437,12 +10437,12 @@ async function fetchCustomerInvoices(name, phone, nameQuery) {
       var invQ = [];
       if (exactName) invQ.push(
         sb.from('invoices')
-          .select('inv_num,date,cust_name,phone,total,discount,received,received1,received1_entries,remaining,bad_debt')
+          .select('inv_num,date,cust_name,phone,total,discount,received,received1,remaining,bad_debt')
           .eq('cust_name', exactName)
       );
       if (ph0) invQ.push(
         sb.from('invoices')
-          .select('inv_num,date,cust_name,phone,total,discount,received,received1,received1_entries,remaining,bad_debt')
+          .select('inv_num,date,cust_name,phone,total,discount,received,received1,remaining,bad_debt')
           .eq('phone', phone)
       );
       var invRes = invQ.length ? await Promise.all(invQ) : [];
@@ -13476,7 +13476,7 @@ async function exportInvoicesCSV() {
     if (btn) btn.textContent = '⏳ Fetching invoices...';
 
     var r1 = await sb.from('invoices').select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,received1,remaining,bad_debt,created_at,received1_entries,edited_at,is_advance,extra_charges,extra_charges_label');
-    var r2 = await sb.from('excel_invoices').select('*');
+    var r2 = await sb.from('excel_invoices').select('id,order_num,customer_name,phone,total_bill,discount,bad_debt,received,received1,received_entries,remaining,date,source,created_at,order_status,status_updated_at');
 
     var inv1 = (r1.data || []).map(function(r) {
       var d = r.date ? new Date(r.date) : null;
