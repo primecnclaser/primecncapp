@@ -9055,15 +9055,17 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
   let _curMonthScrap   = 0;
   try {
     if (sb && navigator.onLine) {
-      // Sheets Cutting — single source of truth: customer_payments
+      // Sheets Cutting — from finance_ledger to match Finance tab exactly
       try {
-        const _cpMonth = await sb.from('customer_payments')
+        const _scMonth = await sb.from('finance_ledger')
           .select('amount')
-          .gte('payment_date', _mFirstDay)
-          .lte('payment_date', _mLastDay)
-          .eq('type', 'payment');
-        (_cpMonth.data || []).forEach(function(p){ _curMonthCutting += (parseFloat(p.amount)||0); });
-      } catch(_cpMe) { console.warn('[curMonth SC] customer_payments fetch:', _cpMe); }
+          .gte('entry_date', _mFirstDay)
+          .lte('entry_date', _mLastDay)
+          .eq('category', 'Sheets Cutting')
+          .in('entry_type', ['income', 'invoice_income'])
+          .neq('source', 'historical_daily');
+        (_scMonth.data || []).forEach(function(e){ _curMonthCutting += (parseFloat(e.amount)||0); });
+      } catch(_scMe) { console.warn('[curMonth SC] finance_ledger fetch:', _scMe); }
 
       // Scrap — still from finance_ledger (no customer_payments for scrap)
       try {
@@ -9076,15 +9078,12 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
         (_scrapRes.data || []).forEach(function(e){ _curMonthScrap += (parseFloat(e.amount)||0); });
       } catch(_scrapE) { console.warn('[curMonth scrap] fetch:', _scrapE); }
     } else {
-      // Offline — use local database received amounts for Sheets Cutting
-      (database || []).forEach(function(inv) {
-        if (inv.isNull || inv.isDraft) return;
-        var invDate = parseDateStr ? parseDateStr(inv.date) : inv.date;
-        if (!invDate || invDate.slice(0,7) !== _nowYM) return;
-        var r1sum = Array.isArray(inv.received1Entries)
-          ? inv.received1Entries.reduce(function(s,e){ return s+(e.amount||0); }, 0)
-          : (parseFloat(inv.received1)||0);
-        _curMonthCutting += (parseFloat(inv.received)||0) + r1sum;
+      // Offline — use _finLedgerLocal for Sheets Cutting (matches Finance tab)
+      (_finLedgerLocal||[]).forEach(function(e){
+        if (!e.entry_date || e.entry_date.slice(0,7) !== _nowYM) return;
+        if (e.category === 'Sheets Cutting' && (e.entry_type === 'income' || e.entry_type === 'invoice_income')) {
+          _curMonthCutting += (parseFloat(e.amount)||0);
+        }
       });
       // Scrap offline — from _finLedgerLocal
       (_finLedgerLocal||[]).forEach(function(e){
