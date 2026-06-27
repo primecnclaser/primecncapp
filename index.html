@@ -8670,7 +8670,7 @@ async function renderSummary() {
   let _scTotal = 0;
   try {
     if (sb && navigator.onLine) {
-      let _scQ = sb.from('finance_ledger').select('amount').eq('category', 'Sheets Cutting');
+      let _scQ = sb.from('finance_ledger').select('amount').eq('category', 'Sheets Cutting').eq('entry_type', 'income').neq('source', 'historical_daily');
       if (mode === 'day' && dateV)       _scQ = _scQ.eq('entry_date', dateV);
       else if (mode === 'month' && monV) _scQ = _scQ.like('entry_date', monV + '%');
       else if (mode === 'year' && yearV) _scQ = _scQ.like('entry_date', String(yearV) + '%');
@@ -9074,7 +9074,7 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
           .gte('entry_date', _mFirstDay)
           .lte('entry_date', _mLastDay)
           .eq('category', 'Sheets Cutting')
-          .in('entry_type', ['income', 'invoice_income'])
+          .eq('entry_type', 'income')
           .neq('source', 'historical_daily');
         (_scMonth.data || []).forEach(function(e){ _curMonthCutting += (parseFloat(e.amount)||0); });
       } catch(_scMe) { console.warn('[curMonth SC] finance_ledger fetch:', _scMe); }
@@ -20156,7 +20156,7 @@ async function renderPLReport(filterYear) {
     var amt = parseFloat(e.amount) || 0;
     var cat = (e.category || '').trim();
     var et  = (e.entry_type || '').trim();
-    if ((et === 'income' || et === 'invoice_income') && cat === 'Sheets Cutting') {
+    if (et === 'income' && cat === 'Sheets Cutting') {
       monthMap[mk].sc += amt;
     } else if (et === 'income' && cat === 'Scrap') {
       monthMap[mk].scrap += amt;
