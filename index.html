@@ -2579,6 +2579,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         <div class="tab-sub-item" onclick="_activateSubItem(this);switchFinTab('ledger',this)">📋 Ledger</div>
         <div class="tab-sub-item" onclick="_activateSubItem(this);switchFinTab('salaries',this)">👷 Salaries</div>
         <div class="tab-sub-item" onclick="_activateSubItem(this);switchFinTab('investors',this)">🤝 Investors</div>
+        <div class="tab-sub-item" onclick="_activateSubItem(this);switchFinTab('plreport',this)">📈 P&L Report</div>
       </div>
 
       <div class="tab tab-settings" onclick="switchTab('settings',this)">⚙️ Settings</div>
@@ -4006,6 +4007,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         <div class="fin-sub-tab" onclick="switchFinTab('ledger',this)">📋 Ledger</div>
         <div class="fin-sub-tab" onclick="switchFinTab('salaries',this)">👷 Salaries</div>
         <div class="fin-sub-tab" onclick="switchFinTab('investors',this)">🤝 Investors/Partners</div>
+        <div class="fin-sub-tab" onclick="switchFinTab('plreport',this)">📈 P&L Report</div>
       </div>
       <!-- Finance cross-check status bar (Feature 3 & 4) -->
       <div id="finCrossCheckBar" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 18px 6px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;font-family:'Montserrat',sans-serif;flex-wrap:wrap;">
@@ -4322,6 +4324,48 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
           <button onclick="renderInvestSavings()" class="btn btn-primary" style="padding:7px 16px;font-size:0.8rem;">🔄 Refresh</button>
         </div>
         <div id="investSavingsCards" style="margin-top:4px;"></div>
+      </div>
+
+      <!-- ═══ P&L REPORT ═══ -->
+      <div id="finPLReport" style="display:none; padding:16px;">
+
+        <!-- Summary KPI cards -->
+        <div id="plKpiCards" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:20px;"></div>
+
+        <!-- Year filter buttons -->
+        <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center;">
+          <span style="font-weight:600; font-size:13px; color:#475569;">Filter:</span>
+          <button class="btn btn-sm" id="plFilterAll"  onclick="renderPLReport('all')"  style="background:#1e293b;color:#fff;">All Time</button>
+          <button class="btn btn-sm" id="plFilter2025" onclick="renderPLReport('2025')">2025</button>
+          <button class="btn btn-sm" id="plFilter2026" onclick="renderPLReport('2026')">2026</button>
+        </div>
+
+        <!-- Table -->
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse:collapse; font-size:13px;" id="plReportTable">
+            <thead>
+              <tr style="background:#1e293b; color:#fff; text-align:right;">
+                <th style="text-align:left; padding:10px 12px;">Month</th>
+                <th style="padding:10px 12px;">Sheets Cutting</th>
+                <th style="padding:10px 12px;">Scrap</th>
+                <th style="padding:10px 12px;">Total Income</th>
+                <th style="padding:10px 12px;">Expenses</th>
+                <th style="padding:10px 12px;">Profit / Loss</th>
+              </tr>
+            </thead>
+            <tbody id="plReportBody">
+              <tr><td colspan="6" style="text-align:center; padding:24px; color:#94a3b8;">Loading...</td></tr>
+            </tbody>
+            <tfoot id="plReportFoot"></tfoot>
+          </table>
+        </div>
+
+        <!-- Export buttons -->
+        <div style="display:flex; gap:10px; margin-top:16px; flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="plExportCSV()">📥 Download CSV</button>
+          <button class="btn btn-primary" onclick="plExportPDF()">🖨️ PDF / Print</button>
+        </div>
+
       </div>
 
       <!-- Employee Modal -->
@@ -17317,12 +17361,14 @@ function switchFinTab(tab, el) {
   document.getElementById('finSalaries').style.display  = tab === 'salaries'  ? '' : 'none';
   document.getElementById('finPendingBills').style.display  = tab === 'pendingbills' ? '' : 'none';
   document.getElementById('finInvestors').style.display = tab === 'investors' ? '' : 'none';
+  document.getElementById('finPLReport').style.display  = tab === 'plreport'  ? '' : 'none';
   if (tab === 'dashboard') renderDashboard();
   if (tab === 'daily')     { initRecentYearDropdown(); }
   if (tab === 'ledger')    { _ledgerPage = 1; populateLedgerYears().then(() => renderLedger()); }
   if (tab === 'salaries')  { salInit(); }
   if (tab === 'pendingbills') { pbLoad(); }
   if (tab === 'investors') { renderInvestSavings(); }
+  if (tab === 'plreport')  { renderPLReport(); }
 }
 
 function updateLedgerCategories() {
@@ -20070,6 +20116,223 @@ async function fetchEntriesWithCorrectInvoiceAmounts(filters = {}) {
   }
 
   return entries;
+}
+
+// ─── P&L REPORT ───
+async function renderPLReport(filterYear) {
+  if (!filterYear) filterYear = 'all';
+
+  ['plFilterAll','plFilter2025','plFilter2026'].forEach(function(id) {
+    var btn = document.getElementById(id);
+    if (!btn) return;
+    var isActive = (id === 'plFilter' + (filterYear === 'all' ? 'All' : filterYear));
+    btn.style.background = isActive ? '#1e293b' : '';
+    btn.style.color = isActive ? '#fff' : '';
+  });
+
+  var tbody = document.getElementById('plReportBody');
+  var tfoot = document.getElementById('plReportFoot');
+  var kpiDiv = document.getElementById('plKpiCards');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:#94a3b8;">⏳ Loading...</td></tr>';
+  if (tfoot) tfoot.innerHTML = '';
+  if (kpiDiv) kpiDiv.innerHTML = '';
+
+  var entries;
+  try {
+    entries = await fetchEntriesWithCorrectInvoiceAmounts({});
+  } catch(e) {
+    if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:#ef4444;">❌ Failed to load data</td></tr>';
+    return;
+  }
+
+  var now = new Date();
+  var currentMonthKey = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+
+  var monthMap = {};
+  entries.forEach(function(e) {
+    if (!e.entry_date) return;
+    var mk = e.entry_date.slice(0,7);
+    if (!monthMap[mk]) monthMap[mk] = { sc:0, scrap:0, exp:0 };
+    var amt = parseFloat(e.amount) || 0;
+    var cat = (e.category || '').trim();
+    var et  = (e.entry_type || '').trim();
+    if ((et === 'income' || et === 'invoice_income') && cat === 'Sheets Cutting') {
+      monthMap[mk].sc += amt;
+    } else if (et === 'income' && cat === 'Scrap') {
+      monthMap[mk].scrap += amt;
+    } else if (et === 'monthly_expense') {
+      monthMap[mk].exp += amt;
+    }
+  });
+
+  var months = Object.keys(monthMap).sort();
+  if (filterYear !== 'all') {
+    months = months.filter(function(mk) { return mk.startsWith(filterYear); });
+  }
+
+  window._plReportData = { months: months, monthMap: monthMap, filterYear: filterYear };
+
+  function fmt(n) { return 'Rs. ' + Number(n.toFixed(0)).toLocaleString('en-PK'); }
+
+  var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function monthLabel(mk) {
+    var parts = mk.split('-');
+    return monthNames[parseInt(parts[1],10)-1] + ' ' + parts[0].slice(2);
+  }
+
+  var totalSC = 0, totalScrap = 0, totalExp = 0, totalPL = 0;
+  var profitCount = 0, lossCount = 0;
+  var rows = '';
+
+  months.forEach(function(mk) {
+    var d  = monthMap[mk];
+    var sc = d.sc, scrap = d.scrap, exp = d.exp;
+    var pl = (sc + scrap) - exp;
+    totalSC += sc; totalScrap += scrap; totalExp += exp; totalPL += pl;
+    if (pl >= 0) profitCount++; else lossCount++;
+
+    var isLive = (mk === currentMonthKey);
+    var plColor = pl >= 0 ? '#065f46' : '#991b1b';
+    var plBg    = pl >= 0 ? '#d1fae5' : '#fee2e2';
+    var plIcon  = pl >= 0 ? '🟢' : '🔴';
+    var liveBadge = isLive ? ' <span style="font-size:10px;background:#3b82f6;color:#fff;padding:1px 6px;border-radius:8px;vertical-align:middle;">LIVE</span>' : '';
+
+    rows += '<tr style="border-bottom:1px solid #e2e8f0;">'
+      + '<td style="padding:9px 12px;font-weight:500;">' + monthLabel(mk) + liveBadge + '</td>'
+      + '<td style="padding:9px 12px;text-align:right;color:#0f766e;">' + fmt(sc) + '</td>'
+      + '<td style="padding:9px 12px;text-align:right;color:#0369a1;">' + fmt(scrap) + '</td>'
+      + '<td style="padding:9px 12px;text-align:right;font-weight:500;">' + fmt(sc + scrap) + '</td>'
+      + '<td style="padding:9px 12px;text-align:right;color:#dc2626;">' + fmt(exp) + '</td>'
+      + '<td style="padding:9px 12px;text-align:right;font-weight:700;background:' + plBg + ';color:' + plColor + ';">' + plIcon + ' ' + fmt(pl) + '</td>'
+      + '</tr>';
+  });
+
+  if (!rows) {
+    rows = '<tr><td colspan="6" style="text-align:center;padding:24px;color:#94a3b8;">No data for selected period</td></tr>';
+  }
+
+  if (tbody) tbody.innerHTML = rows;
+
+  var totalPLColor = totalPL >= 0 ? '#065f46' : '#991b1b';
+  var totalPLBg    = totalPL >= 0 ? '#d1fae5' : '#fee2e2';
+  var totalPLIcon  = totalPL >= 0 ? '📈' : '📉';
+  if (tfoot) tfoot.innerHTML = '<tr style="background:#f8fafc;font-weight:700;border-top:2px solid #1e293b;">'
+    + '<td style="padding:10px 12px;">TOTAL (' + months.length + ' months)</td>'
+    + '<td style="padding:10px 12px;text-align:right;color:#0f766e;">' + fmt(totalSC) + '</td>'
+    + '<td style="padding:10px 12px;text-align:right;color:#0369a1;">' + fmt(totalScrap) + '</td>'
+    + '<td style="padding:10px 12px;text-align:right;">' + fmt(totalSC + totalScrap) + '</td>'
+    + '<td style="padding:10px 12px;text-align:right;color:#dc2626;">' + fmt(totalExp) + '</td>'
+    + '<td style="padding:10px 12px;text-align:right;background:' + totalPLBg + ';color:' + totalPLColor + ';">' + totalPLIcon + ' ' + fmt(totalPL) + '</td>'
+    + '</tr>';
+
+  var avgPL = months.length ? totalPL / months.length : 0;
+  var avgColor = avgPL >= 0 ? '#065f46' : '#991b1b';
+  var avgBg    = avgPL >= 0 ? 'linear-gradient(135deg,#d1fae5,#a7f3d0)' : 'linear-gradient(135deg,#fee2e2,#fecaca)';
+
+  if (kpiDiv) kpiDiv.innerHTML = ''
+    + _plKpiCard('📈 Total Profit/Loss', (totalPL >= 0 ? '🟢 ' : '🔴 ') + fmt(totalPL), totalPL >= 0 ? 'linear-gradient(135deg,#d1fae5,#a7f3d0)' : 'linear-gradient(135deg,#fee2e2,#fecaca)', totalPL >= 0 ? '#065f46' : '#991b1b')
+    + _plKpiCard('📊 Avg Monthly P/L', (avgPL >= 0 ? '🟢 ' : '🔴 ') + fmt(avgPL), avgBg, avgColor)
+    + _plKpiCard('✅ Profitable Months', profitCount + ' / ' + months.length, 'linear-gradient(135deg,#d1fae5,#a7f3d0)', '#065f46')
+    + _plKpiCard('❌ Loss Months', lossCount + ' / ' + months.length, lossCount > 0 ? 'linear-gradient(135deg,#fee2e2,#fecaca)' : 'linear-gradient(135deg,#f1f5f9,#e2e8f0)', lossCount > 0 ? '#991b1b' : '#475569')
+    + _plKpiCard('💰 Total Income', fmt(totalSC + totalScrap), 'linear-gradient(135deg,#dbeafe,#bfdbfe)', '#1e40af')
+    + _plKpiCard('🔧 Total Expenses', fmt(totalExp), 'linear-gradient(135deg,#fef3c7,#fde68a)', '#92400e');
+}
+
+function _plKpiCard(label, value, bg, color) {
+  return '<div style="background:' + bg + ';border-radius:12px;padding:14px 16px;">'
+    + '<div style="font-size:11px;color:' + color + ';opacity:0.8;margin-bottom:4px;">' + label + '</div>'
+    + '<div style="font-size:15px;font-weight:700;color:' + color + ';">' + value + '</div>'
+    + '</div>';
+}
+
+function plExportCSV() {
+  var d = window._plReportData;
+  if (!d || !d.months || !d.months.length) { showToast('No data to export'); return; }
+  var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var lines = ['Month,Sheets Cutting,Scrap,Total Income,Expenses,Profit/Loss'];
+  d.months.forEach(function(mk) {
+    var r  = d.monthMap[mk];
+    var sc = r.sc, scrap = r.scrap, exp = r.exp, pl = (sc + scrap) - exp;
+    var parts = mk.split('-');
+    var label = monthNames[parseInt(parts[1],10)-1] + ' 20' + parts[0].slice(2);
+    lines.push([label, sc.toFixed(0), scrap.toFixed(0), (sc+scrap).toFixed(0), exp.toFixed(0), pl.toFixed(0)].join(','));
+  });
+  var blob = new Blob([lines.join('\n')], {type:'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'PL-Report-' + (d.filterYear === 'all' ? 'AllTime' : d.filterYear) + '.csv';
+  a.click();
+}
+
+function plExportPDF() {
+  var d = window._plReportData;
+  if (!d || !d.months || !d.months.length) { showToast('No data to export'); return; }
+  var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var now = new Date();
+  var currentMonthKey = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  var periodLabel = d.filterYear === 'all' ? 'All Time' : d.filterYear;
+
+  function fmt(n) { return 'Rs. ' + Number(n.toFixed(0)).toLocaleString('en-PK'); }
+
+  var totalSC = 0, totalScrap = 0, totalExp = 0, totalPL = 0;
+  var rows = '';
+  d.months.forEach(function(mk, i) {
+    var r  = d.monthMap[mk];
+    var sc = r.sc, scrap = r.scrap, exp = r.exp, pl = (sc + scrap) - exp;
+    totalSC += sc; totalScrap += scrap; totalExp += exp; totalPL += pl;
+    var parts = mk.split('-');
+    var label = monthNames[parseInt(parts[1],10)-1] + ' 20' + parts[0].slice(2);
+    var isLive = mk === currentMonthKey;
+    var plColor = pl >= 0 ? '#065f46' : '#991b1b';
+    var plBg    = pl >= 0 ? '#d1fae5' : '#fee2e2';
+    var rowBg   = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+    rows += '<tr style="background:' + rowBg + ';">'
+      + '<td>' + label + (isLive ? ' <span style="font-size:9px;background:#3b82f6;color:#fff;padding:1px 5px;border-radius:6px;">LIVE</span>' : '') + '</td>'
+      + '<td style="text-align:right;color:#0f766e;">' + fmt(sc) + '</td>'
+      + '<td style="text-align:right;color:#0369a1;">' + fmt(scrap) + '</td>'
+      + '<td style="text-align:right;font-weight:600;">' + fmt(sc+scrap) + '</td>'
+      + '<td style="text-align:right;color:#dc2626;">' + fmt(exp) + '</td>'
+      + '<td style="text-align:right;font-weight:700;background:' + plBg + ';color:' + plColor + ';">' + (pl>=0?'▲':'▼') + ' ' + fmt(pl) + '</td>'
+      + '</tr>';
+  });
+
+  var avgPL = d.months.length ? totalPL / d.months.length : 0;
+
+  var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+    + '<style>'
+    + 'body{font-family:Arial,sans-serif;font-size:12px;color:#1e293b;margin:0;padding:16px;}'
+    + 'h2{margin:0 0 4px;font-size:16px;}p.sub{margin:0 0 16px;color:#64748b;font-size:11px;}'
+    + 'table{width:100%;border-collapse:collapse;}'
+    + 'th{background:#1e293b;color:#fff;padding:8px 10px;text-align:right;font-size:11px;}'
+    + 'th:first-child{text-align:left;}'
+    + 'td{padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:11px;}'
+    + 'td:first-child{text-align:left;}'
+    + 'tfoot tr td{font-weight:700;border-top:2px solid #1e293b;background:#f1f5f9;padding:8px 10px;}'
+    + '.kpi{display:inline-block;margin:0 8px 8px 0;padding:8px 12px;border-radius:8px;font-size:11px;}'
+    + '</style>'
+    + '</head><body>'
+    + '<h2>📊 Prime CNC — Profit / Loss Report</h2>'
+    + '<p class="sub">Period: ' + periodLabel + ' &nbsp;|&nbsp; Generated: ' + now.toLocaleDateString('en-PK') + '</p>'
+    + '<div style="margin-bottom:12px;">'
+    + '<span class="kpi" style="background:' + (totalPL>=0?'#d1fae5':'#fee2e2') + ';color:' + (totalPL>=0?'#065f46':'#991b1b') + ';">Net P/L: ' + fmt(totalPL) + '</span>'
+    + '<span class="kpi" style="background:#dbeafe;color:#1e40af;">Total Income: ' + fmt(totalSC+totalScrap) + '</span>'
+    + '<span class="kpi" style="background:#fef3c7;color:#92400e;">Total Expenses: ' + fmt(totalExp) + '</span>'
+    + '<span class="kpi" style="background:' + (avgPL>=0?'#d1fae5':'#fee2e2') + ';color:' + (avgPL>=0?'#065f46':'#991b1b') + ';">Avg Monthly: ' + fmt(avgPL) + '</span>'
+    + '</div>'
+    + '<table><thead><tr>'
+    + '<th>Month</th><th>Sheets Cutting</th><th>Scrap</th><th>Total Income</th><th>Expenses</th><th>Profit / Loss</th>'
+    + '</tr></thead><tbody>' + rows + '</tbody>'
+    + '<tfoot><tr>'
+    + '<td>TOTAL (' + d.months.length + ' months)</td>'
+    + '<td style="text-align:right;color:#0f766e;">' + fmt(totalSC) + '</td>'
+    + '<td style="text-align:right;color:#0369a1;">' + fmt(totalScrap) + '</td>'
+    + '<td style="text-align:right;">' + fmt(totalSC+totalScrap) + '</td>'
+    + '<td style="text-align:right;color:#dc2626;">' + fmt(totalExp) + '</td>'
+    + '<td style="text-align:right;">' + (totalPL>=0?'▲':'▼') + ' ' + fmt(totalPL) + '</td>'
+    + '</tr></tfoot></table>'
+    + '</body></html>';
+
+  _silentPDFFromHtml(html, 'PL-Report-' + periodLabel + '-PrimeCNC.pdf');
 }
 
 // ─── DASHBOARD ───
