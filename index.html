@@ -13492,7 +13492,7 @@ async function exportInvoicesCSV() {
     if (btn) btn.textContent = '⏳ Fetching invoices...';
 
     var r1 = await sb.from('invoices').select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,received1,remaining,bad_debt,created_at,received1_entries,edited_at,is_advance,extra_charges,extra_charges_label');
-    var r2 = await sb.from('excel_invoices').select('id,order_num,customer_name,phone,total_bill,discount,bad_debt,received,received1,received_entries,remaining,date,source,created_at,order_status,status_updated_at');
+    var r2 = await sb.from('excel_invoices').select('id,order_num,customer_name,phone,total_bill,discount,bad_debt,received,received_entries,remaining,date,source,created_at,order_status,status_updated_at');
 
     var inv1 = (r1.data || []).map(function(r) {
       var d = r.date ? new Date(r.date) : null;
@@ -14766,12 +14766,8 @@ async function loadExcelDBCache() {
       } else if (!Array.isArray(r.received_entries)) {
         r.received_entries = [];
       }
-      // Derive received1 from entries array; if no entries yet, preserve the Supabase numeric value
-      if (r.received_entries.length > 0) {
-        r.received1 = r.received_entries.reduce(function(s,e){ return s+(parseFloat(e.amount)||0); }, 0);
-      } else {
-        r.received1 = parseFloat(r.received1) || 0; // keep historical value from Supabase
-      }
+      // Derive received1 from entries array only (received1 column dropped from DB)
+      r.received1 = r.received_entries.reduce(function(s,e){ return s+(parseFloat(e.amount)||0); }, 0);
     });
     _excelDBCache = allRows;
     console.log('[excelDBCache] loaded:', allRows.length, 'of', totalCount, 'rows in Supabase');
