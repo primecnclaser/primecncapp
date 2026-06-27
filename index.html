@@ -5551,6 +5551,8 @@ async function loadFromSupabase(silent) {
         editedAt:      inv.edited_at || null,
         isAdvance: inv.is_advance != null ? !!inv.is_advance : classifyAdvance({ items: (inv.invoice_items||[]).map(it=>({ sizes:it.sizes, amt:it.amount })), received: parseFloat(inv.received)||0 }),
         _supaId:       inv.id,
+        totalSqft:     parseFloat(inv.total_sqft) || 0,
+        totalKg:       parseFloat(inv.total_kg)   || 0,
         items: (inv.invoice_items || [])
           .sort((a, b) => a.row_num - b.row_num)
           .map(it => ({
@@ -5644,6 +5646,8 @@ async function loadFromSupabase(silent) {
       editedAt:     inv.edited_at || null,
       isAdvance: inv.is_advance != null ? !!inv.is_advance : classifyAdvance({ items: (inv.invoice_items||[]).map(it=>({ sizes:it.sizes, amt:it.amount })), received: parseFloat(inv.received)||0 }),
       _supaId:      inv.id,
+      totalSqft:    parseFloat(inv.total_sqft) || 0,
+      totalKg:      parseFloat(inv.total_kg)   || 0,
       items: (inv.invoice_items || [])
         .sort((a,b) => a.row_num - b.row_num)
         .map(it => ({
@@ -5707,7 +5711,9 @@ async function saveToSupabase(data) {
   try {
     // 1. Upsert invoice row — safe to call multiple times, won't duplicate
     // Calculate total sqft and kg from items
-    var _totalSqft = (data.items || []).reduce(function(s, it) { return s + (parseFloat(it.sqft) || 0); }, 0);
+    var _totalSqft = (data.items || []).reduce(function(s, it) {
+      return s + (parseFloat(it.sqft) || 0) * (parseFloat(it.qty) || 1);
+    }, 0);
     var _totalKg   = (data.items || []).reduce(function(s, it) { return s + (parseFloat(it.kg)   || 0); }, 0);
 
     const { data: inv, error: invErr } = await sb
@@ -8612,11 +8618,27 @@ async function renderSummary() {
       totalReceived  += (inv.received || 0) + r1sum;
       totalDiscount  += inv.discount  || 0;
     }
-    (inv.items || []).forEach(item => {
-      if (item.mode === 'kg') totalKg += item.kg || 0;
-      else totalSqft += item.sqft || 0;
-    });
+    totalSqft += inv.totalSqft || 0;
+    totalKg   += inv.totalKg   || 0;
   });
+
+  // Fetch Total Collected (Sheets Cutting) from finance_ledger for the selected period
+  let _scTotal = 0;
+  try {
+    if (sb && navigator.onLine) {
+      let _scQ = sb.from('finance_ledger').select('amount').eq('category', 'Sheets Cutting');
+      if (mode === 'day' && dateV)       _scQ = _scQ.eq('entry_date', dateV);
+      else if (mode === 'month' && monV) _scQ = _scQ.like('entry_date', monV + '%');
+      else if (mode === 'year' && yearV) _scQ = _scQ.like('entry_date', String(yearV) + '%');
+      const { data: _scData } = await _scQ;
+      (_scData || []).forEach(function(e){ _scTotal += (parseFloat(e.amount) || 0); });
+    } else {
+      // offline fallback — sum received amounts from local database[]
+      filtered.forEach(function(inv) {
+        _scTotal += (parseFloat(inv.received) || 0) + (parseFloat(inv.received1) || 0);
+      });
+    }
+  } catch(_scErr) { console.warn('[sumSC]', _scErr); }
 
   cards.innerHTML = `
     <div class="s-card sc-period">
@@ -8640,64 +8662,10 @@ async function renderSummary() {
       <div class="s-card-val">Rs. ${fmt(totalBill)}</div>
     </div>
     <div class="s-card sc-received">
-      <div class="s-card-label">✅ Total Amount Collected</div>
-      <div class="s-card-val" id="sumSheetCuttingVal">Rs. ${fmt(totalReceived)}</div>
+      <div class="s-card-label">✅ ${navigator.onLine ? 'Total Collected (Sheets Cutting)' : 'Total Collected (Offline Est.)'}</div>
+      <div class="s-card-val">Rs. ${fmt(_scTotal)}</div>
     </div>
   `;
-
-  // ── Fetch Sheets Cutting amount for the selected period (read-only, finance_ledger) ──
-  // Mirrors the same source Finance uses — no Finance logic is touched.
-  (async function() {
-    try {
-      var _scAmount = 0;
-      var _scDateFrom, _scDateTo;
-      if (mode === 'day' && dateV) { _scDateFrom = dateV; _scDateTo = dateV; }
-      else if (mode === 'month' && monV) {
-        _scDateFrom = monV + '-01';
-        _scDateTo = monV + '-' + String(lastDayOfMonth(monV)).padStart(2,'0');
-      } else if (mode === 'year' && yearV) {
-        _scDateFrom = yearV + '-01-01';
-        _scDateTo = yearV + '-12-31';
-      }
-      if (_scDateFrom && _scDateTo) {
-        if (sb && navigator.onLine) {
-          // Read from customer_payments — single source of truth for live dates
-          try {
-            var _cpRes = await sb.from('customer_payments')
-              .select('amount,payment_date')
-              .gte('payment_date', _scDateFrom)
-              .lte('payment_date', _scDateTo)
-              .eq('type', 'payment');
-            (_cpRes.data || []).forEach(function(p){ _scAmount += (parseFloat(p.amount)||0); });
-          } catch(_cpE) {
-            // Fallback to finance_ledger if customer_payments fails
-            try {
-              var _flRes = await sb.from('finance_ledger')
-                .select('entry_date,amount')
-                .gte('entry_date', _scDateFrom)
-                .lte('entry_date', _scDateTo)
-                .eq('category', 'Sheets Cutting')
-                .in('entry_type', ['income','invoice_income']);
-              (_flRes.data || []).forEach(function(e){ _scAmount += (parseFloat(e.amount)||0); });
-            } catch(_flE) { console.warn('Summary SC fetch failed:', _flE); }
-          }
-        } else {
-          // Offline — use local database received amounts
-          (database || []).forEach(function(inv) {
-            if (inv.isNull || inv.isDraft) return;
-            var invDate = parseDateStr ? parseDateStr(inv.date) : inv.date;
-            if (!invDate || invDate < _scDateFrom || invDate > _scDateTo) return;
-            var r1sum = Array.isArray(inv.received1Entries)
-              ? inv.received1Entries.reduce(function(s,e){ return s+(e.amount||0); }, 0)
-              : (parseFloat(inv.received1)||0);
-            _scAmount += (parseFloat(inv.received)||0) + r1sum;
-          });
-        }
-        var _scEl = document.getElementById('sumSheetCuttingVal');
-        if (_scEl) _scEl.textContent = 'Rs. ' + fmt(_scAmount);
-      }
-    } catch(_scErr) { console.warn('[sumSheetCutting]', _scErr); }
-  })();
 
   // Await a fresh cache before rendering so mobile has manual entries synced from desktop
   (async () => {
