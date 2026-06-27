@@ -15285,6 +15285,16 @@ async function rpRenderCustomerPanel(name, phone) {
   newInvs.sort(dateSorter);
   exInvs.sort(dateSorter);
 
+  // Sort payments by date descending — no date → pushed to bottom
+  payments.sort(function(a, b) {
+    var da = a.payment_date || '';
+    var db = b.payment_date || '';
+    if (!da && !db) return 0;
+    if (!da) return 1;
+    if (!db) return -1;
+    return db < da ? -1 : db > da ? 1 : 0;
+  });
+
   var allInvList = newInvs.map(function(inv){
     return { invNum: inv.invNum, date: inv.date, total: inv.total, _sortDate: new Date(inv.date), _isNew: true };
   }).concat(exInvs.map(function(r){
