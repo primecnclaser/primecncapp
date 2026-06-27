@@ -17489,8 +17489,12 @@ function onDailyCatChange() {
         const _penBtn = document.getElementById('dailyAmtEditBtn');
         if (_penBtn) _penBtn.style.display = _shouldShowPen(type, cat, date, existingLocal.local_id) ? '' : 'none';
         if (saveBtn) { saveBtn.textContent = '✏️ Update Entry'; saveBtn.style.background = '#d97706'; }
-        if (isSheetsCutting) {
-          // Always fetch live amount from customer_payments — never use stale cache
+        if (isSheetsCutting && existingLocal.source === 'manual') {
+          // Manual override exists — show saved manual amount, not auto-fetched
+          amtInput.value = Math.round(existingLocal.amount);
+          if (info) { info.style.display=''; info.textContent=`✏️ Manual Override: Rs. ${Math.round(existingLocal.amount).toLocaleString('en-PK')} — click ✏️ to edit or refresh to switch to auto.`; info.style.color='#d97706'; }
+        } else if (isSheetsCutting) {
+          // Auto entry exists (invoice source) — still fetch live from customer_payments
           fetchAutoAmount();
         } else {
           amtInput.value = Math.round(existingLocal.amount);
@@ -17517,10 +17521,13 @@ function onDailyCatChange() {
               const _penBtn = document.getElementById('dailyAmtEditBtn');
               if (_penBtn) _penBtn.style.display = (isManual && _shouldShowPen(type, cat, date, r.ref_id || r.id || '')) ? '' : 'none';
               if (saveBtn && isManual) { saveBtn.textContent = '✏️ Update Entry'; saveBtn.style.background = '#d97706'; }
-              // Always run fetchAutoAmount so the live invoice sum is shown correctly;
-              // the saved entry metadata (editLocalId, pen button, save button label) is
-              // already applied above and fetchAutoAmount only updates the amount + info bar.
-              fetchAutoAmount();
+              // If manual override — show saved amount; otherwise auto-fetch live sum
+              if (isSheetsCutting && isManual) {
+                amtInput.value = Math.round(r.amount);
+                if (info) { info.style.display=''; info.textContent=`✏️ Manual Override: Rs. ${Math.round(r.amount).toLocaleString('en-PK')} — click ✏️ to edit.`; info.style.color='#d97706'; }
+              } else {
+                fetchAutoAmount();
+              }
             } else {
               // No saved entry — auto-fetch from invoices/salaries
               fetchAutoAmount();
