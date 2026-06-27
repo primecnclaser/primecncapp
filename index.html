@@ -5518,7 +5518,7 @@ async function loadFromSupabase(silent) {
       // Step 2: fetch the last 200 (most recent) invoices
       const { data: _mbRecent, error: _mbErr } = await sb
         .from('invoices')
-        .select('*, invoice_items(*)')
+        .select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,received1,remaining,bad_debt,created_at,edited_at,is_advance,extra_charges,extra_charges_label,order_status,status_updated_at,total_sqft,total_kg,received1_entries')
         .order('created_at', { ascending: true })
         .range(_mbFrom, _mbCount - 1);
       if (_mbErr) throw _mbErr;
@@ -5587,7 +5587,7 @@ async function loadFromSupabase(silent) {
             if (typeof toast === 'function') toast('⏳ Loading older records in background...');
             const { data: _mbOlder } = await sb
               .from('invoices')
-              .select('*, invoice_items(*)')
+              .select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,received1,remaining,bad_debt,created_at,edited_at,is_advance,extra_charges,extra_charges_label,order_status,status_updated_at,total_sqft,total_kg,received1_entries')
               .order('created_at', { ascending: true })
               .range(0, _mbFrom - 1);
             if (_mbOlder && _mbOlder.length) {
@@ -5611,7 +5611,7 @@ async function loadFromSupabase(silent) {
   try {
     const { data: invs, error } = await sb
       .from('invoices')
-      .select('*, invoice_items(*)')
+      .select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,received1,remaining,bad_debt,created_at,edited_at,is_advance,extra_charges,extra_charges_label,order_status,status_updated_at,total_sqft,total_kg,received1_entries')
       .order('created_at', { ascending: true });
 
     if (error) throw error;
@@ -8245,8 +8245,23 @@ function editInvoice(idx) {
      <span style="color:#e67e22;font-weight:600;">⚠️ The invoice number will NOT change.</span>`,
     [
       { label: 'Cancel', cls: 'btn-outline', fn: closeModal },
-      { label: 'Load for Editing', cls: 'btn-primary', fn: () => {
+      { label: 'Load for Editing', cls: 'btn-primary', fn: async () => {
           closeModal();
+          // Lazy-load invoice items if not already loaded
+          if ((!inv.items || inv.items.length === 0) && inv._supaId && sb) {
+            try {
+              var _ir = await sb.from('invoice_items').select('*').eq('invoice_id', inv._supaId).order('row_num');
+              if (!_ir.error && _ir.data) {
+                inv.items = _ir.data.map(function(it) { return {
+                  sizes: it.sizes || '', foot: it.foot || 0, inch: it.inch || 0, sooter: it.sooter || 0,
+                  foot2: it.foot2 || 0, inch2: it.inch2 || 0, sooter2: it.sooter2 || 0,
+                  kg: it.kg || 0, qty: it.qty || 0, gauge: it.gauge || '', rate: it.rate || 0,
+                  sqft: it.sqft || 0, amt: it.amount || 0, mode: it.mode || 'sqft'
+                }; });
+                database[idx].items = inv.items;
+              }
+            } catch(e) { console.warn('[editInvoice] items fetch failed:', e); }
+          }
           loadInvoiceIntoForm(inv, idx);
           // Switch to invoice tab
           document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -10874,9 +10889,24 @@ function deleteInvoice(idx) {
   );
 }
 
-function viewInvoice(idx) {
+async function viewInvoice(idx) {
   const inv = database[idx];
   if (!inv) return;
+  // Lazy-load invoice items if not already loaded
+  if ((!inv.items || inv.items.length === 0) && inv._supaId && sb) {
+    try {
+      var _vr = await sb.from('invoice_items').select('*').eq('invoice_id', inv._supaId).order('row_num');
+      if (!_vr.error && _vr.data) {
+        inv.items = _vr.data.map(function(it) { return {
+          sizes: it.sizes || '', foot: it.foot || 0, inch: it.inch || 0, sooter: it.sooter || 0,
+          foot2: it.foot2 || 0, inch2: it.inch2 || 0, sooter2: it.sooter2 || 0,
+          kg: it.kg || 0, qty: it.qty || 0, gauge: it.gauge || '', rate: it.rate || 0,
+          sqft: it.sqft || 0, amt: it.amount || 0, mode: it.mode || 'sqft'
+        }; });
+        database[idx].items = inv.items;
+      }
+    } catch(e) { console.warn('[viewInvoice] items fetch failed:', e); }
+  }
 
   // Use the same localStorage keys as saveShopSettings
   const _ps = _getFullPrintShop(); // full settings incl. show-flags used by _printHeaderHtml
