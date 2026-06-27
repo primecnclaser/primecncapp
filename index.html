@@ -15533,14 +15533,22 @@ function rpEditPayment(paymentId, currentAmount, encodedName, entryType, noDelet
       { label: 'Cancel', cls: 'btn-outline', fn: closeModal },
       ...(!noDelete ? [{ label: '🗑️ Delete', cls: 'btn-danger', fn: async function() {
           closeModal();
-          if (!confirm('Are you sure you want to delete this ' + _label + ' entry?')) return;
-          try {
-            await sb.from('customer_payments').delete().eq('id', paymentId);
-            if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-            var name = decodeURIComponent(encodedName);
-            await rpRenderCustomerPanel(name, _rpCurrentCustomer ? _rpCurrentCustomer.phone : '');
-            toast && toast('✅ Entry deleted.');
-          } catch(e) { alert('Failed: ' + (e.message||e)); }
+          showModal('🗑️ Delete ' + _label, 'Are you sure you want to delete this <strong>' + _label + '</strong> entry? This cannot be undone.',
+            [
+              { label: 'Cancel', cls: 'btn-outline', fn: closeModal },
+              { label: '🗑️ Delete', cls: 'btn-danger', fn: async function() {
+                  closeModal();
+                  try {
+                    await sb.from('customer_payments').delete().eq('id', paymentId);
+                    if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+                    var name = decodeURIComponent(encodedName);
+                    await rpRenderCustomerPanel(name, _rpCurrentCustomer ? _rpCurrentCustomer.phone : '');
+                    toast && toast('✅ Entry deleted.');
+                  } catch(e) { alert('Failed: ' + (e.message||e)); }
+                }
+              }
+            ]
+          );
         }
       }] : []),
       { label: '✅ Save', cls: 'btn-primary', fn: async function() {
@@ -15570,8 +15578,16 @@ function rpEditExcelDisc(orderNum, currentAmount, encodedDate) {
       { label: 'Cancel', cls: 'btn-outline', fn: closeModal },
       { label: '🗑️ Delete', cls: 'btn-danger', fn: async function() {
           closeModal();
-          if (!confirm('Delete this discount entry?')) return;
-          await rpDeleteExcelDisc(orderNum, encodeURIComponent(_rpCurrentCustomer.name));
+          showModal('🗑️ Delete Discount', 'Are you sure you want to delete this <strong>Discount</strong> entry? This cannot be undone.',
+            [
+              { label: 'Cancel', cls: 'btn-outline', fn: closeModal },
+              { label: '🗑️ Delete', cls: 'btn-danger', fn: async function() {
+                  closeModal();
+                  await rpDeleteExcelDisc(orderNum, encodeURIComponent(_rpCurrentCustomer.name));
+                }
+              }
+            ]
+          );
         }
       },
       { label: '✅ Save', cls: 'btn-primary', fn: async function() {
@@ -15602,7 +15618,6 @@ function rpEditExcelDisc(orderNum, currentAmount, encodedDate) {
 }
 
 async function rpDeleteExcelDisc(orderNum, encodedName) {
-  if (!confirm('Delete this discount entry?')) return;
   try {
     if (typeof sb === 'undefined' || !sb) throw new Error('Not connected');
     var _rawNum = String(orderNum).replace(/^INV-/i,'');
@@ -15627,8 +15642,16 @@ function rpEditExcelBd(orderNum, currentAmount, encodedDate) {
       { label: 'Cancel', cls: 'btn-outline', fn: closeModal },
       { label: '🗑️ Delete', cls: 'btn-danger', fn: async function() {
           closeModal();
-          if (!confirm('Delete this bad debt entry?')) return;
-          await rpDeleteExcelBd(orderNum, encodeURIComponent(_rpCurrentCustomer.name));
+          showModal('🗑️ Delete Bad Debt', 'Are you sure you want to delete this <strong>Bad Debt</strong> entry? This cannot be undone.',
+            [
+              { label: 'Cancel', cls: 'btn-outline', fn: closeModal },
+              { label: '🗑️ Delete', cls: 'btn-danger', fn: async function() {
+                  closeModal();
+                  await rpDeleteExcelBd(orderNum, encodeURIComponent(_rpCurrentCustomer.name));
+                }
+              }
+            ]
+          );
         }
       },
       { label: '✅ Save', cls: 'btn-primary', fn: async function() {
@@ -15690,7 +15713,6 @@ function rpEditExcelTotal(orderNum, currentTotal) {
 }
 
 async function rpDeleteExcelBd(orderNum, encodedName) {
-  if (!confirm('Delete this bad debt entry?')) return;
   try {
     if (typeof sb === 'undefined' || !sb) throw new Error('Not connected');
     var _rawNum = String(orderNum).replace(/^INV-/i,'');
