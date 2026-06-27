@@ -5551,6 +5551,8 @@ async function loadFromSupabase(silent) {
         editedAt:      inv.edited_at || null,
         isAdvance: inv.is_advance != null ? !!inv.is_advance : classifyAdvance({ items: (inv.invoice_items||[]).map(it=>({ sizes:it.sizes, amt:it.amount })), received: parseFloat(inv.received)||0 }),
         _supaId:       inv.id,
+        totalSqft:     parseFloat(inv.total_sqft) || 0,
+        totalKg:       parseFloat(inv.total_kg)   || 0,
         items: (inv.invoice_items || [])
           .sort((a, b) => a.row_num - b.row_num)
           .map(it => ({
@@ -5644,6 +5646,8 @@ async function loadFromSupabase(silent) {
       editedAt:     inv.edited_at || null,
       isAdvance: inv.is_advance != null ? !!inv.is_advance : classifyAdvance({ items: (inv.invoice_items||[]).map(it=>({ sizes:it.sizes, amt:it.amount })), received: parseFloat(inv.received)||0 }),
       _supaId:      inv.id,
+      totalSqft:    parseFloat(inv.total_sqft) || 0,
+      totalKg:      parseFloat(inv.total_kg)   || 0,
       items: (inv.invoice_items || [])
         .sort((a,b) => a.row_num - b.row_num)
         .map(it => ({
@@ -5707,7 +5711,9 @@ async function saveToSupabase(data) {
   try {
     // 1. Upsert invoice row — safe to call multiple times, won't duplicate
     // Calculate total sqft and kg from items
-    var _totalSqft = (data.items || []).reduce(function(s, it) { return s + (parseFloat(it.sqft) || 0); }, 0);
+    var _totalSqft = (data.items || []).reduce(function(s, it) {
+      return s + (parseFloat(it.sqft) || 0) * (parseFloat(it.qty) || 1);
+    }, 0);
     var _totalKg   = (data.items || []).reduce(function(s, it) { return s + (parseFloat(it.kg)   || 0); }, 0);
 
     const { data: inv, error: invErr } = await sb
@@ -8612,10 +8618,8 @@ async function renderSummary() {
       totalReceived  += (inv.received || 0) + r1sum;
       totalDiscount  += inv.discount  || 0;
     }
-    (inv.items || []).forEach(item => {
-      if (item.mode === 'kg') totalKg += item.kg || 0;
-      else totalSqft += item.sqft || 0;
-    });
+    totalSqft += inv.totalSqft || 0;
+    totalKg   += inv.totalKg   || 0;
   });
 
   cards.innerHTML = `
