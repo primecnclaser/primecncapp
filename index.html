@@ -267,6 +267,14 @@ body {
   color: #fff; border-color: #16a34a;
   box-shadow: 0 4px 16px rgba(22,163,74,0.35);
 }
+/* Tab — Receive Payment: emerald green */
+.tab.tab-payment { background: #d1fae5; color: #065f46; border-color: #6ee7b7; }
+.tab.tab-payment:hover:not(.active) { background: #a7f3d0; color: #064e3b; border-color: #34d399; }
+.tab.tab-payment.active {
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+  color: #fff; border-color: #059669;
+  box-shadow: 0 4px 16px rgba(5,150,105,0.35);
+}
 .tab.tab-production { background: #f3e8ff; color: #581c87; border-color: #c084fc; }
 .tab.tab-production:hover:not(.active) { background: #e9d5ff; color: #6b21a8; border-color: #a855f7; }
 .tab.tab-production.active {
@@ -720,8 +728,8 @@ body {
   box-shadow: 0 2px 8px rgba(30,41,59,0.06);
 }
 .analytics-title {
-  font-family: 'Playfair Display',serif; color: #1e293b;
-  font-size: 1rem; font-weight: 600; margin-bottom: 12px;
+  font-family: Montserrat, sans-serif; color: #1e293b;
+  font-size: 15px; font-weight: 700; margin-bottom: 12px;
 }
 .analytics-filters {
   display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap;
@@ -1451,6 +1459,33 @@ body {
     line-height: 1 !important;
     border-radius: 3px !important;
     min-height: unset !important;
+  }
+
+  /* ── Summary tab — overflow protection ── */
+  #summaryTab { overflow-x: hidden; }
+  #summaryTab .db-panel { width: 100% !important; box-sizing: border-box !important; }
+
+  /* ── Summary tab — Business Analytics: stack cards vertically on mobile ── */
+  .summary-section .ba-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── Summary tab — P&L table: horizontal scroll on mobile ── */
+  #summaryPLWrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ── Summary tab — General Summary cards: tighter on mobile ── */
+  #generalCards2 .s-card {
+    padding: 12px 10px !important;
+  }
+  #generalCards2 .s-card-label {
+    font-size: 0.65rem !important;
+    letter-spacing: 0.5px !important;
+  }
+  #generalCards2 .s-card-val {
+    font-size: 1.1rem !important;
   }
 }
 
@@ -2255,7 +2290,7 @@ body {
 <!-- ║  SECTION 8 — USER BAR / HEADER                     ║ -->
 <!-- ═══════════════════════════════════════════════════════ -->
 <div id="userBar">
-  <div id="_ubBrand"><span id="_ubBrandText">⚙️ Complete Shop System</span><span id="_appVersionLabel" style="font-size:0.6rem;font-weight:700;color:#f59e0b;font-family:Montserrat,sans-serif;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:middle;">v1.0.4</span></div>
+  <div id="_ubBrand"><span id="_ubBrandText">⚙️ Complete Shop System</span><span id="_appVersionLabel" style="font-size:0.6rem;font-weight:700;color:#f59e0b;font-family:Montserrat,sans-serif;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:middle;">v1.0.5</span></div>
   <div id="topShopName"></div>
   <!-- Col 3: all SPAN children — no div:last-child matches inside -->
   <div id="_ubProfile">
@@ -2285,6 +2320,9 @@ body {
   <span id="gsBadge4" class="gs-badge gs-grey">— Cross-Check</span>
   <span style="margin-left:auto;">
     <button onclick="_forceAppRefresh()" title="Force refresh app" style="background:#1e293b;color:#fff;border:none;border-radius:20px;padding:3px 12px;font-family:'Montserrat',sans-serif;font-size:0.65rem;font-weight:700;cursor:pointer;white-space:nowrap;transition:background 0.2s;" onmouseover="this.style.background='#334155'" onmouseout="this.style.background='#1e293b'">🔄 Force Refresh</button>
+    <button onclick="_syncToHO()" style="padding:6px 14px; background:#6366f1; color:#fff; border:none; border-radius:8px; font-family:Montserrat,sans-serif; font-weight:700; font-size:0.75rem; cursor:pointer; margin-left:8px;">
+      🏢 Sync to HO
+    </button>
   </span>
 </div>
 
@@ -2579,6 +2617,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         <div class="tab-sub-item" onclick="_activateSubItem(this);switchFinTab('ledger',this)">📋 Ledger</div>
         <div class="tab-sub-item" onclick="_activateSubItem(this);switchFinTab('salaries',this)">👷 Salaries</div>
         <div class="tab-sub-item" onclick="_activateSubItem(this);switchFinTab('investors',this)">🤝 Investors</div>
+        <div class="tab-sub-item" onclick="_activateSubItem(this);switchFinTab('plreport',this)">📈 P&L Report</div>
       </div>
 
       <div class="tab tab-settings" onclick="switchTab('settings',this)">⚙️ Settings</div>
@@ -3061,20 +3100,23 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
     <div class="panel" style="max-width:1100px;margin:0 auto;">
       <h2 style="font-family:Montserrat,sans-serif;font-size:1.1rem;color:#1e293b;margin-bottom:16px;">💰 Receive Payment</h2>
 
-      <div style="display:flex;gap:10px;margin-bottom:16px;">
-        <input type="text" id="rpSearchName" autocomplete="new-password" placeholder="🔍 Search by customer name" oninput="rpSearchByName(this.value)" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
-        <input type="text" id="rpSearchPhone" autocomplete="new-password" placeholder="🔍 Search by phone number" oninput="this.value=this.value.replace(/[^0-9]/g,'');rpSearchByPhone(this.value)" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
-        <input type="text" id="rpSearchInv" autocomplete="new-password" placeholder="🔍 Search by invoice number" oninput="this.value=this.value.replace(/[^0-9]/g,'');rpSearchByInv(this.value)" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
+      <div style="display:flex;gap:10px;margin-bottom:16px;background:#f8fafc;padding:12px;border-radius:12px;border:1px solid #e2e8f0;">
+        <input type="text" id="rpSearchName" autocomplete="new-password" placeholder="🔍 Search by customer name" oninput="sessionStorage.setItem('rp_name',this.value);rpSearchByName(this.value)" onfocus="this.style.borderColor='#059669'" onblur="this.style.borderColor='#6ee7b7'" style="flex:1; padding:10px 14px; border:2px solid #6ee7b7; border-radius:10px; font-family:Montserrat,sans-serif; font-size:0.85rem; background:linear-gradient(135deg,#ecfdf5,#d1fae5); color:#065f46; outline:none;">
+        <input type="text" id="rpSearchPhone" autocomplete="new-password" maxlength="11" placeholder="🔍 Search by phone number" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,11);sessionStorage.setItem('rp_phone',this.value);rpSearchByPhone(this.value)" onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#93c5fd'" style="flex:1; padding:10px 14px; border:2px solid #93c5fd; border-radius:10px; font-family:Montserrat,sans-serif; font-size:0.85rem; background:linear-gradient(135deg,#eff6ff,#dbeafe); color:#1e40af; outline:none;">
+        <input type="text" id="rpSearchInv" autocomplete="new-password" placeholder="🔍 Search by invoice number" oninput="this.value=this.value.replace(/[^0-9]/g,'');sessionStorage.setItem('rp_inv',this.value);rpSearchByInv(this.value)" onfocus="this.style.borderColor='#7c3aed'" onblur="this.style.borderColor='#c4b5fd'" style="flex:1; padding:10px 14px; border:2px solid #c4b5fd; border-radius:10px; font-family:Montserrat,sans-serif; font-size:0.85rem; background:linear-gradient(135deg,#f5f3ff,#ede9fe); color:#5b21b6; outline:none;">
+        <button onclick="rpClearSearch()" style="padding:10px 16px; background:linear-gradient(135deg,#fee2e2,#fecaca); color:#991b1b; border:2px solid #fca5a5; border-radius:10px; font-family:Montserrat,sans-serif; font-weight:700; font-size:0.82rem; cursor:pointer; white-space:nowrap;">✕ Clear</button>
       </div>
       <div id="rpNameDropdown" style="display:none;position:relative;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;max-height:220px;overflow-y:auto;margin-top:-10px;margin-bottom:16px;"></div>
 
       <div id="rpCustomerPanel"></div>
 
-      <div style="margin-top:24px;padding-top:20px;border-top:2px solid #f1f5f9;">
-        <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.9rem;color:#1e293b;margin-bottom:10px;">📅 Daily Received Summary</div>
+      <div style="margin-top:24px; background:linear-gradient(135deg,#eff6ff,#dbeafe); border-radius:14px; padding:16px 18px; border:1.5px solid #bfdbfe;">
+        <div style="font-family:Montserrat,sans-serif; font-weight:700; font-size:0.9rem; color:#1e40af; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+          <span style="background:#1e40af; color:#fff; padding:4px 10px; border-radius:8px; font-size:0.8rem;">📅 Daily Received Summary</span>
+        </div>
         <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;">
-          <input type="date" id="rpDateLookup" value="" onchange="rpLookupByDate(this.value)" style="padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
-          <button onclick="rpLookupByDate(document.getElementById('rpDateLookup').value)" style="padding:10px 16px;background:#1e293b;color:#fff;border:none;border-radius:8px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.82rem;cursor:pointer;">View</button>
+          <input type="date" id="rpDateLookup" value="" onchange="rpLookupByDate(this.value)" style="padding:10px 14px; border:2px solid #93c5fd; border-radius:10px; font-family:Montserrat,sans-serif; font-size:0.85rem; background:#fff; color:#1e40af; outline:none;">
+          <button onclick="rpLookupByDate(document.getElementById('rpDateLookup').value)" style="padding:10px 18px; background:#1e40af; color:#fff; border:none; border-radius:10px; font-family:Montserrat,sans-serif; font-weight:700; font-size:0.82rem; cursor:pointer;">View</button>
         </div>
         <div id="rpDateLookupResults"></div>
       </div>
@@ -3200,6 +3242,80 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
       </div>
       <!-- Customer list shown when All Customers / Remaining / Bad Debt card is clicked -->
       <div id="summaryList" style="display:none;margin-top:20px;"></div>
+
+      <!-- ═══ BUSINESS ANALYTICS ═══ -->
+      <div class="summary-section" style="margin-top:24px;">
+        <div style="margin-bottom:14px;">
+          <h3 style="margin:0; font-size:15px; font-weight:700; color:#1e293b;">📊 Business Analytics</h3>
+        </div>
+
+        <!-- Two cards side by side -->
+        <div class="ba-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start;">
+
+          <!-- Card 1: P&L Report -->
+          <div class="s-card" style="padding:14px 16px; cursor:pointer; background:linear-gradient(135deg,#f0fdf4,#dcfce7); border:1.5px solid #86efac;" onclick="loadSummaryPL()">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+              <div style="font-size:13px; font-weight:700; color:#1e293b;">📈 P&L Report</div>
+              <button id="btnLoadPL" onclick="event.stopPropagation(); loadSummaryPL()" style="font-size:11px; padding:4px 10px; background:#1e293b; color:#fff; border:none; border-radius:6px; cursor:pointer;">Load</button>
+            </div>
+            <div id="summaryPLWrap" style="display:none; overflow-x:auto;">
+              <table style="width:100%; border-collapse:collapse; font-size:11px;" id="summaryPLTable">
+                <thead>
+                  <tr style="background:#1e293b; color:#fff; text-align:right;">
+                    <th style="text-align:left; padding:6px 8px;">Month</th>
+                    <th style="padding:6px 8px;">SC</th>
+                    <th style="padding:6px 8px;">Scrap</th>
+                    <th style="padding:6px 8px;">Income</th>
+                    <th style="padding:6px 8px;">Exp</th>
+                    <th style="padding:6px 8px;">P/L</th>
+                  </tr>
+                </thead>
+                <tbody id="summaryPLBody"></tbody>
+                <tfoot id="summaryPLFoot"></tfoot>
+              </table>
+            </div>
+            <div id="summaryPLEmpty" style="color:#94a3b8; font-size:12px; text-align:center; padding:16px 0;">Click Load to view P&amp;L data</div>
+          </div>
+
+          <!-- Card 2: Cost per Sq.Ft -->
+          <div class="s-card" style="padding:14px 16px; background:linear-gradient(135deg,#eff6ff,#dbeafe); border:1.5px solid #93c5fd;">
+            <div style="font-size:13px; font-weight:700; color:#1e293b; margin-bottom:12px;">📐 Cost per Sq.Ft</div>
+
+            <!-- This Month LIVE row -->
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #e2e8f0;">
+              <div style="font-size:11px; color:#475569;" id="sqftLiveLabel">This Month</div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:13px; font-weight:700; color:#1e293b;" id="sqftLiveVal">Rs. 0</span>
+                <span style="font-size:9px; background:#3b82f6; color:#fff; padding:1px 6px; border-radius:8px;">LIVE</span>
+              </div>
+            </div>
+
+            <!-- Dropdown selector -->
+            <div style="margin-top:10px;">
+              <select id="sqftPeriodSelect" onchange="onSqftPeriodChange(this.value)" style="width:100%; font-size:12px; padding:6px 8px; border:1px solid #e2e8f0; border-radius:6px; color:#1e293b; background:#f8fafc;">
+                <option value="">&#x2500;&#x2500;&#x2500; Select Period &#x2500;&#x2500;&#x2500;</option>
+                <optgroup label="Previous Months" id="sqftMonthOptions"></optgroup>
+                <optgroup label="Years">
+                  <option value="year_2026">2026</option>
+                  <option value="year_2025">2025</option>
+                </optgroup>
+                <optgroup label="">
+                  <option value="alltime">All Time</option>
+                </optgroup>
+              </select>
+            </div>
+
+            <!-- Result row (hidden until selection) -->
+            <div id="sqftResultWrap" style="display:none; margin-top:10px; padding:8px 0; border-top:1px solid #e2e8f0;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="font-size:11px; color:#475569;" id="sqftResultLabel">&#x2014;</div>
+                <div style="font-size:13px; font-weight:700; color:#1e293b;" id="sqftResultVal">Rs. 0</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
 
     </div>
   </div>
@@ -4006,6 +4122,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         <div class="fin-sub-tab" onclick="switchFinTab('ledger',this)">📋 Ledger</div>
         <div class="fin-sub-tab" onclick="switchFinTab('salaries',this)">👷 Salaries</div>
         <div class="fin-sub-tab" onclick="switchFinTab('investors',this)">🤝 Investors/Partners</div>
+        <div class="fin-sub-tab" onclick="switchFinTab('plreport',this)">📈 P&L Report</div>
       </div>
       <!-- Finance cross-check status bar (Feature 3 & 4) -->
       <div id="finCrossCheckBar" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 18px 6px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;font-family:'Montserrat',sans-serif;flex-wrap:wrap;">
@@ -4322,6 +4439,48 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
           <button onclick="renderInvestSavings()" class="btn btn-primary" style="padding:7px 16px;font-size:0.8rem;">🔄 Refresh</button>
         </div>
         <div id="investSavingsCards" style="margin-top:4px;"></div>
+      </div>
+
+      <!-- ═══ P&L REPORT ═══ -->
+      <div id="finPLReport" style="display:none; padding:16px;">
+
+        <!-- Summary KPI cards -->
+        <div id="plKpiCards" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:20px;"></div>
+
+        <!-- Year filter buttons -->
+        <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center;">
+          <span style="font-weight:600; font-size:13px; color:#475569;">Filter:</span>
+          <button class="btn btn-sm" id="plFilterAll"  onclick="renderPLReport('all')"  style="background:#1e293b;color:#fff;">All Time</button>
+          <button class="btn btn-sm" id="plFilter2025" onclick="renderPLReport('2025')">2025</button>
+          <button class="btn btn-sm" id="plFilter2026" onclick="renderPLReport('2026')">2026</button>
+        </div>
+
+        <!-- Table -->
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse:collapse; font-size:13px;" id="plReportTable">
+            <thead>
+              <tr style="background:#1e293b; color:#fff; text-align:right;">
+                <th style="text-align:left; padding:10px 12px;">Month</th>
+                <th style="padding:10px 12px;">Sheets Cutting</th>
+                <th style="padding:10px 12px;">Scrap</th>
+                <th style="padding:10px 12px;">Total Income</th>
+                <th style="padding:10px 12px;">Expenses</th>
+                <th style="padding:10px 12px;">Profit / Loss</th>
+              </tr>
+            </thead>
+            <tbody id="plReportBody">
+              <tr><td colspan="6" style="text-align:center; padding:24px; color:#94a3b8;">Loading...</td></tr>
+            </tbody>
+            <tfoot id="plReportFoot"></tfoot>
+          </table>
+        </div>
+
+        <!-- Export buttons -->
+        <div style="display:flex; gap:10px; margin-top:16px; flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="plExportCSV()">📥 Download CSV</button>
+          <button class="btn btn-primary" onclick="plExportPDF()">🖨️ PDF / Print</button>
+        </div>
+
       </div>
 
       <!-- Employee Modal -->
@@ -4710,6 +4869,321 @@ async function flushPendingQueue() {
   }
 }
 
+// ── PENDING QUEUE FLUSH HELPERS ──────────────────────────────
+async function _flushCpPending() {
+  var _cpPending = JSON.parse(localStorage.getItem('cp_pending_sync') || '[]');
+  if (!_cpPending.length || !sb) return;
+  var synced = [];
+  for (var i = 0; i < _cpPending.length; i++) {
+    try {
+      var entry = _cpPending[i];
+      await sb.from('customer_payments').upsert(entry, { onConflict: 'id' });
+      synced.push(entry.id || i);
+    } catch(e) { console.warn('[cpPending]', e); }
+  }
+  if (synced.length) {
+    var remaining = _cpPending.filter(function(e, idx) {
+      return !synced.includes(e.id || idx);
+    });
+    localStorage.setItem('cp_pending_sync', JSON.stringify(remaining));
+    if (!remaining.length) toast('☁ ' + synced.length + ' payment(s) synced');
+  }
+}
+
+async function _flushManualInvPending() {
+  var _manualPending = JSON.parse(localStorage.getItem('manual_inv_pending') || '[]');
+  if (!_manualPending.length || !sb) return;
+  var syncedCount = 0;
+  var remaining = [];
+  for (var i = 0; i < _manualPending.length; i++) {
+    try {
+      await sb.from('invoices').upsert(_manualPending[i], { onConflict: 'id' });
+      syncedCount++;
+    } catch(e) {
+      console.warn('[manualInvPending]', e);
+      remaining.push(_manualPending[i]);
+    }
+  }
+  localStorage.setItem('manual_inv_pending', JSON.stringify(remaining));
+  if (syncedCount) toast('☁ ' + syncedCount + ' manual invoice(s) synced');
+}
+
+function _hasPendingWork() {
+  return (
+    (typeof pendingQueue !== 'undefined' && pendingQueue.length > 0) ||
+    (typeof _pendingUpdates !== 'undefined' && _pendingUpdates.length > 0) ||
+    (typeof _finPendingSync !== 'undefined' && _finPendingSync.length > 0) ||
+    (typeof _finDeleteQueue !== 'undefined' && _finDeleteQueue.length > 0) ||
+    (typeof _pbPendingEdits !== 'undefined' && _pbPendingEdits.length > 0) ||
+    (JSON.parse(localStorage.getItem('cp_pending_sync') || '[]')).length > 0 ||
+    (JSON.parse(localStorage.getItem('manual_inv_pending') || '[]')).length > 0
+  );
+}
+
+var _masterResyncing = false;
+
+async function _masterResync() {
+  // Re-entrancy guard
+  if (_masterResyncing) {
+    toast('⟳ Sync already in progress...');
+    return;
+  }
+
+  // Offline guard
+  if (!navigator.onLine) {
+    setSyncStatus('offline', '● Offline – using local data');
+    toast('📵 Cannot sync — you are offline');
+    return;
+  }
+
+  _masterResyncing = true;
+  if (typeof window._hideOffline === 'function') window._hideOffline();
+
+  var hadPending = _hasPendingWork();
+  setSyncStatus('syncing', '⟳ Syncing...');
+
+  try {
+    // ── Phase 1: Flush all pending queues (Push first) ──
+    setSyncStatus('syncing', '⟳ Uploading changes...');
+
+    await flushPendingUpdates();           // invoice field edits
+    if (!isSyncing) {
+      await flushPendingQueue();           // new invoices + payments (has own guard)
+    }
+    await _flushCpPending();              // standalone customer_payments
+    await _flushManualInvPending();       // manually typed offline invoices
+    await flushFinLedgerPending();        // finance ledger inserts + deletes
+
+    // flush _pbPendingEdits if function exists
+    if (typeof _flushPbPending === 'function') {
+      await _flushPbPending();
+    } else if (typeof _pbPendingEdits !== 'undefined' && _pbPendingEdits.length > 0 && sb) {
+      for (var i = 0; i < _pbPendingEdits.length; i++) {
+        try {
+          await sb.from('pending_bills').upsert(_pbPendingEdits[i], { onConflict: 'id' });
+        } catch(e) { console.warn('[pbPending]', e); }
+      }
+      _pbPendingEdits = [];
+      if (typeof _savePbPending === 'function') _savePbPending();
+    }
+
+    // ── Phase 2: Pull fresh data (Download latest) ──
+    setSyncStatus('syncing', '⟳ Fetching latest data...');
+
+    // Skip if loadFromSupabase was called within the last 10 seconds (e.g. by online handler)
+    var _timeSinceLoad = window._lastLoadFromSupabase ? (Date.now() - window._lastLoadFromSupabase) : 99999;
+    if (_timeSinceLoad > 10000) {
+      await loadFromSupabase(true);
+    }
+
+    // Detect active tab early (needed for excel cache guard below)
+    var activeTab = window._currentTab || localStorage.getItem('last_active_tab') || '';
+
+    // Refresh excel cache only when on db tab (heavy operation — skip on other tabs)
+    if (activeTab === 'db' && typeof _excelDBCache !== 'undefined') {
+      _excelDBCache = null;
+      if (typeof loadExcelDBCache === 'function') await loadExcelDBCache();
+    }
+
+    // Refresh finance ledger local cache (only if finance was previously loaded)
+    if (typeof _finLedgerLocal !== 'undefined' && _finLedgerLocal.length > 0) {
+      if (typeof refreshOfflineCache === 'function') await refreshOfflineCache();
+    }
+
+    // ── Phase 3: Re-render current tab ──
+
+    if (activeTab === 'db') {
+      if (typeof renderDB === 'function') renderDB();
+    } else if (activeTab === 'finance') {
+      if (typeof renderFinLedger === 'function') renderFinLedger();
+      else if (typeof initFinanceTab === 'function') initFinanceTab();
+    } else if (activeTab === 'summary') {
+      if (typeof loadSummaryTab === 'function') loadSummaryTab();
+      else if (typeof renderCards === 'function') renderCards();
+    } else if (activeTab === 'payment') {
+      // Payment tab restores from sessionStorage automatically on switchTab
+    } else {
+      if (typeof renderDB === 'function') renderDB();
+    }
+
+    // ── Phase 4: Confirm success ──
+    setSyncStatus('synced', '● Synced');
+    if (hadPending) {
+      toast('✅ All changes synced & data refreshed');
+    } else {
+      toast('✅ Data refreshed successfully');
+    }
+
+  } catch(err) {
+    console.error('[_masterResync] error:', err);
+    setSyncStatus('offline', '● Sync error – using local data');
+    toast('⚠ Sync failed — will retry when online');
+    if (!navigator.onLine && typeof window._showOffline === 'function') window._showOffline();
+  } finally {
+    _masterResyncing = false;
+  }
+}
+
+async function _syncToHO() {
+  if (!navigator.onLine) { toast('📵 Cannot sync — offline'); return; }
+
+  // Initialize HO Supabase client on first use
+  if (!sbHO) {
+    try {
+      sbHO = supabase.createClient(HO_SUPA_URL, HO_SUPA_KEY);
+    } catch(e) {
+      console.error('[syncToHO] Failed to init HO client:', e);
+      toast('⚠ HO sync failed — connection error');
+      return;
+    }
+  }
+
+  setSyncStatus('syncing', '⟳ Syncing to HO...');
+  toast('⟳ Syncing branch data to Head Office...');
+
+  try {
+    const BRANCH_ID = 'branch_main';
+    const BRANCH_UUID = 'ba08fc3a-5b6a-473a-8e69-1867fa54d280';
+
+    // ── Fetch all finance_ledger data ──
+    var { data: ledger, error: ledgerErr } = await sb
+      .from('finance_ledger')
+      .select('entry_date, entry_type, category, amount, source')
+      .eq('branch_id', BRANCH_ID);
+    if (ledgerErr) throw ledgerErr;
+
+    // ── Fetch all invoices ──
+    var { data: invData, error: invErr } = await sb
+      .from('invoices')
+      .select('date, total, received, received1, total_sqft, total_kg, bad_debt')
+      .eq('branch_id', BRANCH_ID);
+    if (invErr) throw invErr;
+
+    // ── Group by YYYY-MM ──
+    var monthMap = {};
+
+    function getMonth(mk) {
+      if (!monthMap[mk]) monthMap[mk] = {
+        sheets_cutting: 0, scrap: 0, total_expenses: 0,
+        total_invoices: 0, total_billed: 0, total_collection: 0,
+        total_sqft: 0, total_kg: 0, bad_debt: 0,
+        remaining_market: 0, cash_in_hand: 0
+      };
+      return monthMap[mk];
+    }
+
+    // Process finance_ledger
+    (ledger || []).forEach(function(e) {
+      if (!e.entry_date) return;
+      var mk = e.entry_date.slice(0, 7);
+      var mkParts = mk.split('-');
+      if (mkParts.length < 2 || isNaN(parseInt(mkParts[1])) || parseInt(mkParts[1]) < 1 || parseInt(mkParts[1]) > 12) return;
+      var m = getMonth(mk);
+      var amt = parseFloat(e.amount) || 0;
+      var cat = (e.category || '').trim();
+      var et  = (e.entry_type || '').trim();
+      var src = (e.source || '').trim();
+
+      if (et === 'income' && cat === 'Sheets Cutting' && src !== 'historical_daily') {
+        m.sheets_cutting += amt;
+      } else if (et === 'income' && cat === 'Sheets Cutting' && src === 'historical_daily') {
+        m.sheets_cutting += amt;
+      } else if (et === 'income' && cat === 'Scrap') {
+        m.scrap += amt;
+      } else if (et === 'monthly_expense') {
+        m.total_expenses += amt;
+      }
+    });
+
+    // Process invoices
+    (invData || []).forEach(function(inv) {
+      if (!inv.date) return;
+      var mk = inv.date.slice(0, 7);
+      var mkParts = mk.split('-');
+      if (mkParts.length < 2 || isNaN(parseInt(mkParts[1])) || parseInt(mkParts[1]) < 1 || parseInt(mkParts[1]) > 12) return;
+      var m = getMonth(mk);
+      m.total_invoices += 1;
+      m.total_billed += parseFloat(inv.total) || 0;
+      m.total_collection += (parseFloat(inv.received) || 0) + (parseFloat(inv.received1) || 0);
+      m.total_sqft += parseFloat(inv.total_sqft) || 0;
+      m.total_kg += parseFloat(inv.total_kg) || 0;
+      m.bad_debt += parseFloat(inv.bad_debt) || 0;
+    });
+
+    // ── Build upsert rows ──
+    var rows = [];
+    Object.keys(monthMap).forEach(function(mk) {
+      var m = monthMap[mk];
+      var parts = mk.split('-');
+      var yr = parseInt(parts[0]);
+      var mo = parseInt(parts[1]);
+      if (isNaN(yr) || isNaN(mo) || mo < 1 || mo > 12 || yr < 2020) return;
+      var income = m.sheets_cutting + m.scrap;
+      var pl = income - m.total_expenses;
+      var avgSqft = m.total_invoices > 0 ? (m.total_sqft / m.total_invoices) : 0;
+
+      rows.push({
+        branch_id:        BRANCH_UUID,
+        year:             yr,
+        month:            mo,
+        total_invoices:   m.total_invoices,
+        total_billed:     parseFloat(m.total_billed.toFixed(2)),
+        total_collection: parseFloat(m.total_collection.toFixed(2)),
+        sheets_cutting:   parseFloat(m.sheets_cutting.toFixed(2)),
+        scrap:            parseFloat(m.scrap.toFixed(2)),
+        total_income:     parseFloat(income.toFixed(2)),
+        total_expenses:   parseFloat(m.total_expenses.toFixed(2)),
+        profit_loss:      parseFloat(pl.toFixed(2)),
+        total_sqft:       parseFloat(m.total_sqft.toFixed(2)),
+        total_kg:         parseFloat(m.total_kg.toFixed(2)),
+        avg_sqft_per_day: parseFloat(avgSqft.toFixed(2)),
+        bad_debt:         parseFloat(m.bad_debt.toFixed(2)),
+        synced_at:        new Date().toISOString(),
+        updated_at:       new Date().toISOString()
+      });
+    });
+
+    if (!rows.length) {
+      toast('⚠ No data found to sync');
+      setSyncStatus('synced', '● Synced');
+      return;
+    }
+
+    // ── Upsert to HO DB ──
+    var { error: upsertErr } = await sbHO
+      .from('branch_monthly_summary')
+      .upsert(rows, { onConflict: 'branch_id,year,month' });
+    if (upsertErr) throw upsertErr;
+
+    // ── Log sync success ──
+    await sbHO.from('branch_sync_log').insert({
+      branch_id:      BRANCH_UUID,
+      sync_type:      'manual',
+      sync_status:    'success',
+      records_synced: rows.length,
+      synced_at:      new Date().toISOString()
+    });
+
+    setSyncStatus('synced', '● Synced');
+    toast('✅ ' + rows.length + ' months synced to Head Office');
+
+  } catch(err) {
+    console.error('[syncToHO]', err);
+    // Log failure
+    try {
+      await sbHO.from('branch_sync_log').insert({
+        branch_id:     'ba08fc3a-5b6a-473a-8e69-1867fa54d280',
+        sync_type:     'manual',
+        sync_status:   'failed',
+        error_message: err.message || 'Unknown error',
+        synced_at:     new Date().toISOString()
+      });
+    } catch(_) {}
+    setSyncStatus('offline', '● Sync error');
+    toast('⚠ HO sync failed — ' + (err.message || 'check console'));
+  }
+}
+
 // Fire sync when internet comes back
 window.addEventListener('online', async () => {
   setSyncStatus('syncing', '⟳ Reconnected — syncing...');
@@ -4717,81 +5191,9 @@ window.addEventListener('online', async () => {
   await flushPendingUpdates();
   await flushPendingQueue();
   // Flush cp_pending_sync (customer_payments edited offline)
-  try {
-    var _cpPend = JSON.parse(localStorage.getItem('cp_pending_sync') || '[]');
-    if (_cpPend.length && typeof sb !== 'undefined' && sb) {
-      for (var _cpi = 0; _cpi < _cpPend.length; _cpi++) {
-        var _cpe = _cpPend[_cpi];
-        var _cpc = await sb.from('customer_payments').select('id').eq('invoice_ref', _cpe.invoice_ref).eq('type','payment').limit(1);
-        if (_cpc.data && _cpc.data.length > 0) {
-          if (_cpe.amount > 0) await sb.from('customer_payments').update({ amount: _cpe.amount }).eq('id', _cpc.data[0].id);
-          else await sb.from('customer_payments').delete().eq('id', _cpc.data[0].id);
-        } else if (_cpe.amount > 0) {
-          await sb.from('customer_payments').insert({
-            customer_name: _cpe.customer_name, phone: _cpe.phone || null,
-            amount: _cpe.amount, payment_date: _cpe.payment_date,
-            type: 'payment', source: 'non_imported',
-            note: 'Invoice payment — ' + _cpe.invoice_ref,
-            invoice_ref: _cpe.invoice_ref, created_by: _cpe.created_by || 'unknown'
-          });
-        }
-      }
-      localStorage.removeItem('cp_pending_sync');
-      if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-    }
-  } catch(_cpFlushE) { console.warn('cp_pending_sync online flush failed:', _cpFlushE); }
+  await _flushCpPending();
   // Flush manual invoice pending queue
-  try {
-    var _manPend = JSON.parse(localStorage.getItem('manual_inv_pending') || '[]');
-    if (_manPend.length && typeof sb !== 'undefined' && sb) {
-      var _manStillPending = [];
-      for (var _mi = 0; _mi < _manPend.length; _mi++) {
-        var _me = _manPend[_mi];
-        try {
-          // Check not already saved
-          var _chk = await sb.from('excel_invoices').select('order_num').eq('order_num', _me.order_num).limit(1);
-          if (_chk.data && _chk.data.length > 0) continue; // already exists
-          var _insRow = {
-            customer_name:    _me.customer_name,
-            phone:            _me.phone || null,
-            order_num:        _me.order_num,
-            date:             _me.date,
-            total_bill:       _me.total_bill,
-            received:         _me.received,
-            bad_debt:         _me.bad_debt,
-            discount:         _me.discount,
-            remaining:        _me.remaining,
-            source:           'manual',
-            received_entries: _me.received_entries || null
-          };
-          var _insRes = await sb.from('excel_invoices').insert(_insRow).select().single();
-          if (_insRes.error) throw _insRes.error;
-          // Also sync customer_payments
-          var _invRef = 'INV-' + _me.order_num;
-          if (_me.received > 0) {
-            await sb.from('customer_payments').insert({ customer_name: _me.customer_name, phone: _me.phone||null, amount: _me.received, payment_date: _me.date, type: 'payment', source: 'non_imported', note: 'Initial payment — ' + _invRef, invoice_ref: _invRef, created_by: currentUser||'unknown' });
-          }
-          if (_me.recv1 > 0) {
-            await sb.from('customer_payments').insert({ customer_name: _me.customer_name, phone: _me.phone||null, amount: _me.recv1, payment_date: _me.date, type: 'payment', source: 'non_imported', note: 'Additional payment — ' + _invRef, invoice_ref: _invRef, created_by: currentUser||'unknown' });
-          }
-          if (_me.discount > 0) {
-            await sb.from('customer_payments').insert({ customer_name: _me.customer_name, phone: _me.phone||null, amount: _me.discount, payment_date: _me.date, type: 'discount', source: 'non_imported', note: 'Discount — ' + _invRef, invoice_ref: _invRef, created_by: currentUser||'unknown' });
-          }
-          if (_me.bad_debt > 0) {
-            await sb.from('customer_payments').insert({ customer_name: _me.customer_name, phone: _me.phone||null, amount: _me.bad_debt, payment_date: _me.date, type: 'bad_debt', source: 'non_imported', note: 'Bad debt — ' + _invRef, invoice_ref: _invRef, created_by: currentUser||'unknown' });
-          }
-          if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-        } catch(_meE) {
-          console.warn('Manual invoice flush failed:', _me.order_num, _meE);
-          _manStillPending.push(_me);
-        }
-      }
-      localStorage.setItem('manual_inv_pending', JSON.stringify(_manStillPending));
-      if (_manStillPending.length === 0 && _manPend.length > 0) {
-        toast('☁ ' + _manPend.length + ' manual invoice(s) synced to cloud');
-      }
-    }
-  } catch(_manFlushE) { console.warn('manual_inv_pending flush error:', _manFlushE); }
+  await _flushManualInvPending();
   if (_pbPendingEdits.length > 0 && sb) {
     var _toRetry = [..._pbPendingEdits];
     _pbPendingEdits = [];
@@ -4843,6 +5245,10 @@ window.addEventListener('online', async () => {
       }
     } catch(_de) { console.warn("[draft number check]", _de); }
   }
+  // Trigger master resync for comprehensive data refresh
+  setTimeout(function() {
+    if (typeof _masterResync === 'function') _masterResync();
+  }, 5000); // 5 second delay — ensures online handler finishes before masterResync starts
 });
 
 window.addEventListener('offline', () => {
@@ -4879,6 +5285,10 @@ setInterval(async () => {
 // ══════════════════════════════════════════════
 const SUPA_URL = 'https://jazxyebbbaitvcjeyjly.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imphenh5ZWJiYmFpdHZjamV5amx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTM5NzIsImV4cCI6MjA5Mjc2OTk3Mn0.AcqIU1igypQ68at-v0avF6-V9MxP2GxzTAxc6VhgTNY';
+// Head Office Supabase — aggregation DB
+const HO_SUPA_URL = 'https://tadmvogwkjrrhbzlmyvr.supabase.co';
+const HO_SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhZG12b2d3a2pycmhiemxteXZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2MzY3NTYsImV4cCI6MjA5ODIxMjc1Nn0.01x8LuN_n3MOQCgu9Cy8KQ0jTC2xtP_bMrApOsaqXpw';
+let sbHO = null; // initialized on first sync
 let sb;
 try {
   sb = supabase.createClient(SUPA_URL, SUPA_KEY);
@@ -4917,19 +5327,22 @@ let _searchPage = 1;           // pagination page for search tab
       + '<div style="font-size:1.2rem;font-weight:800;margin-bottom:8px;">You\'re Offline</div>'
       + '<div style="font-size:0.85rem;color:rgba(255,255,255,0.6);margin-bottom:8px;">آپ آف لائن ہیں</div>'
       + '<div style="font-size:0.78rem;color:rgba(255,255,255,0.5);margin-bottom:24px;max-width:280px;line-height:1.6;">Don\'t worry — your data is safe. Please check your internet connection.</div>'
-      + '<button onclick="window.location.reload()" style="background:#f59e0b;color:#1e293b;border:none;padding:12px 28px;border-radius:10px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;cursor:pointer;">🔄 Retry Connection</button>'
+      + '<button onclick="if(navigator.onLine){_hideOffline();_masterResync();}else{toast(\'📵 Still offline — check your connection\');}" style="background:#f59e0b;color:#1e293b;border:none;padding:12px 28px;border-radius:10px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;cursor:pointer;">🔄 Retry Connection</button>'
+      + '<button onclick="_hideOffline(true);toast(\'📵 Offline mode — some features unavailable\');" style="margin-top:10px;background:transparent;color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.2);padding:10px 28px;border-radius:10px;font-family:Montserrat,sans-serif;font-weight:600;font-size:0.8rem;cursor:pointer;">Continue Offline</button>'
       + '<div style="margin-top:16px;font-size:0.7rem;color:rgba(255,255,255,0.3);">Prime CNC Laser Works</div>';
     document.body.appendChild(_offlineOverlay);
   }
 
-  function _hideOffline() {
+  function _hideOffline(suppressToast) {
     if (_offlineOverlay) {
       _offlineOverlay.remove();
       _offlineOverlay = null;
-      if (typeof toast === 'function') toast('✅ Back online!');
+      if (!suppressToast && typeof toast === 'function') toast('✅ Back online!');
     }
   }
 
+  window._showOffline = _showOffline;
+  window._hideOffline = _hideOffline;
   window.addEventListener('online',  _hideOffline);
   window.addEventListener('offline', _showOffline);
   if (!navigator.onLine) setTimeout(_showOffline, 1000);
@@ -5693,6 +6106,7 @@ async function loadFromSupabase(silent) {
 
     localStorage.setItem('inv_database', JSON.stringify(database));
     _supabaseDataReady = true;
+    window._lastLoadFromSupabase = Date.now();
     if (!silent) setSyncStatus('synced', '● Synced');
 
   } catch(e) {
@@ -5826,6 +6240,9 @@ function setSyncStatus(state, label) {
 // INIT
 // ══════════════════════════════════════════════
 function init() {
+  sessionStorage.removeItem('rp_name');
+  sessionStorage.removeItem('rp_phone');
+  sessionStorage.removeItem('rp_inv');
   // Load saved gauge + kg rates into GAUGE_RATES immediately so invoices use correct values
   (function() {
     const r = JSON.parse(localStorage.getItem('inv_gauge_rates_custom') || 'null');
@@ -8626,7 +9043,7 @@ async function renderSummary() {
   let _scTotal = 0;
   try {
     if (sb && navigator.onLine) {
-      let _scQ = sb.from('finance_ledger').select('amount').eq('category', 'Sheets Cutting');
+      let _scQ = sb.from('finance_ledger').select('amount').eq('category', 'Sheets Cutting').eq('entry_type', 'income').neq('source', 'historical_daily');
       if (mode === 'day' && dateV)       _scQ = _scQ.eq('entry_date', dateV);
       else if (mode === 'month' && monV) _scQ = _scQ.like('entry_date', monV + '%');
       else if (mode === 'year' && yearV) _scQ = _scQ.like('entry_date', String(yearV) + '%');
@@ -8758,7 +9175,35 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
     const remDisplay  = displayRemaining !== null ? `Rs. ${fmt(displayRemaining)}` : '—';
     const bdDisplay   = badDebtOverride != null ? badDebtOverride : totalBadDebt;
     generalCards.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+      <div style="display:grid;grid-template-columns:${window.innerWidth < 768 ? '1fr 1fr' : 'repeat(4,1fr)'};gap:12px;overflow-x:auto;">
+        <div class="s-card sc-received" id="cashInHandCard" style="cursor:default;">
+          <div style="cursor:pointer;" onclick="window._toggleCashHoldersBreakdown(${cashInHand !== null ? cashInHand : 'null'})" title="Click to see who holds the cash">
+            <div class="s-card-label">💵 Cash in Hand <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
+            <div class="s-card-val" style="color:${cashColor};">${cashDisplay}</div>
+          </div>
+          <div id="cashHoldersBreakdown" style="display:none;margin-top:10px;font-size:0.78rem;line-height:1.6;border-top:1px solid rgba(255,255,255,0.25);padding-top:8px;text-align:left;cursor:default;position:relative;z-index:2;"></div>
+        </div>
+        <div class="s-card sc-discount" style="cursor:pointer;" onclick="showCustList('allcustomers')" title="Click to see all customers">
+          <div class="s-card-label">👥 All Customers <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
+          <div class="s-card-val">${custCount !== null && custCount !== undefined ? custCount : '—'}</div>
+        </div>
+        <div class="s-card sc-remaining" style="cursor:pointer;" onclick="showCustList('remaining')" title="Click to see all customers with remaining balance">
+          <div class="s-card-label">🏪 Remaining in Market <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
+          <div class="s-card-val">${remDisplay}</div>
+        </div>
+        <div class="s-card sc-baddebt" style="cursor:pointer;" onclick="showCustList('baddebt')" title="Click to see all customers with bad debt">
+          <div class="s-card-label">⚠️ Bad Debt <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
+          <div class="s-card-val">Rs. ${fmt(bdDisplay)}</div>
+        </div>
+      </div>
+    `;
+    var _msc2 = document.getElementById('summaryCards2');
+    if (_msc2) {
+      var _oldColl = document.getElementById('curMonthCollCard');
+      var _oldExp  = document.getElementById('curMonthExpCard');
+      if (_oldColl) _oldColl.remove();
+      if (_oldExp)  _oldExp.remove();
+      _msc2.insertAdjacentHTML('beforeend', `
         <div class="s-card" id="curMonthCollCard" style="cursor:pointer;background:linear-gradient(135deg,#0f4c81 0%,#1a6fad 60%,#2196f3 100%);border:1.5px solid rgba(33,150,243,0.4);box-shadow:0 4px 18px rgba(33,150,243,0.25);border-radius:14px;" onclick="window._toggleCurMonthBreakdown()" title="Click to see breakdown">
           <div class="s-card-label" style="color:rgba(255,255,255,0.85);font-size:0.72rem;letter-spacing:0.04em;">📅 THIS MONTH COLLECTION <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
           <div class="s-card-val" style="font-size:1.45rem;color:#ffffff;font-weight:700;text-shadow:0 1px 8px rgba(0,0,0,0.3);">Rs. ${fmt(curMonthTotal || 0)}</div>
@@ -8775,29 +9220,8 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
             <div style="color:#fecaca;">🔧 Monthly Expense (Without Sheet): <strong style="color:#ffffff;">Rs. ${fmt(curMonthExpenseWithoutSheet || 0)}</strong></div>
           </div>
         </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div class="s-card sc-received" id="cashInHandCard" style="cursor:default;">
-          <div style="cursor:pointer;" onclick="window._toggleCashHoldersBreakdown(${cashInHand !== null ? cashInHand : 'null'})" title="Click to see who holds the cash">
-            <div class="s-card-label">💵 Cash in Hand <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
-            <div class="s-card-val" style="font-size:1.305rem;color:${cashColor};">${cashDisplay}</div>
-          </div>
-          <div id="cashHoldersBreakdown" style="display:none;margin-top:10px;font-size:0.78rem;line-height:1.6;border-top:1px solid rgba(255,255,255,0.25);padding-top:8px;text-align:left;cursor:default;position:relative;z-index:2;"></div>
-        </div>
-        <div class="s-card sc-discount" style="cursor:pointer;" onclick="showCustList('allcustomers')" title="Click to see all customers">
-          <div class="s-card-label">👥 All Customers <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
-          <div class="s-card-val" style="font-size:1.305rem;">${custCount !== null && custCount !== undefined ? custCount : '—'}</div>
-        </div>
-        <div class="s-card sc-remaining" style="cursor:pointer;" onclick="showCustList('remaining')" title="Click to see all customers with remaining balance">
-          <div class="s-card-label">🏪 Remaining in Market <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
-          <div class="s-card-val">${remDisplay}</div>
-        </div>
-        <div class="s-card sc-baddebt" style="cursor:pointer;" onclick="showCustList('baddebt')" title="Click to see all customers with bad debt">
-          <div class="s-card-label">⚠️ Bad Debt <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
-          <div class="s-card-val">Rs. ${fmt(bdDisplay)}</div>
-        </div>
-      </div>
-    `;
+      `);
+    }
   }
 
   window._toggleCurMonthBreakdown = function() {
@@ -9030,7 +9454,7 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
           .gte('entry_date', _mFirstDay)
           .lte('entry_date', _mLastDay)
           .eq('category', 'Sheets Cutting')
-          .in('entry_type', ['income', 'invoice_income'])
+          .eq('entry_type', 'income')
           .neq('source', 'historical_daily');
         (_scMonth.data || []).forEach(function(e){ _curMonthCutting += (parseFloat(e.amount)||0); });
       } catch(_scMe) { console.warn('[curMonth SC] finance_ledger fetch:', _scMe); }
@@ -14785,10 +15209,21 @@ function switchTab(tab, el) {
   }
   if (tab === 'invoice')  { switchInvTab('full'); }
   if (tab === 'search')   { _searchPage = 1; renderSearchTab(); }
-  if (tab === 'summary')  { initSummaryFilters(); renderSummary(); }
+  if (tab === 'summary')  { initSummaryFilters(); renderSummary(); initSqftDropdown(); }
   if (tab === 'finance')  { initFinanceTab(); const _finFirst = document.querySelector('#finSubTabs .fin-sub-tab'); if (_finFirst) _finFirst.click(); }
   if (tab === 'settings') { ctrlLoad(); const _setFirst = document.querySelector('#setSubTabs .fin-sub-tab'); if (_setFirst) _setFirst.click(); }
-  if (tab === 'payment') { rpClearPanel(); }
+  if (tab === 'payment') {
+    var _rpSavedName  = sessionStorage.getItem('rp_name')  || '';
+    var _rpSavedPhone = sessionStorage.getItem('rp_phone') || '';
+    var _rpSavedInv   = sessionStorage.getItem('rp_inv')   || '';
+    rpClearPanel();
+    var _elName  = document.getElementById('rpSearchName');
+    var _elPhone = document.getElementById('rpSearchPhone');
+    var _elInv   = document.getElementById('rpSearchInv');
+    if (_elName  && _rpSavedName)  { _elName.value  = _rpSavedName;  sessionStorage.setItem('rp_name',  _rpSavedName);  rpSearchByName(_rpSavedName);   }
+    if (_elPhone && _rpSavedPhone) { _elPhone.value = _rpSavedPhone; sessionStorage.setItem('rp_phone', _rpSavedPhone); rpSearchByPhone(_rpSavedPhone); }
+    if (_elInv   && _rpSavedInv)   { _elInv.value   = _rpSavedInv;   sessionStorage.setItem('rp_inv',   _rpSavedInv);   setTimeout(function(){ rpSearchByInv(_rpSavedInv); }, 100); }
+  }
   if (tab === 'production') { renderProductionTab(); }
 }
 
@@ -15112,7 +15547,32 @@ function _rpInvalidateSummaryCache() {
   _allCustomerSummaryCache = null;
 }
 
+function rpClearSearch() {
+  var elName  = document.getElementById('rpSearchName');
+  var elPhone = document.getElementById('rpSearchPhone');
+  var elInv   = document.getElementById('rpSearchInv');
+  if (elName)  elName.value  = '';
+  if (elPhone) elPhone.value = '';
+  if (elInv)   elInv.value   = '';
+  // Re-enable all inputs
+  if (elName)  { elName.disabled  = false; elName.style.opacity  = '1'; }
+  if (elPhone) { elPhone.disabled = false; elPhone.style.opacity = '1'; }
+  if (elInv)   { elInv.disabled   = false; elInv.style.opacity   = '1'; }
+  // Hide name dropdown
+  var nameDropdown = document.getElementById('rpNameDropdown');
+  if (nameDropdown) { nameDropdown.style.display = 'none'; nameDropdown.innerHTML = ''; }
+  sessionStorage.removeItem('rp_name');
+  sessionStorage.removeItem('rp_phone');
+  sessionStorage.removeItem('rp_inv');
+  var customerPanel = document.getElementById('rpCustomerPanel');
+  if (customerPanel) customerPanel.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;font-family:Montserrat,sans-serif;font-size:0.85rem;">Search a customer by name, phone or invoice number above.</div>';
+  _rpCurrentCustomer = null;
+}
+
 function rpClearPanel() {
+  sessionStorage.removeItem('rp_name');
+  sessionStorage.removeItem('rp_phone');
+  sessionStorage.removeItem('rp_inv');
   var nameField = document.getElementById('rpSearchName');
   var phoneField = document.getElementById('rpSearchPhone');
   var invField = document.getElementById('rpSearchInv');
@@ -15164,30 +15624,40 @@ async function rpSearchByName(val) {
 }
 
 async function rpSearchByInv(val) {
-  var nameField = document.getElementById('rpSearchName');
+  var nameField  = document.getElementById('rpSearchName');
   var phoneField = document.getElementById('rpSearchPhone');
   if (val.trim().length > 0) {
-    nameField.disabled = true;
-    nameField.style.opacity = '0.5';
-    phoneField.disabled = true;
-    phoneField.style.opacity = '0.5';
+    nameField.disabled  = true; nameField.style.opacity  = '0.5';
+    phoneField.disabled = true; phoneField.style.opacity = '0.5';
   } else {
-    nameField.disabled = false;
-    nameField.style.opacity = '1';
-    phoneField.disabled = false;
-    phoneField.style.opacity = '1';
+    nameField.disabled  = false; nameField.style.opacity  = '1';
+    phoneField.disabled = false; phoneField.style.opacity = '1';
+    rpClearPanel(); return;
   }
-  var q = val.trim().toUpperCase().replace(/^[A-Z]+-/,'');
+  clearTimeout(window._rpInvTimer);
+  var q = val.trim().toUpperCase().replace(/^[A-Za-z]+-/,'');
   if (!q) { rpClearPanel(); return; }
-  document.getElementById('rpNameDropdown').style.display = 'none';
-  // Check new invoices
-  var found = database.find(function(inv){ return (inv.invNum||'').replace(/^[A-Za-z]+-/,'').toUpperCase() === q; });
-  if (found && found.custName) { rpSelectCustomer(encodeURIComponent(found.custName), encodeURIComponent(found.phone||'')); return; }
-  // Check imported invoices
-  if (Array.isArray(_excelDBCache)) {
-    var foundEx = _excelDBCache.find(function(r){ return String(r.order_num||'').replace(/^[A-Za-z]+-/,'').toUpperCase() === q; });
-    if (foundEx && foundEx.customer_name) { rpSelectCustomer(encodeURIComponent(foundEx.customer_name), encodeURIComponent(foundEx.phone||'')); return; }
-  }
+  window._rpInvTimer = setTimeout(function() {
+    document.getElementById('rpNameDropdown').style.display = 'none';
+    var found = database.find(function(inv) {
+      return (inv.invNum||'').replace(/^[A-Za-z]+-/,'').toUpperCase() === q;
+    });
+    if (found && found.custName) {
+      rpSelectCustomer(encodeURIComponent(found.custName), encodeURIComponent(found.phone||''));
+      return;
+    }
+    if (Array.isArray(_excelDBCache)) {
+      var foundEx = _excelDBCache.find(function(r) {
+        return String(r.order_num||'').replace(/^[A-Za-z]+-/,'').toUpperCase() === q;
+      });
+      if (foundEx && foundEx.customer_name) {
+        rpSelectCustomer(encodeURIComponent(foundEx.customer_name), encodeURIComponent(foundEx.phone||''));
+        return;
+      }
+    }
+    document.getElementById('rpCustomerPanel').innerHTML =
+      '<div style="text-align:center;padding:40px;color:#ef4444;font-family:Montserrat,sans-serif;font-size:0.85rem;">❌ No invoice found for number <strong>' + q + '</strong></div>';
+  }, 600);
 }
 
 async function rpSearchByPhone(val) {
@@ -17317,12 +17787,14 @@ function switchFinTab(tab, el) {
   document.getElementById('finSalaries').style.display  = tab === 'salaries'  ? '' : 'none';
   document.getElementById('finPendingBills').style.display  = tab === 'pendingbills' ? '' : 'none';
   document.getElementById('finInvestors').style.display = tab === 'investors' ? '' : 'none';
+  document.getElementById('finPLReport').style.display  = tab === 'plreport'  ? '' : 'none';
   if (tab === 'dashboard') renderDashboard();
   if (tab === 'daily')     { initRecentYearDropdown(); }
   if (tab === 'ledger')    { _ledgerPage = 1; populateLedgerYears().then(() => renderLedger()); }
   if (tab === 'salaries')  { salInit(); }
   if (tab === 'pendingbills') { pbLoad(); }
   if (tab === 'investors') { renderInvestSavings(); }
+  if (tab === 'plreport')  { renderPLReport(); }
 }
 
 function updateLedgerCategories() {
@@ -20070,6 +20542,356 @@ async function fetchEntriesWithCorrectInvoiceAmounts(filters = {}) {
   }
 
   return entries;
+}
+
+// ─── P&L REPORT ───
+async function renderPLReport(filterYear) {
+  if (!filterYear) filterYear = 'all';
+
+  ['plFilterAll','plFilter2025','plFilter2026'].forEach(function(id) {
+    var btn = document.getElementById(id);
+    if (!btn) return;
+    var isActive = (id === 'plFilter' + (filterYear === 'all' ? 'All' : filterYear));
+    btn.style.background = isActive ? '#1e293b' : '';
+    btn.style.color = isActive ? '#fff' : '';
+  });
+
+  var tbody = document.getElementById('plReportBody');
+  var tfoot = document.getElementById('plReportFoot');
+  var kpiDiv = document.getElementById('plKpiCards');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:#94a3b8;">⏳ Loading...</td></tr>';
+  if (tfoot) tfoot.innerHTML = '';
+  if (kpiDiv) kpiDiv.innerHTML = '';
+
+  var entries;
+  try {
+    entries = await fetchEntriesWithCorrectInvoiceAmounts({});
+  } catch(e) {
+    if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:#ef4444;">❌ Failed to load data</td></tr>';
+    return;
+  }
+
+  var now = new Date();
+  var currentMonthKey = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+
+  var monthMap = {};
+  entries.forEach(function(e) {
+    if (!e.entry_date) return;
+    var mk = e.entry_date.slice(0,7);
+    if (!monthMap[mk]) monthMap[mk] = { sc:0, scrap:0, exp:0 };
+    var amt = parseFloat(e.amount) || 0;
+    var cat = (e.category || '').trim();
+    var et  = (e.entry_type || '').trim();
+    if (et === 'income' && cat === 'Sheets Cutting') {
+      monthMap[mk].sc += amt;
+    } else if (et === 'income' && cat === 'Scrap') {
+      monthMap[mk].scrap += amt;
+    } else if (et === 'monthly_expense') {
+      monthMap[mk].exp += amt;
+    }
+  });
+
+  var months = Object.keys(monthMap).sort();
+  if (filterYear !== 'all') {
+    months = months.filter(function(mk) { return mk.startsWith(filterYear); });
+  }
+
+  window._plReportData = { months: months, monthMap: monthMap, filterYear: filterYear };
+
+  function fmt(n) { return 'Rs. ' + Number(n.toFixed(0)).toLocaleString('en-PK'); }
+
+  var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function monthLabel(mk) {
+    var parts = mk.split('-');
+    return monthNames[parseInt(parts[1],10)-1] + ' ' + parts[0].slice(2);
+  }
+
+  var totalSC = 0, totalScrap = 0, totalExp = 0, totalPL = 0;
+  var profitCount = 0, lossCount = 0;
+  var rows = '';
+
+  months.forEach(function(mk) {
+    var d  = monthMap[mk];
+    var sc = d.sc, scrap = d.scrap, exp = d.exp;
+    var pl = (sc + scrap) - exp;
+    totalSC += sc; totalScrap += scrap; totalExp += exp; totalPL += pl;
+    if (pl >= 0) profitCount++; else lossCount++;
+
+    var isLive = (mk === currentMonthKey);
+    var plColor = pl >= 0 ? '#065f46' : '#991b1b';
+    var plBg    = pl >= 0 ? '#d1fae5' : '#fee2e2';
+    var plIcon  = pl >= 0 ? '🟢' : '🔴';
+    var liveBadge = isLive ? ' <span style="font-size:10px;background:#3b82f6;color:#fff;padding:1px 6px;border-radius:8px;vertical-align:middle;">LIVE</span>' : '';
+
+    rows += '<tr style="border-bottom:1px solid #e2e8f0;">'
+      + '<td style="padding:9px 12px;font-weight:500;">' + monthLabel(mk) + liveBadge + '</td>'
+      + '<td style="padding:9px 12px;text-align:right;color:#0f766e;">' + fmt(sc) + '</td>'
+      + '<td style="padding:9px 12px;text-align:right;color:#0369a1;">' + fmt(scrap) + '</td>'
+      + '<td style="padding:9px 12px;text-align:right;font-weight:500;">' + fmt(sc + scrap) + '</td>'
+      + '<td style="padding:9px 12px;text-align:right;color:#dc2626;">' + fmt(exp) + '</td>'
+      + '<td style="padding:9px 12px;text-align:right;font-weight:700;background:' + plBg + ';color:' + plColor + ';">' + plIcon + ' ' + fmt(pl) + '</td>'
+      + '</tr>';
+  });
+
+  if (!rows) {
+    rows = '<tr><td colspan="6" style="text-align:center;padding:24px;color:#94a3b8;">No data for selected period</td></tr>';
+  }
+
+  if (tbody) tbody.innerHTML = rows;
+
+  var totalPLColor = totalPL >= 0 ? '#065f46' : '#991b1b';
+  var totalPLBg    = totalPL >= 0 ? '#d1fae5' : '#fee2e2';
+  var totalPLIcon  = totalPL >= 0 ? '📈' : '📉';
+  if (tfoot) tfoot.innerHTML = '<tr style="background:#f8fafc;font-weight:700;border-top:2px solid #1e293b;">'
+    + '<td style="padding:10px 12px;">TOTAL (' + months.length + ' months)</td>'
+    + '<td style="padding:10px 12px;text-align:right;color:#0f766e;">' + fmt(totalSC) + '</td>'
+    + '<td style="padding:10px 12px;text-align:right;color:#0369a1;">' + fmt(totalScrap) + '</td>'
+    + '<td style="padding:10px 12px;text-align:right;">' + fmt(totalSC + totalScrap) + '</td>'
+    + '<td style="padding:10px 12px;text-align:right;color:#dc2626;">' + fmt(totalExp) + '</td>'
+    + '<td style="padding:10px 12px;text-align:right;background:' + totalPLBg + ';color:' + totalPLColor + ';">' + totalPLIcon + ' ' + fmt(totalPL) + '</td>'
+    + '</tr>';
+
+  var avgPL = months.length ? totalPL / months.length : 0;
+  var avgColor = avgPL >= 0 ? '#065f46' : '#991b1b';
+  var avgBg    = avgPL >= 0 ? 'linear-gradient(135deg,#d1fae5,#a7f3d0)' : 'linear-gradient(135deg,#fee2e2,#fecaca)';
+
+  if (kpiDiv) kpiDiv.innerHTML = ''
+    + _plKpiCard('📈 Total Profit/Loss', (totalPL >= 0 ? '🟢 ' : '🔴 ') + fmt(totalPL), totalPL >= 0 ? 'linear-gradient(135deg,#d1fae5,#a7f3d0)' : 'linear-gradient(135deg,#fee2e2,#fecaca)', totalPL >= 0 ? '#065f46' : '#991b1b')
+    + _plKpiCard('📊 Avg Monthly P/L', (avgPL >= 0 ? '🟢 ' : '🔴 ') + fmt(avgPL), avgBg, avgColor)
+    + _plKpiCard('✅ Profitable Months', profitCount + ' / ' + months.length, 'linear-gradient(135deg,#d1fae5,#a7f3d0)', '#065f46')
+    + _plKpiCard('❌ Loss Months', lossCount + ' / ' + months.length, lossCount > 0 ? 'linear-gradient(135deg,#fee2e2,#fecaca)' : 'linear-gradient(135deg,#f1f5f9,#e2e8f0)', lossCount > 0 ? '#991b1b' : '#475569')
+    + _plKpiCard('💰 Total Income', fmt(totalSC + totalScrap), 'linear-gradient(135deg,#dbeafe,#bfdbfe)', '#1e40af')
+    + _plKpiCard('🔧 Total Expenses', fmt(totalExp), 'linear-gradient(135deg,#fef3c7,#fde68a)', '#92400e');
+}
+
+function _plKpiCard(label, value, bg, color) {
+  return '<div style="background:' + bg + ';border-radius:12px;padding:14px 16px;">'
+    + '<div style="font-size:11px;color:' + color + ';opacity:0.8;margin-bottom:4px;">' + label + '</div>'
+    + '<div style="font-size:15px;font-weight:700;color:' + color + ';">' + value + '</div>'
+    + '</div>';
+}
+
+window._plIsOpen = false;
+
+async function loadSummaryPL(action) {
+  var wrap  = document.getElementById('summaryPLWrap');
+  var empty = document.getElementById('summaryPLEmpty');
+  var btn   = document.getElementById('btnLoadPL');
+  var tbody = document.getElementById('summaryPLBody');
+  var tfoot = document.getElementById('summaryPLFoot');
+
+  // Toggle OFF — header or Load button clicked while table is already open
+  if (action !== 'refresh' && window._plIsOpen) {
+    window._plIsOpen = false;
+    if (wrap)  wrap.style.display  = 'none';
+    if (empty) empty.style.display = '';
+    if (btn)   { btn.textContent = 'Load'; btn.disabled = false; }
+    if (btn)   btn.onclick = function(e){ if(e) e.stopPropagation(); loadSummaryPL(); };
+    return;
+  }
+
+  // Load or Refresh
+  if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
+
+  await renderPLReport('all');
+
+  var d = window._plReportData;
+  if (!d || !d.months || !d.months.length) {
+    if (btn) { btn.textContent = '❌'; btn.disabled = false; }
+    return;
+  }
+
+  var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var now = new Date();
+  var currentMonthKey = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  function fmt(n) { return 'Rs. ' + Number(n.toFixed(0)).toLocaleString('en-PK'); }
+
+  var totalSC = 0, totalScrap = 0, totalExp = 0, totalPL = 0;
+  var rows = '';
+
+  d.months.forEach(function(mk) {
+    var r = d.monthMap[mk];
+    var sc = r.sc, scrap = r.scrap, exp = r.exp, pl = (sc + scrap) - exp;
+    totalSC += sc; totalScrap += scrap; totalExp += exp; totalPL += pl;
+    var parts = mk.split('-');
+    var label = monthNames[parseInt(parts[1],10)-1] + ' ' + parts[0].slice(2);
+    var isLive = mk === currentMonthKey;
+    var plColor = pl >= 0 ? '#065f46' : '#991b1b';
+    var plBg    = pl >= 0 ? '#d1fae5' : '#fee2e2';
+    var liveBadge = isLive ? ' <span style="font-size:8px;background:#3b82f6;color:#fff;padding:1px 4px;border-radius:4px;">LIVE</span>' : '';
+    rows += '<tr style="border-bottom:1px solid #f1f5f9;">'
+      + '<td style="padding:5px 8px;">' + label + liveBadge + '</td>'
+      + '<td style="padding:5px 8px;text-align:right;color:#0f766e;">' + fmt(sc) + '</td>'
+      + '<td style="padding:5px 8px;text-align:right;color:#0369a1;">' + fmt(scrap) + '</td>'
+      + '<td style="padding:5px 8px;text-align:right;font-weight:500;">' + fmt(sc+scrap) + '</td>'
+      + '<td style="padding:5px 8px;text-align:right;color:#dc2626;">' + fmt(exp) + '</td>'
+      + '<td style="padding:5px 8px;text-align:right;font-weight:700;background:' + plBg + ';color:' + plColor + ';">' + (pl>=0?'🟢':'🔴') + ' ' + fmt(pl) + '</td>'
+      + '</tr>';
+  });
+
+  if (tbody) tbody.innerHTML = rows || '<tr><td colspan="6" style="text-align:center;padding:12px;color:#94a3b8;">No data</td></tr>';
+
+  var totalPLColor = totalPL >= 0 ? '#065f46' : '#991b1b';
+  var totalPLBg    = totalPL >= 0 ? '#d1fae5' : '#fee2e2';
+  if (tfoot) tfoot.innerHTML = '<tr style="background:#f8fafc;font-weight:700;border-top:2px solid #1e293b;">'
+    + '<td style="padding:6px 8px;">TOTAL</td>'
+    + '<td style="padding:6px 8px;text-align:right;color:#0f766e;">' + fmt(totalSC) + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;color:#0369a1;">' + fmt(totalScrap) + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;">' + fmt(totalSC+totalScrap) + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;color:#dc2626;">' + fmt(totalExp) + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;background:' + totalPLBg + ';color:' + totalPLColor + ';">' + (totalPL>=0?'📈':'📉') + ' ' + fmt(totalPL) + '</td>'
+    + '</tr>';
+
+  window._plIsOpen = true;
+  if (wrap)  wrap.style.display  = '';
+  if (empty) empty.style.display = 'none';
+  if (btn)   { btn.textContent = '🔄'; btn.disabled = false; }
+  if (btn)   btn.onclick = function(e){ if(e) e.stopPropagation(); loadSummaryPL('refresh'); };
+}
+
+function initSqftDropdown() {
+  var optGroup = document.getElementById('sqftMonthOptions');
+  if (!optGroup) return;
+  var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var now = new Date();
+  var currentMonthKey = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  var liveLabel = document.getElementById('sqftLiveLabel');
+  if (liveLabel) {
+    var parts = currentMonthKey.split('-');
+    liveLabel.textContent = 'This Month (' + monthNames[parseInt(parts[1],10)-1] + ' 20' + parts[0].slice(2) + ')';
+  }
+  var months = [];
+  var y = 2025, m = 1;
+  while (true) {
+    var mk = y + '-' + String(m).padStart(2,'0');
+    if (mk >= currentMonthKey) break;
+    months.push(mk);
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  months.reverse();
+  optGroup.innerHTML = months.map(function(mk) {
+    var p = mk.split('-');
+    var label = monthNames[parseInt(p[1],10)-1] + ' 20' + p[0].slice(2);
+    return '<option value="month_' + mk + '">' + label + '</option>';
+  }).join('');
+}
+
+function onSqftPeriodChange(val) {
+  var resultWrap = document.getElementById('sqftResultWrap');
+  var resultLabel = document.getElementById('sqftResultLabel');
+  var resultVal = document.getElementById('sqftResultVal');
+  if (!val) { if (resultWrap) resultWrap.style.display = 'none'; return; }
+
+  var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var label = '', value = 'Rs. 0';
+
+  if (val.startsWith('month_')) {
+    var mk = val.replace('month_', '');
+    var p = mk.split('-');
+    label = monthNames[parseInt(p[1],10)-1] + ' 20' + p[0].slice(2);
+    value = 'Rs. 0';
+  } else if (val.startsWith('year_')) {
+    var yr = val.replace('year_', '');
+    label = yr + ' Avg / Month';
+    value = 'Rs. 0';
+  } else if (val === 'alltime') {
+    label = 'All Time Avg / Month';
+    value = 'Rs. 0';
+  }
+
+  if (resultLabel) resultLabel.textContent = label;
+  if (resultVal) resultVal.textContent = value;
+  if (resultWrap) resultWrap.style.display = '';
+}
+
+function plExportCSV() {
+  var d = window._plReportData;
+  if (!d || !d.months || !d.months.length) { showToast('No data to export'); return; }
+  var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var lines = ['Month,Sheets Cutting,Scrap,Total Income,Expenses,Profit/Loss'];
+  d.months.forEach(function(mk) {
+    var r  = d.monthMap[mk];
+    var sc = r.sc, scrap = r.scrap, exp = r.exp, pl = (sc + scrap) - exp;
+    var parts = mk.split('-');
+    var label = monthNames[parseInt(parts[1],10)-1] + ' 20' + parts[0].slice(2);
+    lines.push([label, sc.toFixed(0), scrap.toFixed(0), (sc+scrap).toFixed(0), exp.toFixed(0), pl.toFixed(0)].join(','));
+  });
+  var blob = new Blob([lines.join('\n')], {type:'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'PL-Report-' + (d.filterYear === 'all' ? 'AllTime' : d.filterYear) + '.csv';
+  a.click();
+}
+
+function plExportPDF() {
+  var d = window._plReportData;
+  if (!d || !d.months || !d.months.length) { showToast('No data to export'); return; }
+  var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var now = new Date();
+  var currentMonthKey = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  var periodLabel = d.filterYear === 'all' ? 'All Time' : d.filterYear;
+
+  function fmt(n) { return 'Rs. ' + Number(n.toFixed(0)).toLocaleString('en-PK'); }
+
+  var totalSC = 0, totalScrap = 0, totalExp = 0, totalPL = 0;
+  var rows = '';
+  d.months.forEach(function(mk, i) {
+    var r  = d.monthMap[mk];
+    var sc = r.sc, scrap = r.scrap, exp = r.exp, pl = (sc + scrap) - exp;
+    totalSC += sc; totalScrap += scrap; totalExp += exp; totalPL += pl;
+    var parts = mk.split('-');
+    var label = monthNames[parseInt(parts[1],10)-1] + ' 20' + parts[0].slice(2);
+    var isLive = mk === currentMonthKey;
+    var plColor = pl >= 0 ? '#065f46' : '#991b1b';
+    var plBg    = pl >= 0 ? '#d1fae5' : '#fee2e2';
+    var rowBg   = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+    rows += '<tr style="background:' + rowBg + ';">'
+      + '<td>' + label + (isLive ? ' <span style="font-size:9px;background:#3b82f6;color:#fff;padding:1px 5px;border-radius:6px;">LIVE</span>' : '') + '</td>'
+      + '<td style="text-align:right;color:#0f766e;">' + fmt(sc) + '</td>'
+      + '<td style="text-align:right;color:#0369a1;">' + fmt(scrap) + '</td>'
+      + '<td style="text-align:right;font-weight:600;">' + fmt(sc+scrap) + '</td>'
+      + '<td style="text-align:right;color:#dc2626;">' + fmt(exp) + '</td>'
+      + '<td style="text-align:right;font-weight:700;background:' + plBg + ';color:' + plColor + ';">' + (pl>=0?'▲':'▼') + ' ' + fmt(pl) + '</td>'
+      + '</tr>';
+  });
+
+  var avgPL = d.months.length ? totalPL / d.months.length : 0;
+
+  var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+    + '<style>'
+    + 'body{font-family:Arial,sans-serif;font-size:12px;color:#1e293b;margin:0;padding:16px;}'
+    + 'h2{margin:0 0 4px;font-size:16px;}p.sub{margin:0 0 16px;color:#64748b;font-size:11px;}'
+    + 'table{width:100%;border-collapse:collapse;}'
+    + 'th{background:#1e293b;color:#fff;padding:8px 10px;text-align:right;font-size:11px;}'
+    + 'th:first-child{text-align:left;}'
+    + 'td{padding:7px 10px;border-bottom:1px solid #e2e8f0;font-size:11px;}'
+    + 'td:first-child{text-align:left;}'
+    + 'tfoot tr td{font-weight:700;border-top:2px solid #1e293b;background:#f1f5f9;padding:8px 10px;}'
+    + '.kpi{display:inline-block;margin:0 8px 8px 0;padding:8px 12px;border-radius:8px;font-size:11px;}'
+    + '</style>'
+    + '</head><body>'
+    + '<h2>📊 Prime CNC — Profit / Loss Report</h2>'
+    + '<p class="sub">Period: ' + periodLabel + ' &nbsp;|&nbsp; Generated: ' + now.toLocaleDateString('en-PK') + '</p>'
+    + '<div style="margin-bottom:12px;">'
+    + '<span class="kpi" style="background:' + (totalPL>=0?'#d1fae5':'#fee2e2') + ';color:' + (totalPL>=0?'#065f46':'#991b1b') + ';">Net P/L: ' + fmt(totalPL) + '</span>'
+    + '<span class="kpi" style="background:#dbeafe;color:#1e40af;">Total Income: ' + fmt(totalSC+totalScrap) + '</span>'
+    + '<span class="kpi" style="background:#fef3c7;color:#92400e;">Total Expenses: ' + fmt(totalExp) + '</span>'
+    + '<span class="kpi" style="background:' + (avgPL>=0?'#d1fae5':'#fee2e2') + ';color:' + (avgPL>=0?'#065f46':'#991b1b') + ';">Avg Monthly: ' + fmt(avgPL) + '</span>'
+    + '</div>'
+    + '<table><thead><tr>'
+    + '<th>Month</th><th>Sheets Cutting</th><th>Scrap</th><th>Total Income</th><th>Expenses</th><th>Profit / Loss</th>'
+    + '</tr></thead><tbody>' + rows + '</tbody>'
+    + '<tfoot><tr>'
+    + '<td>TOTAL (' + d.months.length + ' months)</td>'
+    + '<td style="text-align:right;color:#0f766e;">' + fmt(totalSC) + '</td>'
+    + '<td style="text-align:right;color:#0369a1;">' + fmt(totalScrap) + '</td>'
+    + '<td style="text-align:right;">' + fmt(totalSC+totalScrap) + '</td>'
+    + '<td style="text-align:right;color:#dc2626;">' + fmt(totalExp) + '</td>'
+    + '<td style="text-align:right;">' + (totalPL>=0?'▲':'▼') + ' ' + fmt(totalPL) + '</td>'
+    + '</tr></tfoot></table>'
+    + '</body></html>';
+
+  _silentPDFFromHtml(html, 'PL-Report-' + periodLabel + '-PrimeCNC.pdf');
 }
 
 // ─── DASHBOARD ───
