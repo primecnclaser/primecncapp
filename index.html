@@ -5183,7 +5183,6 @@ async function _syncToHO() {
     toast('⚠ HO sync failed — ' + (err.message || 'check console'));
   }
 }
-
 // Fire sync when internet comes back
 window.addEventListener('online', async () => {
   setSyncStatus('syncing', '⟳ Reconnected — syncing...');
