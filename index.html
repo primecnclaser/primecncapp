@@ -267,6 +267,14 @@ body {
   color: #fff; border-color: #16a34a;
   box-shadow: 0 4px 16px rgba(22,163,74,0.35);
 }
+/* Tab — Receive Payment: emerald green */
+.tab.tab-payment { background: #d1fae5; color: #065f46; border-color: #6ee7b7; }
+.tab.tab-payment:hover:not(.active) { background: #a7f3d0; color: #064e3b; border-color: #34d399; }
+.tab.tab-payment.active {
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+  color: #fff; border-color: #059669;
+  box-shadow: 0 4px 16px rgba(5,150,105,0.35);
+}
 .tab.tab-production { background: #f3e8ff; color: #581c87; border-color: #c084fc; }
 .tab.tab-production:hover:not(.active) { background: #e9d5ff; color: #6b21a8; border-color: #a855f7; }
 .tab.tab-production.active {
@@ -720,8 +728,8 @@ body {
   box-shadow: 0 2px 8px rgba(30,41,59,0.06);
 }
 .analytics-title {
-  font-family: 'Playfair Display',serif; color: #1e293b;
-  font-size: 1rem; font-weight: 600; margin-bottom: 12px;
+  font-family: Montserrat, sans-serif; color: #1e293b;
+  font-size: 15px; font-weight: 700; margin-bottom: 12px;
 }
 .analytics-filters {
   display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap;
@@ -3062,20 +3070,23 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
     <div class="panel" style="max-width:1100px;margin:0 auto;">
       <h2 style="font-family:Montserrat,sans-serif;font-size:1.1rem;color:#1e293b;margin-bottom:16px;">💰 Receive Payment</h2>
 
-      <div style="display:flex;gap:10px;margin-bottom:16px;">
-        <input type="text" id="rpSearchName" autocomplete="new-password" placeholder="🔍 Search by customer name" oninput="rpSearchByName(this.value)" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
-        <input type="text" id="rpSearchPhone" autocomplete="new-password" placeholder="🔍 Search by phone number" oninput="this.value=this.value.replace(/[^0-9]/g,'');rpSearchByPhone(this.value)" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
-        <input type="text" id="rpSearchInv" autocomplete="new-password" placeholder="🔍 Search by invoice number" oninput="this.value=this.value.replace(/[^0-9]/g,'');rpSearchByInv(this.value)" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
+      <div style="display:flex;gap:10px;margin-bottom:16px;background:#f8fafc;padding:12px;border-radius:12px;border:1px solid #e2e8f0;">
+        <input type="text" id="rpSearchName" autocomplete="new-password" placeholder="🔍 Search by customer name" oninput="sessionStorage.setItem('rp_name',this.value);rpSearchByName(this.value)" onfocus="this.style.borderColor='#059669'" onblur="this.style.borderColor='#6ee7b7'" style="flex:1; padding:10px 14px; border:2px solid #6ee7b7; border-radius:10px; font-family:Montserrat,sans-serif; font-size:0.85rem; background:linear-gradient(135deg,#ecfdf5,#d1fae5); color:#065f46; outline:none;">
+        <input type="text" id="rpSearchPhone" autocomplete="new-password" maxlength="11" placeholder="🔍 Search by phone number" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,11);sessionStorage.setItem('rp_phone',this.value);rpSearchByPhone(this.value)" onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#93c5fd'" style="flex:1; padding:10px 14px; border:2px solid #93c5fd; border-radius:10px; font-family:Montserrat,sans-serif; font-size:0.85rem; background:linear-gradient(135deg,#eff6ff,#dbeafe); color:#1e40af; outline:none;">
+        <input type="text" id="rpSearchInv" autocomplete="new-password" placeholder="🔍 Search by invoice number" oninput="this.value=this.value.replace(/[^0-9]/g,'');sessionStorage.setItem('rp_inv',this.value);rpSearchByInv(this.value)" onfocus="this.style.borderColor='#7c3aed'" onblur="this.style.borderColor='#c4b5fd'" style="flex:1; padding:10px 14px; border:2px solid #c4b5fd; border-radius:10px; font-family:Montserrat,sans-serif; font-size:0.85rem; background:linear-gradient(135deg,#f5f3ff,#ede9fe); color:#5b21b6; outline:none;">
+        <button onclick="rpClearSearch()" style="padding:10px 16px; background:linear-gradient(135deg,#fee2e2,#fecaca); color:#991b1b; border:2px solid #fca5a5; border-radius:10px; font-family:Montserrat,sans-serif; font-weight:700; font-size:0.82rem; cursor:pointer; white-space:nowrap;">✕ Clear</button>
       </div>
       <div id="rpNameDropdown" style="display:none;position:relative;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;max-height:220px;overflow-y:auto;margin-top:-10px;margin-bottom:16px;"></div>
 
       <div id="rpCustomerPanel"></div>
 
-      <div style="margin-top:24px;padding-top:20px;border-top:2px solid #f1f5f9;">
-        <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.9rem;color:#1e293b;margin-bottom:10px;">📅 Daily Received Summary</div>
+      <div style="margin-top:24px; background:linear-gradient(135deg,#eff6ff,#dbeafe); border-radius:14px; padding:16px 18px; border:1.5px solid #bfdbfe;">
+        <div style="font-family:Montserrat,sans-serif; font-weight:700; font-size:0.9rem; color:#1e40af; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+          <span style="background:#1e40af; color:#fff; padding:4px 10px; border-radius:8px; font-size:0.8rem;">📅 Daily Received Summary</span>
+        </div>
         <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;">
-          <input type="date" id="rpDateLookup" value="" onchange="rpLookupByDate(this.value)" style="padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;">
-          <button onclick="rpLookupByDate(document.getElementById('rpDateLookup').value)" style="padding:10px 16px;background:#1e293b;color:#fff;border:none;border-radius:8px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.82rem;cursor:pointer;">View</button>
+          <input type="date" id="rpDateLookup" value="" onchange="rpLookupByDate(this.value)" style="padding:10px 14px; border:2px solid #93c5fd; border-radius:10px; font-family:Montserrat,sans-serif; font-size:0.85rem; background:#fff; color:#1e40af; outline:none;">
+          <button onclick="rpLookupByDate(document.getElementById('rpDateLookup').value)" style="padding:10px 18px; background:#1e40af; color:#fff; border:none; border-radius:10px; font-family:Montserrat,sans-serif; font-weight:700; font-size:0.82rem; cursor:pointer;">View</button>
         </div>
         <div id="rpDateLookupResults"></div>
       </div>
@@ -3201,6 +3212,80 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
       </div>
       <!-- Customer list shown when All Customers / Remaining / Bad Debt card is clicked -->
       <div id="summaryList" style="display:none;margin-top:20px;"></div>
+
+      <!-- ═══ BUSINESS ANALYTICS ═══ -->
+      <div class="summary-section" style="margin-top:24px;">
+        <div style="margin-bottom:14px;">
+          <h3 style="margin:0; font-size:15px; font-weight:700; color:#1e293b;">📊 Business Analytics</h3>
+        </div>
+
+        <!-- Two cards side by side -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start;">
+
+          <!-- Card 1: P&L Report -->
+          <div class="s-card" style="padding:14px 16px; cursor:pointer; background:linear-gradient(135deg,#f0fdf4,#dcfce7); border:1.5px solid #86efac;" onclick="loadSummaryPL()">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+              <div style="font-size:13px; font-weight:700; color:#1e293b;">📈 P&L Report</div>
+              <button id="btnLoadPL" onclick="event.stopPropagation(); loadSummaryPL()" style="font-size:11px; padding:4px 10px; background:#1e293b; color:#fff; border:none; border-radius:6px; cursor:pointer;">Load</button>
+            </div>
+            <div id="summaryPLWrap" style="display:none; overflow-x:auto;">
+              <table style="width:100%; border-collapse:collapse; font-size:11px;" id="summaryPLTable">
+                <thead>
+                  <tr style="background:#1e293b; color:#fff; text-align:right;">
+                    <th style="text-align:left; padding:6px 8px;">Month</th>
+                    <th style="padding:6px 8px;">SC</th>
+                    <th style="padding:6px 8px;">Scrap</th>
+                    <th style="padding:6px 8px;">Income</th>
+                    <th style="padding:6px 8px;">Exp</th>
+                    <th style="padding:6px 8px;">P/L</th>
+                  </tr>
+                </thead>
+                <tbody id="summaryPLBody"></tbody>
+                <tfoot id="summaryPLFoot"></tfoot>
+              </table>
+            </div>
+            <div id="summaryPLEmpty" style="color:#94a3b8; font-size:12px; text-align:center; padding:16px 0;">Click Load to view P&amp;L data</div>
+          </div>
+
+          <!-- Card 2: Cost per Sq.Ft -->
+          <div class="s-card" style="padding:14px 16px; background:linear-gradient(135deg,#eff6ff,#dbeafe); border:1.5px solid #93c5fd;">
+            <div style="font-size:13px; font-weight:700; color:#1e293b; margin-bottom:12px;">📐 Cost per Sq.Ft</div>
+
+            <!-- This Month LIVE row -->
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #e2e8f0;">
+              <div style="font-size:11px; color:#475569;" id="sqftLiveLabel">This Month</div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:13px; font-weight:700; color:#1e293b;" id="sqftLiveVal">Rs. 0</span>
+                <span style="font-size:9px; background:#3b82f6; color:#fff; padding:1px 6px; border-radius:8px;">LIVE</span>
+              </div>
+            </div>
+
+            <!-- Dropdown selector -->
+            <div style="margin-top:10px;">
+              <select id="sqftPeriodSelect" onchange="onSqftPeriodChange(this.value)" style="width:100%; font-size:12px; padding:6px 8px; border:1px solid #e2e8f0; border-radius:6px; color:#1e293b; background:#f8fafc;">
+                <option value="">&#x2500;&#x2500;&#x2500; Select Period &#x2500;&#x2500;&#x2500;</option>
+                <optgroup label="Previous Months" id="sqftMonthOptions"></optgroup>
+                <optgroup label="Years">
+                  <option value="year_2026">2026</option>
+                  <option value="year_2025">2025</option>
+                </optgroup>
+                <optgroup label="">
+                  <option value="alltime">All Time</option>
+                </optgroup>
+              </select>
+            </div>
+
+            <!-- Result row (hidden until selection) -->
+            <div id="sqftResultWrap" style="display:none; margin-top:10px; padding:8px 0; border-top:1px solid #e2e8f0;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="font-size:11px; color:#475569;" id="sqftResultLabel">&#x2014;</div>
+                <div style="font-size:13px; font-weight:700; color:#1e293b;" id="sqftResultVal">Rs. 0</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
 
     </div>
   </div>
@@ -5870,6 +5955,9 @@ function setSyncStatus(state, label) {
 // INIT
 // ══════════════════════════════════════════════
 function init() {
+  sessionStorage.removeItem('rp_name');
+  sessionStorage.removeItem('rp_phone');
+  sessionStorage.removeItem('rp_inv');
   // Load saved gauge + kg rates into GAUGE_RATES immediately so invoices use correct values
   (function() {
     const r = JSON.parse(localStorage.getItem('inv_gauge_rates_custom') || 'null');
@@ -8802,7 +8890,35 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
     const remDisplay  = displayRemaining !== null ? `Rs. ${fmt(displayRemaining)}` : '—';
     const bdDisplay   = badDebtOverride != null ? badDebtOverride : totalBadDebt;
     generalCards.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+      <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:12px;overflow-x:auto;">
+        <div class="s-card sc-received" id="cashInHandCard" style="cursor:default;">
+          <div style="cursor:pointer;" onclick="window._toggleCashHoldersBreakdown(${cashInHand !== null ? cashInHand : 'null'})" title="Click to see who holds the cash">
+            <div class="s-card-label">💵 Cash in Hand <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
+            <div class="s-card-val" style="color:${cashColor};">${cashDisplay}</div>
+          </div>
+          <div id="cashHoldersBreakdown" style="display:none;margin-top:10px;font-size:0.78rem;line-height:1.6;border-top:1px solid rgba(255,255,255,0.25);padding-top:8px;text-align:left;cursor:default;position:relative;z-index:2;"></div>
+        </div>
+        <div class="s-card sc-discount" style="cursor:pointer;" onclick="showCustList('allcustomers')" title="Click to see all customers">
+          <div class="s-card-label">👥 All Customers <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
+          <div class="s-card-val">${custCount !== null && custCount !== undefined ? custCount : '—'}</div>
+        </div>
+        <div class="s-card sc-remaining" style="cursor:pointer;" onclick="showCustList('remaining')" title="Click to see all customers with remaining balance">
+          <div class="s-card-label">🏪 Remaining in Market <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
+          <div class="s-card-val">${remDisplay}</div>
+        </div>
+        <div class="s-card sc-baddebt" style="cursor:pointer;" onclick="showCustList('baddebt')" title="Click to see all customers with bad debt">
+          <div class="s-card-label">⚠️ Bad Debt <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
+          <div class="s-card-val">Rs. ${fmt(bdDisplay)}</div>
+        </div>
+      </div>
+    `;
+    var _msc2 = document.getElementById('summaryCards2');
+    if (_msc2) {
+      var _oldColl = document.getElementById('curMonthCollCard');
+      var _oldExp  = document.getElementById('curMonthExpCard');
+      if (_oldColl) _oldColl.remove();
+      if (_oldExp)  _oldExp.remove();
+      _msc2.insertAdjacentHTML('beforeend', `
         <div class="s-card" id="curMonthCollCard" style="cursor:pointer;background:linear-gradient(135deg,#0f4c81 0%,#1a6fad 60%,#2196f3 100%);border:1.5px solid rgba(33,150,243,0.4);box-shadow:0 4px 18px rgba(33,150,243,0.25);border-radius:14px;" onclick="window._toggleCurMonthBreakdown()" title="Click to see breakdown">
           <div class="s-card-label" style="color:rgba(255,255,255,0.85);font-size:0.72rem;letter-spacing:0.04em;">📅 THIS MONTH COLLECTION <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
           <div class="s-card-val" style="font-size:1.45rem;color:#ffffff;font-weight:700;text-shadow:0 1px 8px rgba(0,0,0,0.3);">Rs. ${fmt(curMonthTotal || 0)}</div>
@@ -8819,29 +8935,8 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
             <div style="color:#fecaca;">🔧 Monthly Expense (Without Sheet): <strong style="color:#ffffff;">Rs. ${fmt(curMonthExpenseWithoutSheet || 0)}</strong></div>
           </div>
         </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div class="s-card sc-received" id="cashInHandCard" style="cursor:default;">
-          <div style="cursor:pointer;" onclick="window._toggleCashHoldersBreakdown(${cashInHand !== null ? cashInHand : 'null'})" title="Click to see who holds the cash">
-            <div class="s-card-label">💵 Cash in Hand <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
-            <div class="s-card-val" style="font-size:1.305rem;color:${cashColor};">${cashDisplay}</div>
-          </div>
-          <div id="cashHoldersBreakdown" style="display:none;margin-top:10px;font-size:0.78rem;line-height:1.6;border-top:1px solid rgba(255,255,255,0.25);padding-top:8px;text-align:left;cursor:default;position:relative;z-index:2;"></div>
-        </div>
-        <div class="s-card sc-discount" style="cursor:pointer;" onclick="showCustList('allcustomers')" title="Click to see all customers">
-          <div class="s-card-label">👥 All Customers <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
-          <div class="s-card-val" style="font-size:1.305rem;">${custCount !== null && custCount !== undefined ? custCount : '—'}</div>
-        </div>
-        <div class="s-card sc-remaining" style="cursor:pointer;" onclick="showCustList('remaining')" title="Click to see all customers with remaining balance">
-          <div class="s-card-label">🏪 Remaining in Market <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
-          <div class="s-card-val">${remDisplay}</div>
-        </div>
-        <div class="s-card sc-baddebt" style="cursor:pointer;" onclick="showCustList('baddebt')" title="Click to see all customers with bad debt">
-          <div class="s-card-label">⚠️ Bad Debt <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
-          <div class="s-card-val">Rs. ${fmt(bdDisplay)}</div>
-        </div>
-      </div>
-    `;
+      `);
+    }
   }
 
   window._toggleCurMonthBreakdown = function() {
@@ -14829,10 +14924,21 @@ function switchTab(tab, el) {
   }
   if (tab === 'invoice')  { switchInvTab('full'); }
   if (tab === 'search')   { _searchPage = 1; renderSearchTab(); }
-  if (tab === 'summary')  { initSummaryFilters(); renderSummary(); }
+  if (tab === 'summary')  { initSummaryFilters(); renderSummary(); initSqftDropdown(); }
   if (tab === 'finance')  { initFinanceTab(); const _finFirst = document.querySelector('#finSubTabs .fin-sub-tab'); if (_finFirst) _finFirst.click(); }
   if (tab === 'settings') { ctrlLoad(); const _setFirst = document.querySelector('#setSubTabs .fin-sub-tab'); if (_setFirst) _setFirst.click(); }
-  if (tab === 'payment') { rpClearPanel(); }
+  if (tab === 'payment') {
+    var _rpSavedName  = sessionStorage.getItem('rp_name')  || '';
+    var _rpSavedPhone = sessionStorage.getItem('rp_phone') || '';
+    var _rpSavedInv   = sessionStorage.getItem('rp_inv')   || '';
+    rpClearPanel();
+    var _elName  = document.getElementById('rpSearchName');
+    var _elPhone = document.getElementById('rpSearchPhone');
+    var _elInv   = document.getElementById('rpSearchInv');
+    if (_elName  && _rpSavedName)  { _elName.value  = _rpSavedName;  sessionStorage.setItem('rp_name',  _rpSavedName);  rpSearchByName(_rpSavedName);   }
+    if (_elPhone && _rpSavedPhone) { _elPhone.value = _rpSavedPhone; sessionStorage.setItem('rp_phone', _rpSavedPhone); rpSearchByPhone(_rpSavedPhone); }
+    if (_elInv   && _rpSavedInv)   { _elInv.value   = _rpSavedInv;   sessionStorage.setItem('rp_inv',   _rpSavedInv);   setTimeout(function(){ rpSearchByInv(_rpSavedInv); }, 100); }
+  }
   if (tab === 'production') { renderProductionTab(); }
 }
 
@@ -15156,7 +15262,32 @@ function _rpInvalidateSummaryCache() {
   _allCustomerSummaryCache = null;
 }
 
+function rpClearSearch() {
+  var elName  = document.getElementById('rpSearchName');
+  var elPhone = document.getElementById('rpSearchPhone');
+  var elInv   = document.getElementById('rpSearchInv');
+  if (elName)  elName.value  = '';
+  if (elPhone) elPhone.value = '';
+  if (elInv)   elInv.value   = '';
+  // Re-enable all inputs
+  if (elName)  { elName.disabled  = false; elName.style.opacity  = '1'; }
+  if (elPhone) { elPhone.disabled = false; elPhone.style.opacity = '1'; }
+  if (elInv)   { elInv.disabled   = false; elInv.style.opacity   = '1'; }
+  // Hide name dropdown
+  var nameDropdown = document.getElementById('rpNameDropdown');
+  if (nameDropdown) { nameDropdown.style.display = 'none'; nameDropdown.innerHTML = ''; }
+  sessionStorage.removeItem('rp_name');
+  sessionStorage.removeItem('rp_phone');
+  sessionStorage.removeItem('rp_inv');
+  var customerPanel = document.getElementById('rpCustomerPanel');
+  if (customerPanel) customerPanel.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;font-family:Montserrat,sans-serif;font-size:0.85rem;">Search a customer by name, phone or invoice number above.</div>';
+  _rpCurrentCustomer = null;
+}
+
 function rpClearPanel() {
+  sessionStorage.removeItem('rp_name');
+  sessionStorage.removeItem('rp_phone');
+  sessionStorage.removeItem('rp_inv');
   var nameField = document.getElementById('rpSearchName');
   var phoneField = document.getElementById('rpSearchPhone');
   var invField = document.getElementById('rpSearchInv');
@@ -15208,30 +15339,40 @@ async function rpSearchByName(val) {
 }
 
 async function rpSearchByInv(val) {
-  var nameField = document.getElementById('rpSearchName');
+  var nameField  = document.getElementById('rpSearchName');
   var phoneField = document.getElementById('rpSearchPhone');
   if (val.trim().length > 0) {
-    nameField.disabled = true;
-    nameField.style.opacity = '0.5';
-    phoneField.disabled = true;
-    phoneField.style.opacity = '0.5';
+    nameField.disabled  = true; nameField.style.opacity  = '0.5';
+    phoneField.disabled = true; phoneField.style.opacity = '0.5';
   } else {
-    nameField.disabled = false;
-    nameField.style.opacity = '1';
-    phoneField.disabled = false;
-    phoneField.style.opacity = '1';
+    nameField.disabled  = false; nameField.style.opacity  = '1';
+    phoneField.disabled = false; phoneField.style.opacity = '1';
+    rpClearPanel(); return;
   }
-  var q = val.trim().toUpperCase().replace(/^[A-Z]+-/,'');
+  clearTimeout(window._rpInvTimer);
+  var q = val.trim().toUpperCase().replace(/^[A-Za-z]+-/,'');
   if (!q) { rpClearPanel(); return; }
-  document.getElementById('rpNameDropdown').style.display = 'none';
-  // Check new invoices
-  var found = database.find(function(inv){ return (inv.invNum||'').replace(/^[A-Za-z]+-/,'').toUpperCase() === q; });
-  if (found && found.custName) { rpSelectCustomer(encodeURIComponent(found.custName), encodeURIComponent(found.phone||'')); return; }
-  // Check imported invoices
-  if (Array.isArray(_excelDBCache)) {
-    var foundEx = _excelDBCache.find(function(r){ return String(r.order_num||'').replace(/^[A-Za-z]+-/,'').toUpperCase() === q; });
-    if (foundEx && foundEx.customer_name) { rpSelectCustomer(encodeURIComponent(foundEx.customer_name), encodeURIComponent(foundEx.phone||'')); return; }
-  }
+  window._rpInvTimer = setTimeout(function() {
+    document.getElementById('rpNameDropdown').style.display = 'none';
+    var found = database.find(function(inv) {
+      return (inv.invNum||'').replace(/^[A-Za-z]+-/,'').toUpperCase() === q;
+    });
+    if (found && found.custName) {
+      rpSelectCustomer(encodeURIComponent(found.custName), encodeURIComponent(found.phone||''));
+      return;
+    }
+    if (Array.isArray(_excelDBCache)) {
+      var foundEx = _excelDBCache.find(function(r) {
+        return String(r.order_num||'').replace(/^[A-Za-z]+-/,'').toUpperCase() === q;
+      });
+      if (foundEx && foundEx.customer_name) {
+        rpSelectCustomer(encodeURIComponent(foundEx.customer_name), encodeURIComponent(foundEx.phone||''));
+        return;
+      }
+    }
+    document.getElementById('rpCustomerPanel').innerHTML =
+      '<div style="text-align:center;padding:40px;color:#ef4444;font-family:Montserrat,sans-serif;font-size:0.85rem;">❌ No invoice found for number <strong>' + q + '</strong></div>';
+  }, 600);
 }
 
 async function rpSearchByPhone(val) {
@@ -20243,6 +20384,139 @@ function _plKpiCard(label, value, bg, color) {
     + '<div style="font-size:11px;color:' + color + ';opacity:0.8;margin-bottom:4px;">' + label + '</div>'
     + '<div style="font-size:15px;font-weight:700;color:' + color + ';">' + value + '</div>'
     + '</div>';
+}
+
+window._plIsOpen = false;
+
+async function loadSummaryPL(action) {
+  var wrap  = document.getElementById('summaryPLWrap');
+  var empty = document.getElementById('summaryPLEmpty');
+  var btn   = document.getElementById('btnLoadPL');
+  var tbody = document.getElementById('summaryPLBody');
+  var tfoot = document.getElementById('summaryPLFoot');
+
+  // Toggle OFF — header or Load button clicked while table is already open
+  if (action !== 'refresh' && window._plIsOpen) {
+    window._plIsOpen = false;
+    if (wrap)  wrap.style.display  = 'none';
+    if (empty) empty.style.display = '';
+    if (btn)   { btn.textContent = 'Load'; btn.disabled = false; }
+    if (btn)   btn.onclick = function(e){ if(e) e.stopPropagation(); loadSummaryPL(); };
+    return;
+  }
+
+  // Load or Refresh
+  if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
+
+  await renderPLReport('all');
+
+  var d = window._plReportData;
+  if (!d || !d.months || !d.months.length) {
+    if (btn) { btn.textContent = '❌'; btn.disabled = false; }
+    return;
+  }
+
+  var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var now = new Date();
+  var currentMonthKey = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  function fmt(n) { return 'Rs. ' + Number(n.toFixed(0)).toLocaleString('en-PK'); }
+
+  var totalSC = 0, totalScrap = 0, totalExp = 0, totalPL = 0;
+  var rows = '';
+
+  d.months.forEach(function(mk) {
+    var r = d.monthMap[mk];
+    var sc = r.sc, scrap = r.scrap, exp = r.exp, pl = (sc + scrap) - exp;
+    totalSC += sc; totalScrap += scrap; totalExp += exp; totalPL += pl;
+    var parts = mk.split('-');
+    var label = monthNames[parseInt(parts[1],10)-1] + ' ' + parts[0].slice(2);
+    var isLive = mk === currentMonthKey;
+    var plColor = pl >= 0 ? '#065f46' : '#991b1b';
+    var plBg    = pl >= 0 ? '#d1fae5' : '#fee2e2';
+    var liveBadge = isLive ? ' <span style="font-size:8px;background:#3b82f6;color:#fff;padding:1px 4px;border-radius:4px;">LIVE</span>' : '';
+    rows += '<tr style="border-bottom:1px solid #f1f5f9;">'
+      + '<td style="padding:5px 8px;">' + label + liveBadge + '</td>'
+      + '<td style="padding:5px 8px;text-align:right;color:#0f766e;">' + fmt(sc) + '</td>'
+      + '<td style="padding:5px 8px;text-align:right;color:#0369a1;">' + fmt(scrap) + '</td>'
+      + '<td style="padding:5px 8px;text-align:right;font-weight:500;">' + fmt(sc+scrap) + '</td>'
+      + '<td style="padding:5px 8px;text-align:right;color:#dc2626;">' + fmt(exp) + '</td>'
+      + '<td style="padding:5px 8px;text-align:right;font-weight:700;background:' + plBg + ';color:' + plColor + ';">' + (pl>=0?'🟢':'🔴') + ' ' + fmt(pl) + '</td>'
+      + '</tr>';
+  });
+
+  if (tbody) tbody.innerHTML = rows || '<tr><td colspan="6" style="text-align:center;padding:12px;color:#94a3b8;">No data</td></tr>';
+
+  var totalPLColor = totalPL >= 0 ? '#065f46' : '#991b1b';
+  var totalPLBg    = totalPL >= 0 ? '#d1fae5' : '#fee2e2';
+  if (tfoot) tfoot.innerHTML = '<tr style="background:#f8fafc;font-weight:700;border-top:2px solid #1e293b;">'
+    + '<td style="padding:6px 8px;">TOTAL</td>'
+    + '<td style="padding:6px 8px;text-align:right;color:#0f766e;">' + fmt(totalSC) + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;color:#0369a1;">' + fmt(totalScrap) + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;">' + fmt(totalSC+totalScrap) + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;color:#dc2626;">' + fmt(totalExp) + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;background:' + totalPLBg + ';color:' + totalPLColor + ';">' + (totalPL>=0?'📈':'📉') + ' ' + fmt(totalPL) + '</td>'
+    + '</tr>';
+
+  window._plIsOpen = true;
+  if (wrap)  wrap.style.display  = '';
+  if (empty) empty.style.display = 'none';
+  if (btn)   { btn.textContent = '🔄'; btn.disabled = false; }
+  if (btn)   btn.onclick = function(e){ if(e) e.stopPropagation(); loadSummaryPL('refresh'); };
+}
+
+function initSqftDropdown() {
+  var optGroup = document.getElementById('sqftMonthOptions');
+  if (!optGroup) return;
+  var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var now = new Date();
+  var currentMonthKey = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  var liveLabel = document.getElementById('sqftLiveLabel');
+  if (liveLabel) {
+    var parts = currentMonthKey.split('-');
+    liveLabel.textContent = 'This Month (' + monthNames[parseInt(parts[1],10)-1] + ' 20' + parts[0].slice(2) + ')';
+  }
+  var months = [];
+  var y = 2025, m = 1;
+  while (true) {
+    var mk = y + '-' + String(m).padStart(2,'0');
+    if (mk >= currentMonthKey) break;
+    months.push(mk);
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  months.reverse();
+  optGroup.innerHTML = months.map(function(mk) {
+    var p = mk.split('-');
+    var label = monthNames[parseInt(p[1],10)-1] + ' 20' + p[0].slice(2);
+    return '<option value="month_' + mk + '">' + label + '</option>';
+  }).join('');
+}
+
+function onSqftPeriodChange(val) {
+  var resultWrap = document.getElementById('sqftResultWrap');
+  var resultLabel = document.getElementById('sqftResultLabel');
+  var resultVal = document.getElementById('sqftResultVal');
+  if (!val) { if (resultWrap) resultWrap.style.display = 'none'; return; }
+
+  var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var label = '', value = 'Rs. 0';
+
+  if (val.startsWith('month_')) {
+    var mk = val.replace('month_', '');
+    var p = mk.split('-');
+    label = monthNames[parseInt(p[1],10)-1] + ' 20' + p[0].slice(2);
+    value = 'Rs. 0';
+  } else if (val.startsWith('year_')) {
+    var yr = val.replace('year_', '');
+    label = yr + ' Avg / Month';
+    value = 'Rs. 0';
+  } else if (val === 'alltime') {
+    label = 'All Time Avg / Month';
+    value = 'Rs. 0';
+  }
+
+  if (resultLabel) resultLabel.textContent = label;
+  if (resultVal) resultVal.textContent = value;
+  if (resultWrap) resultWrap.style.display = '';
 }
 
 function plExportCSV() {
