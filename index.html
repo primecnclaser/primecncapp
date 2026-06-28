@@ -4866,6 +4866,161 @@ async function flushPendingQueue() {
   }
 }
 
+// ── PENDING QUEUE FLUSH HELPERS ──────────────────────────────
+async function _flushCpPending() {
+  var _cpPending = JSON.parse(localStorage.getItem('cp_pending_sync') || '[]');
+  if (!_cpPending.length || !sb) return;
+  var synced = [];
+  for (var i = 0; i < _cpPending.length; i++) {
+    try {
+      var entry = _cpPending[i];
+      await sb.from('customer_payments').upsert(entry, { onConflict: 'id' });
+      synced.push(entry.id || i);
+    } catch(e) { console.warn('[cpPending]', e); }
+  }
+  if (synced.length) {
+    var remaining = _cpPending.filter(function(e, idx) {
+      return !synced.includes(e.id || idx);
+    });
+    localStorage.setItem('cp_pending_sync', JSON.stringify(remaining));
+    if (!remaining.length) toast('☁ ' + synced.length + ' payment(s) synced');
+  }
+}
+
+async function _flushManualInvPending() {
+  var _manualPending = JSON.parse(localStorage.getItem('manual_inv_pending') || '[]');
+  if (!_manualPending.length || !sb) return;
+  var syncedCount = 0;
+  var remaining = [];
+  for (var i = 0; i < _manualPending.length; i++) {
+    try {
+      await sb.from('invoices').upsert(_manualPending[i], { onConflict: 'id' });
+      syncedCount++;
+    } catch(e) {
+      console.warn('[manualInvPending]', e);
+      remaining.push(_manualPending[i]);
+    }
+  }
+  localStorage.setItem('manual_inv_pending', JSON.stringify(remaining));
+  if (syncedCount) toast('☁ ' + syncedCount + ' manual invoice(s) synced');
+}
+
+function _hasPendingWork() {
+  return (
+    (typeof pendingQueue !== 'undefined' && pendingQueue.length > 0) ||
+    (typeof _pendingUpdates !== 'undefined' && _pendingUpdates.length > 0) ||
+    (typeof _finPendingSync !== 'undefined' && _finPendingSync.length > 0) ||
+    (typeof _finDeleteQueue !== 'undefined' && _finDeleteQueue.length > 0) ||
+    (typeof _pbPendingEdits !== 'undefined' && _pbPendingEdits.length > 0) ||
+    (JSON.parse(localStorage.getItem('cp_pending_sync') || '[]')).length > 0 ||
+    (JSON.parse(localStorage.getItem('manual_inv_pending') || '[]')).length > 0
+  );
+}
+
+var _masterResyncing = false;
+
+async function _masterResync() {
+  // Re-entrancy guard
+  if (_masterResyncing) {
+    toast('⟳ Sync already in progress...');
+    return;
+  }
+
+  // Offline guard
+  if (!navigator.onLine) {
+    setSyncStatus('offline', '● Offline – using local data');
+    toast('📵 Cannot sync — you are offline');
+    return;
+  }
+
+  _masterResyncing = true;
+  if (typeof window._hideOffline === 'function') window._hideOffline();
+
+  var hadPending = _hasPendingWork();
+  setSyncStatus('syncing', '⟳ Syncing...');
+
+  try {
+    // ── Phase 1: Flush all pending queues (Push first) ──
+    setSyncStatus('syncing', '⟳ Uploading changes...');
+
+    await flushPendingUpdates();           // invoice field edits
+    if (!isSyncing) {
+      await flushPendingQueue();           // new invoices + payments (has own guard)
+    }
+    await _flushCpPending();              // standalone customer_payments
+    await _flushManualInvPending();       // manually typed offline invoices
+    await flushFinLedgerPending();        // finance ledger inserts + deletes
+
+    // flush _pbPendingEdits if function exists
+    if (typeof _flushPbPending === 'function') {
+      await _flushPbPending();
+    } else if (typeof _pbPendingEdits !== 'undefined' && _pbPendingEdits.length > 0 && sb) {
+      for (var i = 0; i < _pbPendingEdits.length; i++) {
+        try {
+          await sb.from('pending_bills').upsert(_pbPendingEdits[i], { onConflict: 'id' });
+        } catch(e) { console.warn('[pbPending]', e); }
+      }
+      _pbPendingEdits = [];
+      if (typeof _savePbPending === 'function') _savePbPending();
+    }
+
+    // ── Phase 2: Pull fresh data (Download latest) ──
+    setSyncStatus('syncing', '⟳ Fetching latest data...');
+
+    // Skip if loadFromSupabase was called within the last 10 seconds (e.g. by online handler)
+    var _timeSinceLoad = window._lastLoadFromSupabase ? (Date.now() - window._lastLoadFromSupabase) : 99999;
+    if (_timeSinceLoad > 10000) {
+      await loadFromSupabase(true);
+    }
+
+    // Detect active tab early (needed for excel cache guard below)
+    var activeTab = window._currentTab || localStorage.getItem('last_active_tab') || '';
+
+    // Refresh excel cache only when on db tab (heavy operation — skip on other tabs)
+    if (activeTab === 'db' && typeof _excelDBCache !== 'undefined') {
+      _excelDBCache = null;
+      if (typeof loadExcelDBCache === 'function') await loadExcelDBCache();
+    }
+
+    // Refresh finance ledger local cache (only if finance was previously loaded)
+    if (typeof _finLedgerLocal !== 'undefined' && _finLedgerLocal.length > 0) {
+      if (typeof refreshOfflineCache === 'function') await refreshOfflineCache();
+    }
+
+    // ── Phase 3: Re-render current tab ──
+
+    if (activeTab === 'db') {
+      if (typeof renderDB === 'function') renderDB();
+    } else if (activeTab === 'finance') {
+      if (typeof renderFinLedger === 'function') renderFinLedger();
+      else if (typeof initFinanceTab === 'function') initFinanceTab();
+    } else if (activeTab === 'summary') {
+      if (typeof loadSummaryTab === 'function') loadSummaryTab();
+      else if (typeof renderCards === 'function') renderCards();
+    } else if (activeTab === 'payment') {
+      // Payment tab restores from sessionStorage automatically on switchTab
+    } else {
+      if (typeof renderDB === 'function') renderDB();
+    }
+
+    // ── Phase 4: Confirm success ──
+    setSyncStatus('synced', '● Synced');
+    if (hadPending) {
+      toast('✅ All changes synced & data refreshed');
+    } else {
+      toast('✅ Data refreshed successfully');
+    }
+
+  } catch(err) {
+    console.error('[_masterResync] error:', err);
+    setSyncStatus('offline', '● Sync error – using local data');
+    toast('⚠ Sync failed — will retry when online');
+    if (!navigator.onLine && typeof window._showOffline === 'function') window._showOffline();
+  } finally {
+    _masterResyncing = false;
+  }
+}
+
 // Fire sync when internet comes back
 window.addEventListener('online', async () => {
   setSyncStatus('syncing', '⟳ Reconnected — syncing...');
@@ -4873,81 +5028,9 @@ window.addEventListener('online', async () => {
   await flushPendingUpdates();
   await flushPendingQueue();
   // Flush cp_pending_sync (customer_payments edited offline)
-  try {
-    var _cpPend = JSON.parse(localStorage.getItem('cp_pending_sync') || '[]');
-    if (_cpPend.length && typeof sb !== 'undefined' && sb) {
-      for (var _cpi = 0; _cpi < _cpPend.length; _cpi++) {
-        var _cpe = _cpPend[_cpi];
-        var _cpc = await sb.from('customer_payments').select('id').eq('invoice_ref', _cpe.invoice_ref).eq('type','payment').limit(1);
-        if (_cpc.data && _cpc.data.length > 0) {
-          if (_cpe.amount > 0) await sb.from('customer_payments').update({ amount: _cpe.amount }).eq('id', _cpc.data[0].id);
-          else await sb.from('customer_payments').delete().eq('id', _cpc.data[0].id);
-        } else if (_cpe.amount > 0) {
-          await sb.from('customer_payments').insert({
-            customer_name: _cpe.customer_name, phone: _cpe.phone || null,
-            amount: _cpe.amount, payment_date: _cpe.payment_date,
-            type: 'payment', source: 'non_imported',
-            note: 'Invoice payment — ' + _cpe.invoice_ref,
-            invoice_ref: _cpe.invoice_ref, created_by: _cpe.created_by || 'unknown'
-          });
-        }
-      }
-      localStorage.removeItem('cp_pending_sync');
-      if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-    }
-  } catch(_cpFlushE) { console.warn('cp_pending_sync online flush failed:', _cpFlushE); }
+  await _flushCpPending();
   // Flush manual invoice pending queue
-  try {
-    var _manPend = JSON.parse(localStorage.getItem('manual_inv_pending') || '[]');
-    if (_manPend.length && typeof sb !== 'undefined' && sb) {
-      var _manStillPending = [];
-      for (var _mi = 0; _mi < _manPend.length; _mi++) {
-        var _me = _manPend[_mi];
-        try {
-          // Check not already saved
-          var _chk = await sb.from('excel_invoices').select('order_num').eq('order_num', _me.order_num).limit(1);
-          if (_chk.data && _chk.data.length > 0) continue; // already exists
-          var _insRow = {
-            customer_name:    _me.customer_name,
-            phone:            _me.phone || null,
-            order_num:        _me.order_num,
-            date:             _me.date,
-            total_bill:       _me.total_bill,
-            received:         _me.received,
-            bad_debt:         _me.bad_debt,
-            discount:         _me.discount,
-            remaining:        _me.remaining,
-            source:           'manual',
-            received_entries: _me.received_entries || null
-          };
-          var _insRes = await sb.from('excel_invoices').insert(_insRow).select().single();
-          if (_insRes.error) throw _insRes.error;
-          // Also sync customer_payments
-          var _invRef = 'INV-' + _me.order_num;
-          if (_me.received > 0) {
-            await sb.from('customer_payments').insert({ customer_name: _me.customer_name, phone: _me.phone||null, amount: _me.received, payment_date: _me.date, type: 'payment', source: 'non_imported', note: 'Initial payment — ' + _invRef, invoice_ref: _invRef, created_by: currentUser||'unknown' });
-          }
-          if (_me.recv1 > 0) {
-            await sb.from('customer_payments').insert({ customer_name: _me.customer_name, phone: _me.phone||null, amount: _me.recv1, payment_date: _me.date, type: 'payment', source: 'non_imported', note: 'Additional payment — ' + _invRef, invoice_ref: _invRef, created_by: currentUser||'unknown' });
-          }
-          if (_me.discount > 0) {
-            await sb.from('customer_payments').insert({ customer_name: _me.customer_name, phone: _me.phone||null, amount: _me.discount, payment_date: _me.date, type: 'discount', source: 'non_imported', note: 'Discount — ' + _invRef, invoice_ref: _invRef, created_by: currentUser||'unknown' });
-          }
-          if (_me.bad_debt > 0) {
-            await sb.from('customer_payments').insert({ customer_name: _me.customer_name, phone: _me.phone||null, amount: _me.bad_debt, payment_date: _me.date, type: 'bad_debt', source: 'non_imported', note: 'Bad debt — ' + _invRef, invoice_ref: _invRef, created_by: currentUser||'unknown' });
-          }
-          if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-        } catch(_meE) {
-          console.warn('Manual invoice flush failed:', _me.order_num, _meE);
-          _manStillPending.push(_me);
-        }
-      }
-      localStorage.setItem('manual_inv_pending', JSON.stringify(_manStillPending));
-      if (_manStillPending.length === 0 && _manPend.length > 0) {
-        toast('☁ ' + _manPend.length + ' manual invoice(s) synced to cloud');
-      }
-    }
-  } catch(_manFlushE) { console.warn('manual_inv_pending flush error:', _manFlushE); }
+  await _flushManualInvPending();
   if (_pbPendingEdits.length > 0 && sb) {
     var _toRetry = [..._pbPendingEdits];
     _pbPendingEdits = [];
@@ -4999,6 +5082,10 @@ window.addEventListener('online', async () => {
       }
     } catch(_de) { console.warn("[draft number check]", _de); }
   }
+  // Trigger master resync for comprehensive data refresh
+  setTimeout(function() {
+    if (typeof _masterResync === 'function') _masterResync();
+  }, 5000); // 5 second delay — ensures online handler finishes before masterResync starts
 });
 
 window.addEventListener('offline', () => {
@@ -5073,19 +5160,22 @@ let _searchPage = 1;           // pagination page for search tab
       + '<div style="font-size:1.2rem;font-weight:800;margin-bottom:8px;">You\'re Offline</div>'
       + '<div style="font-size:0.85rem;color:rgba(255,255,255,0.6);margin-bottom:8px;">آپ آف لائن ہیں</div>'
       + '<div style="font-size:0.78rem;color:rgba(255,255,255,0.5);margin-bottom:24px;max-width:280px;line-height:1.6;">Don\'t worry — your data is safe. Please check your internet connection.</div>'
-      + '<button onclick="window.location.reload()" style="background:#f59e0b;color:#1e293b;border:none;padding:12px 28px;border-radius:10px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;cursor:pointer;">🔄 Retry Connection</button>'
+      + '<button onclick="if(navigator.onLine){_hideOffline();_masterResync();}else{toast(\'📵 Still offline — check your connection\');}" style="background:#f59e0b;color:#1e293b;border:none;padding:12px 28px;border-radius:10px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;cursor:pointer;">🔄 Retry Connection</button>'
+      + '<button onclick="_hideOffline(true);toast(\'📵 Offline mode — some features unavailable\');" style="margin-top:10px;background:transparent;color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.2);padding:10px 28px;border-radius:10px;font-family:Montserrat,sans-serif;font-weight:600;font-size:0.8rem;cursor:pointer;">Continue Offline</button>'
       + '<div style="margin-top:16px;font-size:0.7rem;color:rgba(255,255,255,0.3);">Prime CNC Laser Works</div>';
     document.body.appendChild(_offlineOverlay);
   }
 
-  function _hideOffline() {
+  function _hideOffline(suppressToast) {
     if (_offlineOverlay) {
       _offlineOverlay.remove();
       _offlineOverlay = null;
-      if (typeof toast === 'function') toast('✅ Back online!');
+      if (!suppressToast && typeof toast === 'function') toast('✅ Back online!');
     }
   }
 
+  window._showOffline = _showOffline;
+  window._hideOffline = _hideOffline;
   window.addEventListener('online',  _hideOffline);
   window.addEventListener('offline', _showOffline);
   if (!navigator.onLine) setTimeout(_showOffline, 1000);
@@ -5849,6 +5939,7 @@ async function loadFromSupabase(silent) {
 
     localStorage.setItem('inv_database', JSON.stringify(database));
     _supabaseDataReady = true;
+    window._lastLoadFromSupabase = Date.now();
     if (!silent) setSyncStatus('synced', '● Synced');
 
   } catch(e) {
