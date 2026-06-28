@@ -1460,6 +1460,33 @@ body {
     border-radius: 3px !important;
     min-height: unset !important;
   }
+
+  /* ── Summary tab — overflow protection ── */
+  #summaryTab { overflow-x: hidden; }
+  #summaryTab .db-panel { width: 100% !important; box-sizing: border-box !important; }
+
+  /* ── Summary tab — Business Analytics: stack cards vertically on mobile ── */
+  .summary-section .ba-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── Summary tab — P&L table: horizontal scroll on mobile ── */
+  #summaryPLWrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ── Summary tab — General Summary cards: tighter on mobile ── */
+  #generalCards2 .s-card {
+    padding: 12px 10px !important;
+  }
+  #generalCards2 .s-card-label {
+    font-size: 0.65rem !important;
+    letter-spacing: 0.5px !important;
+  }
+  #generalCards2 .s-card-val {
+    font-size: 1.1rem !important;
+  }
 }
 
 /* ── Finance cross-check status bar pulse animation ── */
@@ -3220,7 +3247,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         </div>
 
         <!-- Two cards side by side -->
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start;">
+        <div class="ba-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start;">
 
           <!-- Card 1: P&L Report -->
           <div class="s-card" style="padding:14px 16px; cursor:pointer; background:linear-gradient(135deg,#f0fdf4,#dcfce7); border:1.5px solid #86efac;" onclick="loadSummaryPL()">
@@ -8890,7 +8917,7 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
     const remDisplay  = displayRemaining !== null ? `Rs. ${fmt(displayRemaining)}` : '—';
     const bdDisplay   = badDebtOverride != null ? badDebtOverride : totalBadDebt;
     generalCards.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:12px;overflow-x:auto;">
+      <div style="display:grid;grid-template-columns:${window.innerWidth < 768 ? '1fr 1fr' : 'repeat(4,1fr)'};gap:12px;overflow-x:auto;">
         <div class="s-card sc-received" id="cashInHandCard" style="cursor:default;">
           <div style="cursor:pointer;" onclick="window._toggleCashHoldersBreakdown(${cashInHand !== null ? cashInHand : 'null'})" title="Click to see who holds the cash">
             <div class="s-card-label">💵 Cash in Hand <span style="font-size:0.6rem;opacity:0.6;">▶ tap</span></div>
