@@ -2320,6 +2320,9 @@ body {
   <span id="gsBadge4" class="gs-badge gs-grey">— Cross-Check</span>
   <span style="margin-left:auto;">
     <button onclick="_forceAppRefresh()" title="Force refresh app" style="background:#1e293b;color:#fff;border:none;border-radius:20px;padding:3px 12px;font-family:'Montserrat',sans-serif;font-size:0.65rem;font-weight:700;cursor:pointer;white-space:nowrap;transition:background 0.2s;" onmouseover="this.style.background='#334155'" onmouseout="this.style.background='#1e293b'">🔄 Force Refresh</button>
+    <button onclick="_syncToHO()" style="padding:6px 14px; background:#6366f1; color:#fff; border:none; border-radius:8px; font-family:Montserrat,sans-serif; font-weight:700; font-size:0.75rem; cursor:pointer; margin-left:8px;">
+      🏢 Sync to HO
+    </button>
   </span>
 </div>
 
@@ -5146,6 +5149,165 @@ async function _masterResync() {
   }
 }
 
+async function _syncToHO() {
+  if (!navigator.onLine) { toast('📵 Cannot sync — offline'); return; }
+
+  // Initialize HO Supabase client on first use
+  if (!sbHO) {
+    try {
+      sbHO = supabase.createClient(HO_SUPA_URL, HO_SUPA_KEY);
+    } catch(e) {
+      console.error('[syncToHO] Failed to init HO client:', e);
+      toast('⚠ HO sync failed — connection error');
+      return;
+    }
+  }
+
+  setSyncStatus('syncing', '⟳ Syncing to HO...');
+  toast('⟳ Syncing branch data to Head Office...');
+
+  try {
+    const BRANCH_ID = 'branch_main';
+    const BRANCH_UUID = 'ba08fc3a-5b6a-473a-8e69-1867fa54d280';
+
+    // ── Fetch all finance_ledger data ──
+    var { data: ledger, error: ledgerErr } = await sb
+      .from('finance_ledger')
+      .select('entry_date, entry_type, category, amount, source')
+      .eq('branch_id', BRANCH_ID);
+    if (ledgerErr) throw ledgerErr;
+
+    // ── Fetch all invoices ──
+    var { data: invData, error: invErr } = await sb
+      .from('invoices')
+      .select('date, total, received, received1, total_sqft, total_kg, bad_debt')
+      .eq('branch_id', BRANCH_ID);
+    if (invErr) throw invErr;
+
+    // ── Group by YYYY-MM ──
+    var monthMap = {};
+
+    function getMonth(mk) {
+      if (!monthMap[mk]) monthMap[mk] = {
+        sheets_cutting: 0, scrap: 0, total_expenses: 0,
+        total_invoices: 0, total_billed: 0, total_collection: 0,
+        total_sqft: 0, total_kg: 0, bad_debt: 0,
+        remaining_market: 0, cash_in_hand: 0
+      };
+      return monthMap[mk];
+    }
+
+    // Process finance_ledger
+    (ledger || []).forEach(function(e) {
+      if (!e.entry_date) return;
+      var mk = e.entry_date.slice(0, 7);
+      var mkParts = mk.split('-');
+      if (mkParts.length < 2 || isNaN(parseInt(mkParts[1])) || parseInt(mkParts[1]) < 1 || parseInt(mkParts[1]) > 12) return;
+      var m = getMonth(mk);
+      var amt = parseFloat(e.amount) || 0;
+      var cat = (e.category || '').trim();
+      var et  = (e.entry_type || '').trim();
+      var src = (e.source || '').trim();
+
+      if (et === 'income' && cat === 'Sheets Cutting' && src !== 'historical_daily') {
+        m.sheets_cutting += amt;
+      } else if (et === 'income' && cat === 'Sheets Cutting' && src === 'historical_daily') {
+        m.sheets_cutting += amt;
+      } else if (et === 'income' && cat === 'Scrap') {
+        m.scrap += amt;
+      } else if (et === 'monthly_expense') {
+        m.total_expenses += amt;
+      }
+    });
+
+    // Process invoices
+    (invData || []).forEach(function(inv) {
+      if (!inv.date) return;
+      var mk = inv.date.slice(0, 7);
+      var mkParts = mk.split('-');
+      if (mkParts.length < 2 || isNaN(parseInt(mkParts[1])) || parseInt(mkParts[1]) < 1 || parseInt(mkParts[1]) > 12) return;
+      var m = getMonth(mk);
+      m.total_invoices += 1;
+      m.total_billed += parseFloat(inv.total) || 0;
+      m.total_collection += (parseFloat(inv.received) || 0) + (parseFloat(inv.received1) || 0);
+      m.total_sqft += parseFloat(inv.total_sqft) || 0;
+      m.total_kg += parseFloat(inv.total_kg) || 0;
+      m.bad_debt += parseFloat(inv.bad_debt) || 0;
+    });
+
+    // ── Build upsert rows ──
+    var rows = [];
+    Object.keys(monthMap).forEach(function(mk) {
+      var m = monthMap[mk];
+      var parts = mk.split('-');
+      var yr = parseInt(parts[0]);
+      var mo = parseInt(parts[1]);
+      if (isNaN(yr) || isNaN(mo) || mo < 1 || mo > 12 || yr < 2020) return;
+      var income = m.sheets_cutting + m.scrap;
+      var pl = income - m.total_expenses;
+      var avgSqft = m.total_invoices > 0 ? (m.total_sqft / m.total_invoices) : 0;
+
+      rows.push({
+        branch_id:        BRANCH_UUID,
+        year:             yr,
+        month:            mo,
+        total_invoices:   m.total_invoices,
+        total_billed:     parseFloat(m.total_billed.toFixed(2)),
+        total_collection: parseFloat(m.total_collection.toFixed(2)),
+        sheets_cutting:   parseFloat(m.sheets_cutting.toFixed(2)),
+        scrap:            parseFloat(m.scrap.toFixed(2)),
+        total_income:     parseFloat(income.toFixed(2)),
+        total_expenses:   parseFloat(m.total_expenses.toFixed(2)),
+        profit_loss:      parseFloat(pl.toFixed(2)),
+        total_sqft:       parseFloat(m.total_sqft.toFixed(2)),
+        total_kg:         parseFloat(m.total_kg.toFixed(2)),
+        avg_sqft_per_day: parseFloat(avgSqft.toFixed(2)),
+        bad_debt:         parseFloat(m.bad_debt.toFixed(2)),
+        synced_at:        new Date().toISOString(),
+        updated_at:       new Date().toISOString()
+      });
+    });
+
+    if (!rows.length) {
+      toast('⚠ No data found to sync');
+      setSyncStatus('synced', '● Synced');
+      return;
+    }
+
+    // ── Upsert to HO DB ──
+    var { error: upsertErr } = await sbHO
+      .from('branch_monthly_summary')
+      .upsert(rows, { onConflict: 'branch_id,year,month' });
+    if (upsertErr) throw upsertErr;
+
+    // ── Log sync success ──
+    await sbHO.from('branch_sync_log').insert({
+      branch_id:      BRANCH_UUID,
+      sync_type:      'manual',
+      sync_status:    'success',
+      records_synced: rows.length,
+      synced_at:      new Date().toISOString()
+    });
+
+    setSyncStatus('synced', '● Synced');
+    toast('✅ ' + rows.length + ' months synced to Head Office');
+
+  } catch(err) {
+    console.error('[syncToHO]', err);
+    // Log failure
+    try {
+      await sbHO.from('branch_sync_log').insert({
+        branch_id:     'ba08fc3a-5b6a-473a-8e69-1867fa54d280',
+        sync_type:     'manual',
+        sync_status:   'failed',
+        error_message: err.message || 'Unknown error',
+        synced_at:     new Date().toISOString()
+      });
+    } catch(_) {}
+    setSyncStatus('offline', '● Sync error');
+    toast('⚠ HO sync failed — ' + (err.message || 'check console'));
+  }
+}
 // Fire sync when internet comes back
 window.addEventListener('online', async () => {
   setSyncStatus('syncing', '⟳ Reconnected — syncing...');
@@ -5247,6 +5409,10 @@ setInterval(async () => {
 // ══════════════════════════════════════════════
 const SUPA_URL = 'https://jazxyebbbaitvcjeyjly.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imphenh5ZWJiYmFpdHZjamV5amx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTM5NzIsImV4cCI6MjA5Mjc2OTk3Mn0.AcqIU1igypQ68at-v0avF6-V9MxP2GxzTAxc6VhgTNY';
+// Head Office Supabase — aggregation DB
+const HO_SUPA_URL = 'https://tadmvogwkjrrhbzlmyvr.supabase.co';
+const HO_SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhZG12b2d3a2pycmhiemxteXZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2MzY3NTYsImV4cCI6MjA5ODIxMjc1Nn0.01x8LuN_n3MOQCgu9Cy8KQ0jTC2xtP_bMrApOsaqXpw';
+let sbHO = null; // initialized on first sync
 let sb;
 try {
   sb = supabase.createClient(SUPA_URL, SUPA_KEY);
@@ -10016,6 +10182,8 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
   const _curMonthTotal = _curMonthCutting + _curMonthScrap;
 
   // ── Current Month Running Expense ──
+  // Single source of truth: fetchEntriesWithCorrectInvoiceAmounts already
+  // returns correctly deduped data matching the Finance tab Dashboard.
   let _curMonthExpense      = 0;
   let _curMonthSheetExpense = 0;
   try {
@@ -10027,25 +10195,6 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
         if (e.category === 'Sheets') _curMonthSheetExpense += (e.amount || 0);
       }
     });
-    if (sb && navigator.onLine) {
-      try {
-        const _exLastDay = new Date(new Date(_nowYM + '-01').getFullYear(), new Date(_nowYM + '-01').getMonth()+1, 0).getDate();
-        const { data: _exRows } = await sb.from('finance_ledger')
-          .select('entry_type,category,amount,entry_date,source')
-          .gte('entry_date', _nowYM + '-01')
-          .lte('entry_date', _nowYM + '-' + String(_exLastDay).padStart(2,'0'))
-          .eq('entry_type', 'monthly_expense');
-        (_exRows || []).forEach(function(e) {
-          const alreadyLocal = (_finLedgerLocal||[]).some(function(l){
-            return l.entry_date === e.entry_date && l.entry_type === 'monthly_expense'
-              && Math.abs((l.amount||0) - (e.amount||0)) < 0.5;
-          });
-          if (alreadyLocal) return;
-          _curMonthExpense += (e.amount||0);
-          if (e.category === 'Sheets') _curMonthSheetExpense += (e.amount||0);
-        });
-      } catch(_ee) { console.warn('[curMonth expense] supabase fetch:', _ee); }
-    }
   } catch(_xe) { console.warn('[curMonth expense] error:', _xe); }
   const _curMonthExpenseWithoutSheet = _curMonthExpense - _curMonthSheetExpense;
 
