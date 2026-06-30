@@ -9488,6 +9488,8 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
   const _curMonthTotal = _curMonthCutting + _curMonthScrap;
 
   // ── Current Month Running Expense ──
+  // Single source of truth: fetchEntriesWithCorrectInvoiceAmounts already
+  // returns correctly deduped data matching the Finance tab Dashboard.
   let _curMonthExpense      = 0;
   let _curMonthSheetExpense = 0;
   try {
@@ -9499,25 +9501,6 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
         if (e.category === 'Sheets') _curMonthSheetExpense += (e.amount || 0);
       }
     });
-    if (sb && navigator.onLine) {
-      try {
-        const _exLastDay = new Date(new Date(_nowYM + '-01').getFullYear(), new Date(_nowYM + '-01').getMonth()+1, 0).getDate();
-        const { data: _exRows } = await sb.from('finance_ledger')
-          .select('entry_type,category,amount,entry_date,source')
-          .gte('entry_date', _nowYM + '-01')
-          .lte('entry_date', _nowYM + '-' + String(_exLastDay).padStart(2,'0'))
-          .eq('entry_type', 'monthly_expense');
-        (_exRows || []).forEach(function(e) {
-          const alreadyLocal = (_finLedgerLocal||[]).some(function(l){
-            return l.entry_date === e.entry_date && l.entry_type === 'monthly_expense'
-              && Math.abs((l.amount||0) - (e.amount||0)) < 0.5;
-          });
-          if (alreadyLocal) return;
-          _curMonthExpense += (e.amount||0);
-          if (e.category === 'Sheets') _curMonthSheetExpense += (e.amount||0);
-        });
-      } catch(_ee) { console.warn('[curMonth expense] supabase fetch:', _ee); }
-    }
   } catch(_xe) { console.warn('[curMonth expense] error:', _xe); }
   const _curMonthExpenseWithoutSheet = _curMonthExpense - _curMonthSheetExpense;
 
@@ -10736,7 +10719,7 @@ async function fetchCustomerInvoices(name, phone, nameQuery) {
   if (typeof sb !== 'undefined' && sb) {
     // ── excel_invoices: identity-first fetch ──
     try {
-      var _exFull = 'customer_name,phone,order_num,date,total_bill,received,received1,received_entries,bad_debt,discount,remaining';
+      var _exFull = 'customer_name,phone,order_num,date,total_bill,received,received_entries,bad_debt,discount,remaining';
 
       // STEP 1 — Resolve customer identity (phone is primary, name is fallback)
       var resolvedPhone = ph0;
