@@ -1,0 +1,461 @@
+AUDIT: IDENTITY CHANGE CONSOLIDATION
+======================================
+Date: 2026-06-30
+File: index.html (~29,000+ lines)
+Status: READ-ONLY AUDIT — NO CHANGES MADE
+
+Goal: remove DB tab banner, merge Identity Requests into #setEditAccess,
+add admin direct-edit tool in Settings, add staff request link in RP tab.
+
+
+═══════════════════════════════════════════════════════════
+1. CURRENT STATE OF DB TAB BANNER
+═══════════════════════════════════════════════════════════
+
+HTML ELEMENT (line 3045):
+  <div id="dbPhoneEditBanner" style="display:none;padding:0 0 8px;"></div>
+
+  Sits between the sub-tab row and the lock-notice bar:
+    Line 3043: </div>  ← closes sub-tab button row
+    Line 3045: <div id="dbPhoneEditBanner" ...></div>   ← REMOVE THIS LINE
+    Line 3047: <div style="margin:4px 0 0;...">🔒 After 40 days...</div>  ← KEEP
+    Line 3049: <div id="dbTableWrap" ...>   ← KEEP
+
+JS INJECTION IN renderDB() (lines 8282–8296):
+  // ── Phone edit banner (shows only on name search) ──
+  (function() {
+    var bannerEl = document.getElementById('dbPhoneEditBanner');
+    if (!bannerEl) return;
+    if (!dbNameQ || dbInvQ) { bannerEl.style.display = 'none'; bannerEl.innerHTML = ''; return; }
+    // Derive canonical name + current phone from first matching row
+    var bName = '', bPhone = '';
+    var exRow = (_excelDBCache||[]).find(function(r){ return (r.customer_name||'').toLowerCase().includes(dbNameQ); });
+    if (exRow) { bName = exRow.customer_name||''; bPhone = (exRow.phone||'').replace(/[^0-9]/g,''); }
+    var newRow = database.find(function(inv){ return !inv.isDraft && !inv.isNull && (inv.custName||'').toLowerCase().includes(dbNameQ); });
+    if (newRow) { if (!bName) bName = newRow.custName||''; if (!bPhone && newRow.phone) bPhone = (newRow.phone||'').replace(/[^0-9]/g,''); }
+    if (!bName) { bannerEl.style.display = 'none'; return; }
+    bannerEl.innerHTML = _buildDbPhoneBanner(bName, bPhone);
+    bannerEl.style.display = '';
+  })();
+  → Entire IIFE block (lines 8282–8296) must be deleted.
+
+HAS CHANGE 6 ALREADY BEEN APPLIED? YES.
+  _buildDbPhoneBanner() (line 12356) already has admin vs staff branching:
+  - Reads sess.role via _authGetSession()
+  - Admin path: shows "✎ Edit Phone" button + inline input (openDbPhoneEdit etc.)
+  - Staff path: shows "📨 Request Name/Phone Change" amber button + icrRequestForm div
+    with icrNewNameInput, icrNewPhoneInput, icrReasonInput, Submit, ✕
+
+  The entire _buildDbPhoneBanner function (lines 12356–12433) becomes orphaned
+  after banner removal — it should also be deleted.
+
+  Related functions that also become orphaned (all called only from within
+  _buildDbPhoneBanner-generated HTML, so only reachable via the banner):
+    - openIcrRequestForm()    line 12435–12442
+    - closeIcrRequestForm()   line 12444–12451
+    - submitIcrRequest()      line 12453–12463
+    - _icrSearchCustomers()   line 12465–12502 (+ _icrSearchTimer var line 12465)
+    - _icrSelectName()        line 12504–12508
+    - The click-outside listener for #icrNameDropdown at line 12511–12514
+
+  NOTE: openDbPhoneEdit / closeDbPhoneEdit / saveDbPhoneEdit are also called
+  only from _buildDbPhoneBanner admin-path HTML — see Section 6 below.
+
+EXACT REMOVAL SCOPE SUMMARY:
+  DELETE: line 3045  — <div id="dbPhoneEditBanner"> HTML element
+  DELETE: lines 8282–8296 — banner IIFE inside renderDB()
+  DELETE: lines 12356–12514 — _buildDbPhoneBanner + all dependent helpers
+            (openIcrRequestForm, closeIcrRequestForm, submitIcrRequest,
+             _icrSearchTimer, _icrSearchCustomers, _icrSelectName,
+             click-outside listener for #icrNameDropdown)
+  DELETE: lines 12517–12540 — openDbPhoneEdit, closeDbPhoneEdit, saveDbPhoneEdit
+            (only called from admin path of _buildDbPhoneBanner)
+  KEEP: line 3047 — lock notice bar (untouched)
+  KEEP: line 3049+ — #dbTableWrap and table (untouched)
+  KEEP: updateCustomerPhone() (line 12542+) — still called by approveIdentityChange()
+
+
+═══════════════════════════════════════════════════════════
+2. CURRENT STATE OF setIdentityChange PANEL
+═══════════════════════════════════════════════════════════
+
+THE SEPARATE #setIdentityChange PANEL (lines 3764–3784):
+
+  <!-- ═══ IDENTITY CHANGE REQUESTS ═══ -->
+  <div id="setIdentityChange" style="display:none;padding:18px;">
+    <div style="...font-weight:800...">🪪 Identity Change Requests</div>
+
+    <div style="margin-bottom:24px;">
+      <div style="...color:#92400e...">📥 Pending Requests</div>
+      <div id="icrPendingList" style="background:#fffbeb;border:1.5px solid #fde68a;...">
+        Loading...
+      </div>
+    </div>
+
+    <div>
+      <div style="display:flex;...">
+        <div style="...color:#475569;">📜 History (last 50)</div>
+        <button onclick="renderIdentityChangeHistory()">🔄 Refresh</button>
+      </div>
+      <div id="icrHistoryList" style="background:#f8fafc;...max-height:320px;...">
+        Click Refresh to load
+      </div>
+    </div>
+  </div>
+
+  This is a SIBLING of #setEditAccess — shown/hidden as a separate settings panel.
+  The plan is to REMOVE this as a separate panel and MERGE its content into
+  #setEditAccess as additional sections after the "Grant New Access" block.
+
+CURRENT #setEditAccess STRUCTURE (lines 3696–3762):
+  <div id="setEditAccess" style="display:none;padding:18px;">
+    <div>🔐 Edit Access Control</div>   ← title
+
+    <!-- Pending Requests (edit-access) -->
+    <div style="margin-bottom:24px;">
+      <div>📥 Pending Requests</div>
+      <div id="eagPendingList">...</div>
+    </div>
+
+    <!-- Active Grants -->
+    <div style="margin-bottom:24px;">
+      <div style="display:flex;...">
+        <div>✅ Active Grants</div>
+        <button onclick="revokeAllAccess()">🔒 Lock All Now</button>
+      </div>
+      <div id="eagActiveList">...</div>
+    </div>
+
+    <!-- Grant New Access -->
+    <div>                              ← NO margin-bottom:24px on this one
+      <div>+ Grant New Access</div>
+      <div style="display:grid;...">
+        [eagUserSelect, eagAllCustomers checkbox, eagCustNameInput, eagCustPhoneInput,
+         eagDurationSelect, Grant Access button]
+      </div>
+    </div>
+  </div>                               ← line 3762: closing </div> of #setEditAccess
+
+MERGE INSERTION POINT:
+  The new Identity Change sections should be inserted INSIDE #setEditAccess,
+  immediately after the closing </div> of "Grant New Access" block (line 3760–3761)
+  and BEFORE the closing </div> of #setEditAccess (line 3762).
+
+  New section order inside #setEditAccess after merge:
+    1. 📥 Pending Requests (edit-access grants)    ← existing eagPendingList
+    2. ✅ Active Grants + Lock All Now             ← existing eagActiveList
+    3. 🔓 Grant New Access                         ← existing form
+    4. ─────────────────────────── [DIVIDER]
+    5. 🔧 Direct Edit Customer Name / Phone        ← NEW admin tool
+    6. 🪪 Identity Change Requests — Pending       ← MOVED from setIdentityChange
+    7. 📜 Identity Change History                  ← MOVED from setIdentityChange
+
+  The #setIdentityChange div (lines 3764–3784) can be completely removed from HTML
+  after its content is merged in.
+
+
+═══════════════════════════════════════════════════════════
+3. SETTINGS NAV BAR — REMOVE THE SEPARATE TAB
+═══════════════════════════════════════════════════════════
+
+SIDEBAR ITEM (line 2632 — static HTML):
+  <div class="tab-sub-item" id="icrSubTabSidebar"
+    onclick="_activateSubItem(this);switchSettingsTab('identitychange',this)"
+    style="display:none;">🪪 Identity Requests</div>
+  → DELETE this line entirely.
+
+INJECTED NAV BUTTON (lines 28412–28420 — in _authInjectSettingsTab):
+  if(subTabs && !document.getElementById('icrSubTab')) {
+    var icrBtn = document.createElement('div');
+    icrBtn.id = 'icrSubTab';
+    icrBtn.className = 'fin-sub-tab';
+    icrBtn.innerHTML = '🪪 Identity Requests <span id="icrPendingBadge" ...>0</span>';
+    icrBtn.style.display = 'none';
+    icrBtn.onclick = function(){ window.switchSettingsTab('identitychange', this); };
+    subTabs.appendChild(icrBtn);
+  }
+  → DELETE this entire if-block.
+
+switchSettingsTab OVERRIDE (lines 26742–26757):
+  Current:
+    var _allP=['...','setEditAccess','setIdentityChange'];
+    ...
+    var map={...editaccess:'setEditAccess',identitychange:'setIdentityChange'};
+    ...
+    if(tab==='identitychange') renderIdentityChangePanel();
+
+  After removal:
+    var _allP=['...','setEditAccess'];   ← remove 'setIdentityChange'
+    var map={...editaccess:'setEditAccess'};   ← remove identitychange key
+    ← remove the identitychange if-block entirely
+
+_authApplyPermissions VISIBILITY (lines 27948–27951):
+  var icrSubTab = document.getElementById('icrSubTab');
+  if(icrSubTab) icrSubTab.style.display = isAdmin ? '' : 'none';
+  var icrSubTabSidebar = document.getElementById('icrSubTabSidebar');
+  if(icrSubTabSidebar) icrSubTabSidebar.style.display = isAdmin ? '' : 'none';
+  → DELETE these 4 lines.
+
+POST-INJECT VISIBILITY (lines 28490–28493 — in _authInjectSettingsTab try block):
+  var _i1 = document.getElementById('icrSubTab');
+  if (_i1) _i1.style.display = _isAdmin ? '' : 'none';
+  var _i2 = document.getElementById('icrSubTabSidebar');
+  if (_i2) _i2.style.display = _isAdmin ? '' : 'none';
+  → DELETE these 4 lines.
+
+
+═══════════════════════════════════════════════════════════
+4. RECEIVE PAYMENT TAB — INSERTION POINT FOR REQUEST LINK
+═══════════════════════════════════════════════════════════
+
+FUNCTION: rpRenderCustomerPanel(name, phone)  — line 16273
+PARAMETERS: name (string) and phone (string) — both confirmed in scope at panel build time.
+
+CUSTOMER HEADER (line 16406–16418, inside panel.innerHTML = ...):
+  The panel opens with an info notice, then the customer header card:
+
+  '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:14px;">'
+  + '<div style="font-family:Montserrat,...font-weight:700;...font-size:0.95rem;...margin-bottom:12px;">'
+  +   name + (phone ? ' <span style="font-weight:400;color:#64748b;font-size:0.78rem;">📞 ' + phone + '</span>' : '')
+  + '</div>'
+  + '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">'
+  +   [5 stat cards: Total Billed, Discount, Received, Bad Debt, Remaining]
+  + '</div>'
+  + (advanceCredit > 0 ? '...' : '')
+  + '</div>'
+
+  The name + phone display is on line 16409 — the first div inside the customer header card.
+  The "📨 Request Name/Phone Change" link fits best immediately after the name/phone line
+  (line 16409), before the stats grid (line 16410).
+
+EXACT INSERTION POINT (after line 16409):
+  Current:
+    '<div style="font-family:Montserrat,...margin-bottom:12px;">' + name + (phone ? ...) + '</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">'
+
+  After insertion:
+    '<div style="font-family:Montserrat,...margin-bottom:6px;">' + name + (phone ? ...) + '</div>' +
+    [REQUEST LINK for non-admin] +
+    '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">'
+
+  The request link HTML (non-admin only):
+    var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+    var _isAdminRP = _sess && _sess.role === 'admin';
+    var _rpReqLink = _isAdminRP ? '' :
+      '<div style="margin-bottom:10px;">'
+      + '<button onclick="openRpIcrForm(' + "'" + encodeURIComponent(name) + "'" + ',\'' + (phone||'') + '\')" '
+      + 'style="background:rgba(245,158,11,0.1);color:#d97706;border:1.5px solid rgba(245,158,11,0.4);'
+      + 'border-radius:7px;padding:4px 12px;font-family:Montserrat,sans-serif;font-size:0.72rem;'
+      + 'font-weight:700;cursor:pointer;">📨 Request Name/Phone Change</button>'
+      + '<div id="rpIcrForm" style="display:none;..."></div>'
+      + '</div>';
+
+  VARIABLES CONFIRMED IN SCOPE at line 16406 (panel.innerHTML assignment):
+    name    — function parameter (line 16273): ✅
+    phone   — function parameter (line 16273): ✅
+    _canEdit — line 16277: ✅ (already computed before panel.innerHTML)
+
+  The form that expands can reuse _icrSearchCustomers and submitIcrRequest
+  (or a new rpSubmitIcrRequest that reads rpIcrNewNameInput etc.).
+  Since the banner's _icrSearchCustomers and form helpers are being removed,
+  the RP tab will need its own version OR a refactored shared version.
+
+  RECOMMENDATION: Build a clean shared version — a generic icrOpenForm(name, phone, nameInputId, phoneInputId, reasonInputId) function that works for both RP tab and any future entry point. The autocomplete can target a passed dropdownId. This avoids two near-identical implementations.
+
+
+═══════════════════════════════════════════════════════════
+5. ADMIN DIRECT-EDIT TOOL — DESIGN INPUT
+═══════════════════════════════════════════════════════════
+
+_eagSearchCustomers() (line 5799 post-implementation shift):
+  Pattern: debounce 350ms, min 2 chars, queries excel_invoices + invoices,
+  dedupes by name|phone key, renders dropdown into a named element.
+  Element IDs it uses: #eagCustDropdown, #eagCustNameInput.
+
+REUSABILITY: The pattern is reusable but the function is hardwired to
+  specific element IDs (eagCustDropdown, eagCustNameInput). The admin
+  direct-edit tool needs different element IDs.
+  Options:
+    A) Add a new function _adminEditSearchCustomers() — near-copy with
+       different element IDs (#adminEditDropdown, #adminEditSearchInput).
+       Simple, no risk of collision.
+    B) Parameterize _eagSearchCustomers(query, inputId, dropdownId) —
+       cleaner long-term but requires updating its 3 existing call sites
+       (oninput, onfocus, _eagToggleAllCustomers closeDown).
+  Recommendation: Option A for this feature — copy is low risk for a
+  single-file app; Option B can be a future cleanup if more search inputs are added.
+
+ADMIN DIRECT-EDIT FLOW (in Settings → Edit Access / now merged panel):
+  New section "🔧 Direct Edit" inside #setEditAccess, after Grant New Access.
+
+  STEP 1 — Customer search:
+    <input id="adminEditSearchInput" placeholder="Search customer to edit..."
+      oninput="_adminEditSearchCustomers(this.value)">
+    <div id="adminEditDropdown"> ← autocomplete results </div>
+
+  STEP 2 — On selection: populate edit form (filled by _adminEditSelectCustomer):
+    <div id="adminEditForm" style="display:none;">
+      Current Name: <strong id="adminEditCurrentName"></strong>
+      Current Phone: <strong id="adminEditCurrentPhone"></strong>
+
+      New Name:  <input id="adminEditNewName" type="text">
+      New Phone: <input id="adminEditNewPhone" type="text" maxlength="10">
+
+      <button onclick="adminApplyEdit()">✓ Apply Changes</button>
+      <button onclick="adminCancelEdit()">✕ Cancel</button>
+    </div>
+
+  STEP 3 — adminApplyEdit():
+    var oldName  = document.getElementById('adminEditCurrentName').textContent;
+    var newName  = document.getElementById('adminEditNewName').value.trim();
+    var newPhone = document.getElementById('adminEditNewPhone').value.replace(/[^0-9]/g,'');
+    if (newName && newName !== oldName) {
+      // Check for merge risk: call _checkNameExists(newName), warn if count > 0
+      // Proceed: calls update_customer_name RPC (already in approveIdentityChange)
+      // Or call a thin wrapper: await directRenameCustomer(oldName, newName)
+    }
+    if (newPhone) await updateCustomerPhone(newName || oldName, newPhone);
+
+  FUNCTIONS NEEDED:
+    _adminEditSearchCustomers(query)  — new, copies _icrSearchCustomers pattern
+    _adminEditSelectCustomer(encodedName, phone) — fills form fields
+    adminApplyEdit()   — reads fields, calls rename + updateCustomerPhone
+    adminCancelEdit()  — hides form, clears fields
+
+  MERGE WARNING: adminApplyEdit() should call _checkNameExists(newName) and
+    show a confirm() dialog if existingCount > 0, same as approveIdentityChange().
+    This is the main guard against accidental customer merges for direct admin edits.
+
+  OUTSIDE-CLICK LISTENER for #adminEditDropdown: add one, same pattern as
+    the existing _eagSearchCustomers click-outside listener at line 5815.
+
+
+═══════════════════════════════════════════════════════════
+6. FUNCTIONS THAT MAY BE ORPHANED AFTER REMOVAL
+═══════════════════════════════════════════════════════════
+
+openDbPhoneEdit(enc, currentPhone) — line 12517:
+  Called ONLY from the admin path of _buildDbPhoneBanner (line 12367):
+    onclick="openDbPhoneEdit(..."
+  No other callers found anywhere else in the file.
+  STATUS: FULLY REMOVABLE after banner deletion.
+
+closeDbPhoneEdit() — line 12526:
+  Called ONLY from within _buildDbPhoneBanner admin-path HTML (line 12383):
+    onclick="closeDbPhoneEdit()"
+  No other callers found.
+  STATUS: FULLY REMOVABLE.
+
+saveDbPhoneEdit(enc) — line 12533:
+  Called ONLY from within _buildDbPhoneBanner admin-path HTML (lines 12377, 12380):
+    onkeydown="...saveDbPhoneEdit(..."
+    onclick="saveDbPhoneEdit(..."
+  No other callers found.
+  STATUS: FULLY REMOVABLE.
+
+_buildDbPhoneBanner(name, phone) — line 12356:
+  Called ONLY from the renderDB() IIFE at line 8294:
+    bannerEl.innerHTML = _buildDbPhoneBanner(bName, bPhone);
+  STATUS: FULLY REMOVABLE (after IIFE is deleted from renderDB).
+
+openIcrRequestForm(enc, currentPhone) — line 12435:
+  Called ONLY from staff path of _buildDbPhoneBanner (line 12387):
+    onclick="openIcrRequestForm(..."
+  STATUS: FULLY REMOVABLE.
+
+closeIcrRequestForm() — line 12444:
+  Called ONLY from staff path of _buildDbPhoneBanner (line 12417):
+    onclick="closeIcrRequestForm()"
+  STATUS: FULLY REMOVABLE.
+
+submitIcrRequest(enc, oldPhone) — line 12453:
+  Called ONLY from staff path of _buildDbPhoneBanner (line 12415):
+    onclick="submitIcrRequest(..."
+  STATUS: FULLY REMOVABLE in its current form.
+  NOTE: The RP tab needs a REQUEST button too — the new RP implementation
+  can call requestIdentityChange() directly (the core function), or a new
+  thin wrapper. submitIcrRequest() itself is tied to #icrNewNameInput,
+  #icrNewPhoneInput, #icrReasonInput element IDs that won't exist in RP tab.
+  Do not repurpose it — build a fresh rpSubmitIcrRequest() or inline call.
+
+_icrSearchTimer / _icrSearchCustomers() — line 12465:
+  Called ONLY from oninput/onfocus of #icrNewNameInput (line 12397–12398),
+  which is inside _buildDbPhoneBanner staff-path HTML.
+  STATUS: FULLY REMOVABLE.
+  NOTE: The RP tab direct-edit form will need its own copy (rpIcrSearchCustomers).
+
+_icrSelectName(encodedName) — line 12504:
+  Called ONLY from dropdown items inside _icrSearchCustomers (line 12493).
+  STATUS: FULLY REMOVABLE.
+
+Click-outside listener for #icrNameDropdown — lines 12511–12514:
+  document.addEventListener('click', function(e) {
+    var dd  = document.getElementById('icrNameDropdown');
+    var inp = document.getElementById('icrNewNameInput');
+    if (dd && inp && !inp.contains(e.target) && !dd.contains(e.target)) dd.style.display='none';
+  });
+  STATUS: FULLY REMOVABLE (#icrNameDropdown and #icrNewNameInput will no longer exist).
+
+FUNCTIONS THAT MUST BE KEPT:
+  requestIdentityChange()       — line 12594 — called by new RP form
+  approveIdentityChange()       — line 12615 — called by admin panel
+  denyIdentityChange()          — line 12652 — called by admin panel
+  _checkNameExists()            — line 12666 — called by approveIdentityChange
+  renderIdentityChangePanel()   — line 5803 — called by switchSettingsTab + approve/deny
+  renderIdentityChangeHistory() — line 5854 — called by renderIdentityChangePanel
+  updateCustomerPhone()         — line 12542 — called by approveIdentityChange + new admin tool
+  revokeAllAccess()             — line 5695 — called by Lock All Now button
+
+
+═══════════════════════════════════════════════════════════
+CONSOLIDATED CHANGE PLAN (when ready to implement)
+═══════════════════════════════════════════════════════════
+
+HTML DELETIONS:
+  A. line 3045:   Delete <div id="dbPhoneEditBanner">
+  B. lines 3764–3784: Delete entire <div id="setIdentityChange"> panel
+
+HTML ADDITIONS:
+  C. Inside #setEditAccess (after closing </div> of Grant New Access, before
+     closing </div> of #setEditAccess at line 3762):
+       - Horizontal divider <hr>
+       - New "🔧 Direct Edit" admin tool section (search → form → apply)
+       - New "🪪 Identity Change Requests" section (icrPendingList already exists)
+       - New "📜 History" section (icrHistoryList already exists)
+       NOTE: #icrPendingList and #icrHistoryList element IDs are already in use
+       by renderIdentityChangePanel/renderIdentityChangeHistory — no rename needed,
+       just move the HTML that contains them into #setEditAccess.
+
+RP TAB ADDITION (inside rpRenderCustomerPanel, panel.innerHTML build):
+  D. After name+phone heading line (line 16409), add:
+       non-admin: 📨 Request Name/Phone Change button + inline form
+       admin: nothing (admin uses Settings panel for this)
+
+JS DELETIONS (lines 8282–8296 and 12356–12540):
+  E. renderDB() IIFE for banner (lines 8282–8296)
+  F. _buildDbPhoneBanner() and all dependent helpers (lines 12356–12514):
+       _buildDbPhoneBanner, openIcrRequestForm, closeIcrRequestForm,
+       submitIcrRequest, _icrSearchTimer, _icrSearchCustomers, _icrSelectName,
+       click-outside listener for #icrNameDropdown
+  G. openDbPhoneEdit, closeDbPhoneEdit, saveDbPhoneEdit (lines 12517–12540)
+
+JS ADDITIONS:
+  H. _adminEditSearchCustomers(query) — near-copy of _icrSearchCustomers for
+       #adminEditSearchInput / #adminEditDropdown
+  I. _adminEditSelectCustomer(encodedName, phone) — fills admin edit form
+  J. adminApplyEdit() — merge check + calls update_customer_name RPC + updateCustomerPhone
+  K. adminCancelEdit() — resets admin edit form
+  L. rpSubmitIcrRequest(enc, phone) — reads rpIcrNewNameInput/rpIcrNewPhoneInput/
+       rpIcrReasonInput, validates, calls requestIdentityChange(), closes form
+  M. rpIcrSearchCustomers(query) — near-copy for RP tab dropdown
+  N. rpIcrSelectName(encodedName) — fills rpIcrNewNameInput
+
+NAV CLEANUPS:
+  O. Delete icrSubTabSidebar sidebar item (line 2632)
+  P. Delete icrSubTab inject block in _authInjectSettingsTab (lines 28412–28420)
+  Q. Remove 'setIdentityChange' from _allP array (line 26742)
+  R. Remove identitychange from map and if-block (lines 26747, 26756)
+  S. Delete ICR visibility lines from _authApplyPermissions (lines 27948–27951)
+  T. Delete ICR visibility lines from post-inject block (lines 28490–28493)
+
+END OF AUDIT

@@ -1,0 +1,273 @@
+================================================================================
+INVOICE LOCK / AMOUNT RECEIVED CONTROL SYSTEM — FULL AUDIT REPORT
+Project: primecnc-live (index.html)
+Date: 2026-06-30
+Auditor: Claude Sonnet 4.6 (read-only, no changes made)
+================================================================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 1 — CURRENT LOCK MECHANISM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1A. WHERE "40 DAYS" IS IMPLEMENTED
+────────────────────────────────────────────────────────────────────────────────
+There are TWO separate lock systems in the codebase that both use 40 days but
+are completely independent of each other:
+
+  SYSTEM A — Invoice-date-based lock (_isInvoiceLocked)
+    Applies to: excel_invoices rows (imported/legacy invoices in the DB tab)
+    Logic:      Lock if the invoice DATE is 40+ calendar days old.
+    Key lines:  5661–5673
+
+  SYSTEM B — Entry-save-date-based lock (_canEditEntry / _shouldShowPen)
+    Applies to: Finance tab daily entries (finance_ledger)
+    Logic:      Lock if 40+ days have elapsed since the entry was FIRST SAVED
+                (falls back to entry_date if no local meta exists).
+    Key lines:  18692–18741
+
+
+1B. EXACT LOCK CALCULATION CODE
+────────────────────────────────────────────────────────────────────────────────
+
+── SYSTEM A (Invoice date lock) ── lines 5659–5673 ──
+
+  // ── INVOICE AGE — generic days-old check for any invoice/row date ──
+  // Accepts any format normalizeDate understands (YYYY-MM-DD, DD.MM.YYYY, DD/MM/YYYY)
+  function _invDaysOld(dateStr) {
+    if (!dateStr) return 0;
+    var iso = normalizeDate(String(dateStr).trim());
+    var m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return 0;
+    var y = parseInt(m[1]), mo = parseInt(m[2])-1, d = parseInt(m[3]);
+    if (isNaN(y) || isNaN(mo) || isNaN(d)) return 0;
+    return Math.floor((Date.now() - new Date(y, mo, d).getTime()) / 86400000);
+  }
+  // Returns true if Total Bill / Received / Discount edits should be locked for this invoice date
+  function _isInvoiceLocked(dateStr) {
+    return _invDaysOld(dateStr) >= 40;
+  }
+
+── SYSTEM B (Finance entry save-date lock) ── lines 18701–18726 ──
+
+  function _shouldShowPen(type, cat, entryDate, localId) {
+    // Salaries: never editable
+    if (type === 'monthly_expense' && cat === 'Salaries') return false;
+    // Entries on or before May 12 2026 are already locked
+    if (entryDate && entryDate <= '2026-05-31') return false;
+    // 40-day window check
+    const { canEdit } = _canEditEntry(localId || '', entryDate || '');
+    return canEdit;
+  }
+
+  function _canEditEntry(localId, entryDate) {
+    const meta = _finEditMeta[localId];
+    if (meta) {
+      const daysSinceSave = (Date.now() - meta.firstSavedAt) / (1000 * 60 * 60 * 24);
+      if (daysSinceSave > 40) return { canEdit: false, reason: '🔒 Edit window expired (40 days have passed)' };
+      const daysLeft = Math.ceil(40 - daysSinceSave);
+      return { canEdit: true, reason: `✏️ Edit ${meta.editCount+1} — ${daysLeft}d remaining` };
+    }
+    // No local meta — use entry_date to enforce 40-day rule
+    if (entryDate) {
+      const entryMs = new Date(entryDate).getTime();
+      const daysSinceEntry = (Date.now() - entryMs) / (1000 * 60 * 60 * 24);
+      if (daysSinceEntry > 40) return { canEdit: false, reason: '🔒 Edit window expired (40 days have passed)' };
+    }
+    return { canEdit: true, reason: '' };
+  }
+
+  // (Additional hard cutoff: entries dated 2026-05-31 or earlier are always locked
+  //  regardless of the 40-day window — enforced inside _shouldShowPen line 18705)
+
+
+1C. IS "40" HARDCODED OR A VARIABLE/CONSTANT?
+────────────────────────────────────────────────────────────────────────────────
+  STATUS: FULLY HARDCODED. There is no named constant, variable, or
+  config value for the 40-day threshold anywhere in the file.
+
+  "40" appears raw in every relevant check:
+
+    Line 5672:   return _invDaysOld(dateStr) >= 40;
+    Line 15736:  if (_invDaysSince > 40) {        ← Receive Payment tab invoice total edit
+    Line 15755:  } else if (_daysSince > 40) {    ← Receive Payment tab payment entry edit
+    Line 15758:  var _daysLeft = Math.ceil(40 - _daysSince);
+    Line 18715:  if (daysSinceSave > 40) return { canEdit: false, ... }
+    Line 18716:  const daysLeft = Math.ceil(40 - daysSinceSave);
+    Line 18723:  if (daysSinceEntry > 40) return { canEdit: false, ... }
+
+  Additionally, the number "40" appears in UI messages at:
+    Lines 3048, 4269, 8068, 15737, 15756, 15819, 15954, 16119, 18692, 18700,
+    18706, 18715, 18719, 18723, 20018 (Finance tab info)
+
+  To make this configurable, ALL of the above locations (logic + UI text)
+  would need to be updated.
+
+
+1D. WHAT FIELDS / ACTIONS DOES THE LOCK AFFECT?
+────────────────────────────────────────────────────────────────────────────────
+
+  LOCKED after 40 days (per field):
+
+  ┌──────────────────────────────┬────────────────────┬────────────────────────────────────────────────────┐
+  │ Field                        │ Locked?            │ Notes                                              │
+  ├──────────────────────────────┼────────────────────┼────────────────────────────────────────────────────┤
+  │ Total Bill (total_bill)      │ YES — after 40d    │ DB tab inline edit hidden; RP tab ✏️ btn hidden    │
+  │                              │ from invoice date  │                                                    │
+  ├──────────────────────────────┼────────────────────┼────────────────────────────────────────────────────┤
+  │ Received / Payment entries   │ YES — after 40d    │ RP tab: 🔒 Locked shown instead of ✏️ Edit btn.   │
+  │                              │ from created_at    │ Clock runs from payment created_at, not inv date.  │
+  ├──────────────────────────────┼────────────────────┼────────────────────────────────────────────────────┤
+  │ Discount                     │ NO — always open   │ Discount rows in RP tab always show ✏️ Edit.       │
+  │                              │                    │ Confirmed by UI message on line 15819.             │
+  ├──────────────────────────────┼────────────────────┼────────────────────────────────────────────────────┤
+  │ Bad Debt                     │ NO — always open   │ Bad debt rows in RP tab always show ✏️ Edit.       │
+  │                              │                    │ Confirmed by UI message on line 15819.             │
+  ├──────────────────────────────┼────────────────────┼────────────────────────────────────────────────────┤
+  │ Finance ledger entries       │ YES — after 40d    │ System B (separate). Pen icon hidden.              │
+  │ (finance_ledger)             │ from firstSavedAt  │ Salaries never editable. Pre-May-13-2026 locked.  │
+  └──────────────────────────────┴────────────────────┴────────────────────────────────────────────────────┘
+
+  IMPORTANT NOTE — Two different clocks for the same "40 days":
+    • Invoice Total Bill lock  → measured from INVOICE DATE (when invoice was created)
+    • Payment entry lock       → measured from PAYMENT created_at (when payment was recorded)
+    These are two separate timers. A payment added 39 days after a locked invoice
+    is still editable for 40 days after IT was added.
+
+  EXCEPTION — "imported" payment source:
+    Line 15752: if (p.source === 'imported') → always shows ✏️ Edit regardless of age.
+    Historical imported payments bypass the 40-day lock entirely.
+
+  EXCEPTION — invoice_ref payments:
+    Line 15753-15754: if (p.invoice_ref) → shows 🔒, message says
+    "Recorded from invoice X — edit the invoice to change this amount".
+    These are not locked by time; they are locked by source (must edit via invoice).
+
+
+1E. EVERY PLACE THE LOCK CHECK IS APPLIED
+────────────────────────────────────────────────────────────────────────────────
+
+  ① Line 5671–5673  — Function definition: _isInvoiceLocked(dateStr)
+    (System A, central function — all callers below use this or inline the same logic)
+
+  ② Line 8067–8073  — DB Tab, excel_invoices table row render
+    (_isInvoiceLocked(row.date) → shows Rs.X 🔒 instead of clickable Rs.X ✎
+    to open inline total_bill edit; the entire edit-in-place is suppressed)
+
+  ③ Line 8093       — DB Tab, new invoice (app-created) row in DB table
+    (_isInvoiceLocked(inv.date) → adds 🔒 icon after amount in the total column;
+    note: ✎ edit button is NOT suppressed here — editInvoice(idx) is still shown)
+
+  ④ Lines 15735–15740 — Receive Payment tab, invoice total edit button
+    (Inline: _invDaysSince > 40 → shows 🔒 span instead of ✏️ rpEditExcelTotal button.
+    Only applies to excel_invoices rows — new invoices always show 🔒 with
+    "Edit from Database tab" tooltip regardless of age)
+
+  ⑤ Lines 15749–15760 — Receive Payment tab, payment entry edit button
+    (_daysSince > 40 from created_at → shows 🔒 Locked instead of ✏️ Edit button.
+    imported payments bypass this and always show Edit.
+    invoice_ref payments show a separate 🔒 "edit via invoice" message.)
+
+  ⑥ Lines 18701–18709 — Finance tab, _shouldShowPen() — pen icon visibility
+    (Calls _canEditEntry; also hard-blocks entries dated <= 2026-05-31)
+
+  ⑦ Lines 18711–18726 — Finance tab, _canEditEntry() — core System B lock logic
+    (Returns {canEdit, reason}; used by _shouldShowPen and unlockDailyAmount)
+
+  ⑧ Lines 18743–18752 — Finance tab, unlockDailyAmount()
+    (Calls _canEditEntry before allowing amount field to go editable;
+    shows toast with lock reason if canEdit=false)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 2 — SETTINGS TAB STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2A. SETTINGS TAB SUB-TABS (lines 2623–2634 sidebar; lines 3329–3337 in-panel)
+────────────────────────────────────────────────────────────────────────────────
+  The Settings tab has two parallel sub-tab navigation bars (sidebar list +
+  in-panel horizontal tabs). Both call switchSettingsTab() with the same keys.
+
+  Key               Label (sidebar)       Label (in-panel)        DOM Panel ID
+  ─────────────────────────────────────────────────────────────────────────────
+  'invoice'         ⚙️ General            ⚙️ General Setting      #setInvoice
+  'dragEditor'      🖼 Header/Footer      🖼 Header/Footer         (drag editor)
+  'categories'      📋 Categories         📋 Categories            #setCatPanel
+  'partners'        👥 Partners/Investors 👥 Partners/Investors    #setPartners
+  'data'            🗄️ Data & Sync        🗄️ Data & Sync           (data panel)
+  'watermark'       💧 Watermark          💧 Watermark             (watermark)
+  'templates'       📄 Templates          📄 Templates             (templates)
+  'users'           👥 Users & Access     (hidden by default)      (auth panel)
+  'cashcustody'     💰 Cash Custody       (hidden by default)      (cash panel)
+
+  Total visible by default: 7 sub-tabs
+  Hidden (conditional): 2 sub-tabs ('users', 'cashcustody')
+
+
+2B. GENERAL SETTING SUB-TAB (#setInvoice) — SECTIONS INSIDE IT
+────────────────────────────────────────────────────────────────────────────────
+  The "General Setting" sub-tab (key: 'invoice', panel: #setInvoice) contains:
+
+  Section 1 — 🏢 Company Name  (lines 3587–3656)
+    • Shop Name input (text, max 60 chars)
+    • Color picker + font size slider
+    • Live preview
+    • Urdu font selector (Jameel Noori Nastaleeq, Noto Nastaliq Urdu, Arial, etc.)
+    • English font selector (Playfair Display, Montserrat, Georgia, etc.)
+    • 💾 Save Shop Name button
+
+  Section 2 — 🧾 Invoice Setting  (lines 3658–3693)
+    • Invoice Number: Prefix input (e.g. "INV-") + live preview
+    • Default Sq.Ft Rate (Rs./sheet): 14G / 16G / 18G / Kg inputs
+    • 💾 Save Invoice Settings button → calls saveInvoiceSettings()
+
+  NOTE: The "Invoice Setting" section title (line 3658) and saveInvoiceSettings()
+  function (line 13809) already exist. However, this section currently only
+  contains invoice NUMBER prefix and sheet gauge RATES. It does NOT contain
+  anything related to the lock duration.
+
+
+2C. IS THERE AN "INVOICE LOCK SETTINGS" AREA ALREADY?
+────────────────────────────────────────────────────────────────────────────────
+  NO. There is no UI for configuring the lock duration (40 days).
+
+  The existing "Invoice Setting" section (in General Setting sub-tab) is the
+  most logical home for a "Lock Duration" control, as it already owns invoice
+  behavior settings. It would need a new input field added to the existing
+  section, wired to saveInvoiceSettings() / a localStorage key.
+
+  Alternatively, a new "🔒 Lock Policy" sub-section could be added to the
+  General Setting panel without creating a new sub-tab.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AUDIT SUMMARY — KEY FINDINGS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  1. TWO LOCK SYSTEMS exist, both using "40" hardcoded:
+       System A: invoice date → controls Total Bill + payment-entry edit in DB/RP tabs
+       System B: firstSavedAt timestamp → controls Finance tab entry edits
+
+  2. "40" is NOT a constant anywhere — it is a raw literal scattered across
+     at least 7 logic lines and numerous UI message strings.
+
+  3. DISCOUNT and BAD DEBT are EXEMPT from the 40-day lock. They can always
+     be edited from the Receive Payment tab (by design, per UI messages).
+
+  4. "imported" source payments also bypass the lock permanently.
+
+  5. There is a HARD DATE CUTOFF in System B: entries dated 2026-05-31 or
+     earlier are permanently locked regardless of the 40-day rule.
+
+  6. The Settings → General Setting → "🧾 Invoice Setting" section already
+     exists (line 3658). Adding a configurable lock duration would fit here
+     without requiring a new sub-tab.
+
+  7. To make lock duration configurable, the following 7 logic sites must all
+     read from the same config value (localStorage key recommended):
+       Lines: 5672, 15736, 15755, 15758, 18715, 18716, 18723
+     Plus all UI message strings would need to interpolate the value.
+
+================================================================================
+END OF AUDIT REPORT
+================================================================================

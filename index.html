@@ -2628,6 +2628,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         <div class="tab-sub-item" onclick="_activateSubItem(this);switchSettingsTab('templates',this)">📄 Templates</div>
         <div class="tab-sub-item" id="authUsersSubTabSidebar" onclick="_activateSubItem(this);switchSettingsTab('users',this)" style="display:none;">👥 Users & Access</div>
         <div class="tab-sub-item" id="cashCustodySubTabSidebar" onclick="_activateSubItem(this);switchSettingsTab('cashcustody',this)" style="display:none;">💰 Cash Custody</div>
+        <div class="tab-sub-item" id="eagEditAccessSubTabSidebar" onclick="_activateSubItem(this);switchSettingsTab('editaccess',this)" style="display:none;">🔐 Edit Access</div>
       </div>
     </div>
   </div>
@@ -3039,8 +3040,6 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
           📋 Draft Invoices (<span id="draftCount">0</span>)
         </button>
       </div>
-
-      <div id="dbPhoneEditBanner" style="display:none;padding:0 0 8px;"></div>
 
       <div style="margin:4px 0 0;padding:5px 14px;border:1px solid #bae6fd;border-radius:6px;background:#f0f9ff;font-family:'Montserrat',sans-serif;font-size:0.67rem;color:#0369a1;letter-spacing:0.1px;">🔒 After 40 days: Total Bill becomes locked and cannot be edited. Payments lock after 40 days of being added. Discounts and Bad Debt can always be edited. Manage all payments from the Receive Payment tab.</div>
 
@@ -3687,6 +3686,132 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         </div>
         <div style="margin-top:14px;">
           <button onclick="saveInvoiceSettings()" style="padding:9px 22px;background:#059669;color:#fff;border:none;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.82rem;cursor:pointer;">💾 Save Invoice Settings</button>
+        </div>
+      </div>
+
+      <!-- ═══ EDIT ACCESS CONTROL ═══ -->
+      <div id="setEditAccess" style="display:none;padding:18px;">
+        <div style="font-family:Montserrat,sans-serif;font-weight:800;font-size:1rem;color:#1e293b;margin-bottom:16px;">🔐 Edit Access Control</div>
+
+        <!-- Pending Requests -->
+        <div style="margin-bottom:24px;">
+          <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;color:#92400e;margin-bottom:10px;">📥 Pending Requests</div>
+          <div id="eagPendingList" style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:12px;">
+            <div style="text-align:center;color:#94a3b8;padding:16px;font-family:Montserrat,sans-serif;font-size:0.8rem;">Loading...</div>
+          </div>
+        </div>
+
+        <!-- Active Grants -->
+        <div style="margin-bottom:24px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;color:#065f46;">✅ Active Grants</div>
+            <button onclick="revokeAllAccess()" style="padding:6px 14px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.72rem;cursor:pointer;">🔒 Lock All Now</button>
+          </div>
+          <div id="eagActiveList" style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:12px;">
+            <div style="text-align:center;color:#94a3b8;padding:16px;font-family:Montserrat,sans-serif;font-size:0.8rem;">Loading...</div>
+          </div>
+        </div>
+
+        <!-- Grant New Access -->
+        <div>
+          <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;color:#1e293b;margin-bottom:10px;">+ Grant New Access</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;">
+            <div>
+              <label style="font-size:0.7rem;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">Staff Member</label>
+              <select id="eagUserSelect" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.8rem;">
+                <option value="">Loading users...</option>
+              </select>
+            </div>
+            <div style="display:flex;align-items:center;">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;background:#fef9c3;border:1.5px solid #fbbf24;border-radius:8px;width:100%;margin-top:16px;">
+                <input type="checkbox" id="eagAllCustomers" onchange="_eagToggleAllCustomers(this.checked)" style="width:15px;height:15px;cursor:pointer;accent-color:#92400e;flex-shrink:0;">
+                <span style="font-size:0.75rem;font-weight:700;color:#92400e;font-family:Montserrat,sans-serif;">🌐 All Customers</span>
+              </label>
+            </div>
+            <div style="position:relative;">
+              <label style="font-size:0.7rem;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">Customer Name</label>
+              <input type="text" id="eagCustNameInput" placeholder="Type to search customers..." autocomplete="off"
+                oninput="_eagSearchCustomers(this.value)"
+                onfocus="if(this.value) _eagSearchCustomers(this.value)"
+                style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.8rem;">
+              <div id="eagCustDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;max-height:220px;overflow-y:auto;z-index:50;margin-top:2px;box-shadow:0 8px 24px rgba(0,0,0,0.12);"></div>
+            </div>
+            <div>
+              <label style="font-size:0.7rem;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">Phone</label>
+              <input type="text" id="eagCustPhoneInput" placeholder="Auto-filled on selection" readonly style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.8rem;background:#f8fafc;color:#64748b;">
+            </div>
+            <div>
+              <label style="font-size:0.7rem;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">Duration</label>
+              <select id="eagDurationSelect" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.8rem;">
+                <option value="1">1 Hour</option>
+                <option value="4">4 Hours</option>
+                <option value="24">1 Day</option>
+                <option value="168">1 Week</option>
+                <option value="720">1 Month</option>
+                <option value="">Unlimited (until revoked)</option>
+              </select>
+            </div>
+            <div style="grid-column:1/3;margin-top:6px;">
+              <button onclick="_eagGrantFromForm()" style="padding:10px 20px;background:#1e293b;color:#fff;border:none;border-radius:8px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.8rem;cursor:pointer;">🔓 Grant Access</button>
+            </div>
+          </div>
+        </div>
+
+        <hr style="margin:24px 0;border:none;border-top:1.5px solid #e2e8f0;">
+
+        <!-- Direct Edit Customer Name/Phone (Admin) -->
+        <div style="margin-bottom:24px;">
+          <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;color:#1e293b;margin-bottom:10px;">🔧 Direct Edit Customer Name / Phone</div>
+          <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;position:relative;">
+            <label style="font-size:0.7rem;font-weight:700;color:#64748b;">Search Customer</label>
+            <input type="text" id="adminEditSearchInput" placeholder="Type customer name..." autocomplete="off"
+              oninput="_adminEditSearchCustomers(this.value)"
+              style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.8rem;margin-top:4px;">
+            <div id="adminEditDropdown" style="display:none;position:absolute;left:14px;right:14px;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;max-height:200px;overflow-y:auto;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,0.12);"></div>
+
+            <div id="adminEditForm" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0;">
+              <div style="font-size:0.78rem;color:#64748b;margin-bottom:10px;">
+                Current: <strong id="adminEditCurrentName" style="color:#1e293b;"></strong>
+                <span id="adminEditCurrentPhoneWrap"> — <strong id="adminEditCurrentPhone" style="color:#1e293b;"></strong></span>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div style="position:relative;">
+                  <label style="font-size:0.7rem;font-weight:700;color:#64748b;">New Name</label>
+                  <input type="text" id="adminEditNewName" placeholder="Leave blank to keep current — type to search" autocomplete="off"
+                    oninput="_adminEditNewNameSearch(this.value)"
+                    onfocus="if(this.value) _adminEditNewNameSearch(this.value)"
+                    style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.8rem;">
+                  <div id="adminEditNewNameDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;max-height:200px;overflow-y:auto;z-index:60;margin-top:2px;box-shadow:0 8px 24px rgba(0,0,0,0.12);"></div>
+                </div>
+                <div>
+                  <label style="font-size:0.7rem;font-weight:700;color:#64748b;">New Phone</label>
+                  <input type="text" id="adminEditNewPhone" maxlength="10" placeholder="Leave blank to keep current" oninput="this.value=this.value.replace(/[^0-9]/g,'')" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.8rem;">
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:12px;">
+                <button onclick="adminApplyEdit()" style="padding:8px 18px;background:#059669;color:#fff;border:none;border-radius:8px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;">✓ Apply Changes</button>
+                <button onclick="adminCancelEdit()" style="padding:8px 18px;background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1;border-radius:8px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;">✕ Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Identity Change Requests (merged in) -->
+        <div style="margin-bottom:24px;">
+          <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;color:#92400e;margin-bottom:10px;">🪪 Identity Change — Pending Requests</div>
+          <div id="icrPendingList" style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:12px;">
+            <div style="text-align:center;color:#94a3b8;padding:16px;font-family:Montserrat,sans-serif;font-size:0.8rem;">Loading...</div>
+          </div>
+        </div>
+
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;color:#475569;">📜 Identity Change History (last 50)</div>
+            <button onclick="renderIdentityChangeHistory()" style="padding:5px 12px;background:#64748b;color:#fff;border:none;border-radius:8px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.7rem;cursor:pointer;">🔄 Refresh</button>
+          </div>
+          <div id="icrHistoryList" style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:12px;max-height:320px;overflow-y:auto;">
+            <div style="text-align:center;color:#94a3b8;padding:16px;font-family:Montserrat,sans-serif;font-size:0.8rem;">Click Refresh to load</div>
+          </div>
         </div>
       </div>
 
@@ -5506,6 +5631,555 @@ function _isInvoiceLocked(dateStr) {
   return _invDaysOld(dateStr) >= 40;
 }
 
+// ══════════════════════════════════════════════
+// EDIT ACCESS CONTROL — helpers & panel
+// ══════════════════════════════════════════════
+
+async function _hasEditAccess(customerName, phone) {
+  var sess = _authGetSession();
+  if (!sess) return false;
+  if (sess.role === 'admin') return true;
+  if (!sb) return false;
+  try {
+    var now = new Date();
+    // Check all-customers wildcard grant first
+    var { data: wc } = await sb.from('edit_access_grants')
+      .select('id, expires_at')
+      .eq('customer_name', '*')
+      .eq('granted_to', sess.id)
+      .eq('status', 'active')
+      .limit(1);
+    if (wc && wc.length && (!wc[0].expires_at || new Date(wc[0].expires_at) > now)) return true;
+    // Check specific customer grant
+    var q = sb.from('edit_access_grants')
+      .select('id, expires_at')
+      .eq('customer_name', customerName)
+      .eq('granted_to', sess.id)
+      .eq('status', 'active');
+    q = phone ? q.eq('phone', phone) : q.is('phone', null);
+    var { data } = await q.limit(1);
+    if (!data || !data.length) return false;
+    if (data[0].expires_at && new Date(data[0].expires_at) < now) return false;
+    return true;
+  } catch(e) { console.warn('[_hasEditAccess]', e); return false; }
+}
+
+async function requestEditAccess(customerName, phone, reason) {
+  var sess = _authGetSession();
+  if (!sess) { toast('⚠ Not logged in'); return; }
+  if (!sb) { toast('📵 Cannot request — offline'); return; }
+  try {
+    await sb.from('edit_access_grants').insert({
+      customer_name: customerName,
+      phone: phone || null,
+      granted_to: sess.id,
+      status: 'pending',
+      requested_at: new Date().toISOString(),
+      reason: reason || ''
+    });
+    toast('📨 Access request sent to admin');
+  } catch(e) { console.error(e); toast('⚠ Failed to send request'); }
+}
+
+async function grantEditAccess(userId, customerName, phone, durationHours) {
+  var sess = _authGetSession();
+  if (!sess || sess.role !== 'admin') { toast('⛔ Admin only'); return; }
+  if (!sb) { toast('📵 Cannot grant — offline'); return; }
+  try {
+    var expiresAt = durationHours ? new Date(Date.now() + durationHours*3600000).toISOString() : null;
+    await sb.from('edit_access_grants').insert({
+      customer_name: customerName,
+      phone: phone || null,
+      granted_to: userId,
+      granted_by: sess.id,
+      status: 'active',
+      granted_at: new Date().toISOString(),
+      expires_at: expiresAt
+    });
+    toast('✅ Access granted');
+    if (typeof renderEditAccessPanel === 'function') renderEditAccessPanel();
+  } catch(e) { console.error(e); toast('⚠ Failed to grant access'); }
+}
+
+async function approveEditRequest(grantId, durationHours) {
+  var sess = _authGetSession();
+  if (!sess || sess.role !== 'admin') { toast('⛔ Admin only'); return; }
+  try {
+    var expiresAt = durationHours ? new Date(Date.now() + durationHours*3600000).toISOString() : null;
+    await sb.from('edit_access_grants').update({
+      status: 'active',
+      granted_by: sess.id,
+      granted_at: new Date().toISOString(),
+      expires_at: expiresAt,
+      reviewed_by: sess.id,
+      reviewed_at: new Date().toISOString()
+    }).eq('id', grantId);
+    toast('✅ Request approved');
+    if (typeof renderEditAccessPanel === 'function') renderEditAccessPanel();
+  } catch(e) { console.error(e); toast('⚠ Failed to approve'); }
+}
+
+async function denyEditRequest(grantId) {
+  var sess = _authGetSession();
+  if (!sess || sess.role !== 'admin') { toast('⛔ Admin only'); return; }
+  try {
+    await sb.from('edit_access_grants').update({
+      status: 'denied',
+      reviewed_by: sess.id,
+      reviewed_at: new Date().toISOString()
+    }).eq('id', grantId);
+    toast('✅ Request denied');
+    if (typeof renderEditAccessPanel === 'function') renderEditAccessPanel();
+  } catch(e) { console.error(e); toast('⚠ Failed to deny'); }
+}
+
+async function revokeEditAccess(grantId) {
+  var sess = _authGetSession();
+  if (!sess || sess.role !== 'admin') { toast('⛔ Admin only'); return; }
+  try {
+    await sb.from('edit_access_grants').update({
+      status: 'revoked',
+      reviewed_by: sess.id,
+      reviewed_at: new Date().toISOString()
+    }).eq('id', grantId);
+    toast('🔒 Access revoked');
+    if (typeof renderEditAccessPanel === 'function') renderEditAccessPanel();
+  } catch(e) { console.error(e); toast('⚠ Failed to revoke'); }
+}
+
+async function revokeAllAccess() {
+  var sess = _authGetSession();
+  if (!sess || sess.role !== 'admin') { toast('⛔ Admin only'); return; }
+  if (!confirm('🔒 Lock ALL active grants immediately? Every staff member will lose their current edit access right now.')) return;
+  if (!sb) { toast('📵 Cannot lock — offline'); return; }
+  try {
+    var { data: active } = await sb.from('edit_access_grants')
+      .select('id')
+      .eq('status', 'active');
+    if (!active || !active.length) { toast('✅ No active grants to revoke'); return; }
+    await sb.from('edit_access_grants').update({
+      status: 'revoked',
+      reviewed_by: sess.id,
+      reviewed_at: new Date().toISOString()
+    }).eq('status', 'active');
+    toast('🔒 ' + active.length + ' grant(s) locked immediately');
+    if (typeof renderEditAccessPanel === 'function') renderEditAccessPanel();
+  } catch(e) { console.error(e); toast('⚠ Failed to lock all'); }
+}
+
+async function renderEditAccessPanel() {
+  if (!sb) return;
+  var userSelect = document.getElementById('eagUserSelect');
+  if (userSelect) {
+    try {
+      var { data: users } = await sb.from('app_users').select('id,display_name,username,role').order('display_name');
+      userSelect.innerHTML = (users||[]).filter(function(u){ return u.role !== 'admin'; }).map(function(u) {
+        return '<option value="'+u.id+'">'+(u.display_name||u.username)+'</option>';
+      }).join('') || '<option value="">No staff users</option>';
+    } catch(e) { console.warn(e); }
+  }
+
+  var pendingEl = document.getElementById('eagPendingList');
+  var badge = document.getElementById('eagPendingBadge');
+  try {
+    var { data: pending } = await sb.from('edit_access_grants')
+      .select('id, customer_name, phone, reason, requested_at, granted_to, app_users!edit_access_grants_granted_to_fkey(display_name)')
+      .eq('status', 'pending')
+      .order('requested_at', { ascending: false });
+
+    if (badge) {
+      if (pending && pending.length) { badge.style.display = 'inline-block'; badge.textContent = pending.length; }
+      else { badge.style.display = 'none'; }
+    }
+
+    if (pendingEl) {
+      pendingEl.innerHTML = (pending && pending.length) ? pending.map(function(p) {
+        var staffName = (p.app_users && p.app_users.display_name) || 'Unknown';
+        return '<div style="background:#fff;border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">'
+          + '<div style="font-family:Montserrat,sans-serif;font-size:0.78rem;">'
+          + '<strong>'+staffName+'</strong> requests access to <strong>'+(p.customer_name === '*' ? '🌐 All Customers' : p.customer_name)+'</strong>'
+          + (p.reason ? '<div style="color:#64748b;font-size:0.72rem;margin-top:2px;">"'+p.reason+'"</div>' : '')
+          + '</div>'
+          + '<div style="display:flex;gap:6px;">'
+          + '<select id="eagDur_'+p.id+'" style="padding:4px 6px;border-radius:6px;border:1px solid #e2e8f0;font-size:0.72rem;">'
+          + '<option value="24">1 Day</option><option value="168">1 Week</option><option value="720">1 Month</option><option value="">Unlimited</option>'
+          + '</select>'
+          + '<button onclick="approveEditRequest(\''+p.id+'\', document.getElementById(\'eagDur_'+p.id+'\').value || null)" style="padding:5px 10px;background:#059669;color:#fff;border:none;border-radius:6px;font-size:0.72rem;cursor:pointer;">✅ Approve</button>'
+          + '<button onclick="denyEditRequest(\''+p.id+'\')" style="padding:5px 10px;background:#dc2626;color:#fff;border:none;border-radius:6px;font-size:0.72rem;cursor:pointer;">✕ Deny</button>'
+          + '</div></div>';
+      }).join('') : '<div style="text-align:center;color:#94a3b8;padding:16px;font-family:Montserrat,sans-serif;font-size:0.8rem;">No pending requests</div>';
+    }
+  } catch(e) { console.warn(e); }
+
+  var activeEl = document.getElementById('eagActiveList');
+  try {
+    var { data: active } = await sb.from('edit_access_grants')
+      .select('id, customer_name, phone, expires_at, granted_at, app_users!edit_access_grants_granted_to_fkey(display_name)')
+      .eq('status', 'active')
+      .order('granted_at', { ascending: false });
+
+    if (activeEl) {
+      activeEl.innerHTML = (active && active.length) ? active.map(function(a) {
+        var staffName = (a.app_users && a.app_users.display_name) || 'Unknown';
+        var expText = a.expires_at ? ('expires ' + new Date(a.expires_at).toLocaleString()) : 'no expiry';
+        return '<div style="background:#fff;border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">'
+          + '<div style="font-family:Montserrat,sans-serif;font-size:0.78rem;"><strong>'+staffName+'</strong> → <strong>'+(a.customer_name === '*' ? '🌐 All Customers' : a.customer_name)+'</strong>'
+          + '<div style="color:#64748b;font-size:0.72rem;">'+expText+'</div></div>'
+          + '<button onclick="revokeEditAccess(\''+a.id+'\')" style="padding:5px 10px;background:#dc2626;color:#fff;border:none;border-radius:6px;font-size:0.72rem;cursor:pointer;">🔒 Revoke</button>'
+          + '</div>';
+      }).join('') : '<div style="text-align:center;color:#94a3b8;padding:16px;font-family:Montserrat,sans-serif;font-size:0.8rem;">No active grants</div>';
+    }
+  } catch(e) { console.warn(e); }
+}
+
+async function renderIdentityChangePanel() {
+  if (!sb) return;
+  var pendingEl = document.getElementById('icrPendingList');
+  try {
+    var { data: pending } = await sb.from('identity_change_requests')
+      .select('id, old_name, old_phone, new_name, new_phone, change_type, reason, requested_at, requested_by, app_users!identity_change_requests_requested_by_fkey(display_name)')
+      .eq('status', 'pending')
+      .order('requested_at', { ascending: false });
+
+    if (!pendingEl) return;
+    if (!pending || !pending.length) {
+      pendingEl.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:16px;font-family:Montserrat,sans-serif;font-size:0.8rem;">No pending requests</div>';
+      if (typeof renderIdentityChangeHistory === 'function') renderIdentityChangeHistory();
+      return;
+    }
+
+    var rowsHtml = await Promise.all(pending.map(async function(r) {
+      var staffName = (r.app_users && r.app_users.display_name) || 'Unknown';
+      var warningHtml = '';
+      if (r.new_name) {
+        var check = await _checkNameExists(r.new_name);
+        var existingCount = (check.inv_count || 0) + (check.excel_count || 0);
+        if (existingCount > 0) {
+          warningHtml = '<div style="background:#fee2e2;color:#991b1b;padding:6px 10px;border-radius:6px;font-size:0.7rem;margin-top:6px;">⚠ "' + r.new_name + '" already has ' + existingCount + ' record(s). Approving will merge them.</div>';
+        }
+      }
+      var changeDesc = r.change_type === 'name'
+        ? ('Rename to <strong>' + r.new_name + '</strong>')
+        : r.change_type === 'phone'
+          ? ('Change phone to <strong>' + r.new_phone + '</strong>')
+          : ('Rename to <strong>' + r.new_name + '</strong> + phone <strong>' + r.new_phone + '</strong>');
+
+      return '<div style="background:#fff;border-radius:8px;padding:10px 12px;margin-bottom:8px;">'
+        + '<div style="font-family:Montserrat,sans-serif;font-size:0.78rem;">'
+        + '<strong>' + staffName + '</strong> requests: <strong>' + r.old_name + '</strong>'
+        + (r.old_phone ? ' (' + r.old_phone + ')' : '') + ' → ' + changeDesc
+        + (r.reason ? '<div style="color:#64748b;font-size:0.72rem;margin-top:2px;">"' + r.reason + '"</div>' : '')
+        + warningHtml
+        + '</div>'
+        + '<div style="display:flex;gap:6px;margin-top:8px;">'
+        + '<button onclick="approveIdentityChange(\'' + r.id + '\')" style="padding:5px 12px;background:#059669;color:#fff;border:none;border-radius:6px;font-size:0.72rem;cursor:pointer;">✅ Approve</button>'
+        + '<button onclick="denyIdentityChange(\'' + r.id + '\')" style="padding:5px 12px;background:#dc2626;color:#fff;border:none;border-radius:6px;font-size:0.72rem;cursor:pointer;">✕ Deny</button>'
+        + '</div></div>';
+    }));
+
+    pendingEl.innerHTML = rowsHtml.join('');
+  } catch(e) { console.warn(e); }
+
+  if (typeof renderIdentityChangeHistory === 'function') renderIdentityChangeHistory();
+}
+
+async function renderIdentityChangeHistory() {
+  var historyEl = document.getElementById('icrHistoryList');
+  if (!historyEl || !sb) return;
+  historyEl.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:16px;font-family:Montserrat,sans-serif;font-size:0.8rem;">Loading...</div>';
+  try {
+    var { data: rows } = await sb.from('identity_change_requests')
+      .select('id, old_name, old_phone, new_name, new_phone, change_type, status, requested_at, reviewed_at, rows_affected, app_users!identity_change_requests_requested_by_fkey(display_name)')
+      .order('requested_at', { ascending: false })
+      .limit(50);
+
+    if (!rows || !rows.length) {
+      historyEl.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:16px;font-family:Montserrat,sans-serif;font-size:0.8rem;">No history yet</div>';
+      return;
+    }
+
+    var statusColors = {
+      approved: { bg: '#d1fae5', text: '#065f46', icon: '✅' },
+      denied:   { bg: '#fee2e2', text: '#991b1b', icon: '✕'  },
+      pending:  { bg: '#fffbeb', text: '#92400e', icon: '⏳' }
+    };
+
+    historyEl.innerHTML = rows.map(function(r) {
+      var staffName = (r.app_users && r.app_users.display_name) || 'Unknown';
+      var sc = statusColors[r.status] || statusColors.pending;
+      var changeDesc = r.new_name ? r.new_name : r.new_phone;
+      return '<div style="background:#fff;border-radius:8px;padding:9px 12px;margin-bottom:6px;">'
+        + '<span style="background:' + sc.bg + ';color:' + sc.text + ';padding:2px 7px;border-radius:6px;font-weight:700;font-size:0.68rem;">' + sc.icon + ' ' + r.status.toUpperCase() + '</span>'
+        + ' <strong>' + staffName + '</strong>: ' + r.old_name + ' → ' + changeDesc
+        + (r.rows_affected != null ? ' (' + r.rows_affected + ' rows)' : '')
+        + '<div style="color:#94a3b8;font-size:0.68rem;margin-top:2px;">' + new Date(r.requested_at).toLocaleString() + '</div>'
+        + '</div>';
+    }).join('');
+  } catch(e) {
+    console.warn(e);
+    historyEl.innerHTML = '<div style="text-align:center;color:#dc2626;padding:16px;font-family:Montserrat,sans-serif;font-size:0.8rem;">Failed to load</div>';
+  }
+}
+
+// ── Admin Direct Edit helpers ──
+
+var _adminEditSearchTimer = null;
+async function _adminEditSearchCustomers(query) {
+  clearTimeout(_adminEditSearchTimer);
+  var dropdown = document.getElementById('adminEditDropdown');
+  if (!query || query.trim().length < 2) { if (dropdown) dropdown.style.display = 'none'; return; }
+  _adminEditSearchTimer = setTimeout(async function() {
+    if (!sb) return;
+    try {
+      var q = query.trim();
+      var results = []; var seen = {};
+      var { data: exRows } = await sb.from('excel_invoices').select('customer_name, phone').ilike('customer_name', '%' + q + '%').limit(10);
+      (exRows || []).forEach(function(r) {
+        var key = (r.customer_name||'') + '|' + (r.phone||'');
+        if (!seen[key] && r.customer_name) { seen[key] = true; results.push({ name: r.customer_name, phone: r.phone || '' }); }
+      });
+      var { data: invRows } = await sb.from('invoices').select('cust_name, phone').ilike('cust_name', '%' + q + '%').limit(10);
+      (invRows || []).forEach(function(r) {
+        var key = (r.cust_name||'') + '|' + (r.phone||'');
+        if (!seen[key] && r.cust_name) { seen[key] = true; results.push({ name: r.cust_name, phone: r.phone || '' }); }
+      });
+      if (!dropdown) return;
+      if (!results.length) {
+        dropdown.innerHTML = '<div style="padding:8px 10px;color:#94a3b8;font-size:0.74rem;font-family:Montserrat,sans-serif;">No match</div>';
+        dropdown.style.display = 'block';
+        return;
+      }
+      dropdown.innerHTML = results.slice(0, 10).map(function(r) {
+        return '<div onclick="_adminEditSelectCustomer(\'' + encodeURIComponent(r.name) + '\',\'' + encodeURIComponent(r.phone) + '\')" '
+          + 'style="padding:8px 10px;cursor:pointer;font-family:Montserrat,sans-serif;font-size:0.76rem;border-bottom:1px solid #f1f5f9;" '
+          + 'onmouseover="this.style.background=\'#f0f4ff\'" onmouseout="this.style.background=\'#fff\'">'
+          + '<strong>' + r.name + '</strong>' + (r.phone ? ' <span style="color:#94a3b8;">— ' + r.phone + '</span>' : '')
+          + '</div>';
+      }).join('');
+      dropdown.style.display = 'block';
+    } catch(e) { console.warn(e); }
+  }, 350);
+}
+
+function _adminEditSelectCustomer(encName, encPhone) {
+  try {
+    var name  = decodeURIComponent(encName);
+    var phone = decodeURIComponent(encPhone || '');
+    document.getElementById('adminEditSearchInput').value = name;
+    document.getElementById('adminEditCurrentName').textContent  = name;
+    document.getElementById('adminEditCurrentPhone').textContent = phone || 'No phone';
+    document.getElementById('adminEditDropdown').style.display  = 'none';
+    document.getElementById('adminEditForm').style.display      = '';
+    document.getElementById('adminEditNewName').value  = '';
+    document.getElementById('adminEditNewPhone').value = '';
+  } catch(e) { console.warn(e); }
+}
+
+async function adminApplyEdit() {
+  var sess = _authGetSession();
+  if (!sess || sess.role !== 'admin') { toast('⛔ Admin only'); return; }
+  var oldName  = document.getElementById('adminEditCurrentName').textContent;
+  var newName  = document.getElementById('adminEditNewName').value.trim();
+  var newPhone = document.getElementById('adminEditNewPhone').value.trim();
+  if (!newName && !newPhone) { toast('⚠ Enter a new name or phone'); return; }
+  try {
+    if (newName && newName !== oldName) {
+      var check = await _checkNameExists(newName);
+      var existingCount = (check.inv_count || 0) + (check.excel_count || 0);
+      if (existingCount > 0) {
+        if (!confirm('⚠ "' + newName + '" already has ' + existingCount + ' record(s). This will merge them. Continue?')) return;
+      }
+      var { data: rpcData, error: rpcErr } = await sb.rpc('update_customer_name', { p_old_name: oldName, p_new_name: newName });
+      if (rpcErr) throw rpcErr;
+      toast('✅ Renamed — ' + ((rpcData && rpcData[0] && rpcData[0].total) || 0) + ' record(s) updated');
+    }
+    if (newPhone) {
+      await updateCustomerPhone(newName || oldName, newPhone);
+    }
+    adminCancelEdit();
+    if (typeof renderDB === 'function') renderDB();
+  } catch(e) { console.error(e); toast('⚠ Failed: ' + (e.message || e)); }
+}
+
+function adminCancelEdit() {
+  document.getElementById('adminEditForm').style.display        = 'none';
+  document.getElementById('adminEditSearchInput').value        = '';
+  document.getElementById('adminEditDropdown').style.display   = 'none';
+}
+
+var _adminEditNewNameTimer = null;
+async function _adminEditNewNameSearch(query) {
+  clearTimeout(_adminEditNewNameTimer);
+  var dropdown = document.getElementById('adminEditNewNameDropdown');
+  if (!query || query.trim().length < 2) {
+    if (dropdown) dropdown.style.display = 'none';
+    return;
+  }
+  _adminEditNewNameTimer = setTimeout(async function() {
+    if (!sb) return;
+    try {
+      var q = query.trim();
+      var results = [];
+      var seen = {};
+      var { data: exRows } = await sb.from('excel_invoices').select('customer_name, phone').ilike('customer_name', '%' + q + '%').limit(10);
+      (exRows || []).forEach(function(r) {
+        var key = (r.customer_name||'') + '|' + (r.phone||'');
+        if (!seen[key] && r.customer_name) { seen[key] = true; results.push({ name: r.customer_name, phone: r.phone || '' }); }
+      });
+      var { data: invRows } = await sb.from('invoices').select('cust_name, phone').ilike('cust_name', '%' + q + '%').limit(10);
+      (invRows || []).forEach(function(r) {
+        var key = (r.cust_name||'') + '|' + (r.phone||'');
+        if (!seen[key] && r.cust_name) { seen[key] = true; results.push({ name: r.cust_name, phone: r.phone || '' }); }
+      });
+      if (!dropdown) return;
+      if (!results.length) {
+        dropdown.innerHTML = '<div style="padding:8px 10px;color:#16a34a;font-size:0.74rem;font-family:Montserrat,sans-serif;">✓ No match — "' + q + '" will be created as a new name</div>';
+        dropdown.style.display = 'block';
+        return;
+      }
+      dropdown.innerHTML = '<div style="padding:6px 10px;color:#92400e;font-size:0.68rem;background:#fffbeb;border-bottom:1px solid #fde68a;">⚠ Selecting one of these will MERGE into that existing customer</div>'
+        + results.slice(0, 10).map(function(r) {
+            return '<div onclick="_adminEditSelectNewName(\'' + encodeURIComponent(r.name) + '\')" '
+              + 'style="padding:8px 10px;cursor:pointer;font-family:Montserrat,sans-serif;font-size:0.76rem;border-bottom:1px solid #f1f5f9;" '
+              + 'onmouseover="this.style.background=\'#fef2f2\'" onmouseout="this.style.background=\'#fff\'">'
+              + '<strong>' + r.name + '</strong>' + (r.phone ? ' <span style="color:#94a3b8;">— ' + r.phone + '</span>' : '')
+              + '</div>';
+          }).join('');
+      dropdown.style.display = 'block';
+    } catch(e) { console.warn('[_adminEditNewNameSearch]', e); }
+  }, 350);
+}
+
+function _adminEditSelectNewName(encodedName) {
+  try {
+    document.getElementById('adminEditNewName').value = decodeURIComponent(encodedName);
+    document.getElementById('adminEditNewNameDropdown').style.display = 'none';
+  } catch(e) { console.warn(e); }
+}
+
+document.addEventListener('click', function(e) {
+  var dd  = document.getElementById('adminEditDropdown');
+  var inp = document.getElementById('adminEditSearchInput');
+  if (dd && inp && !inp.contains(e.target) && !dd.contains(e.target)) dd.style.display = 'none';
+});
+
+document.addEventListener('click', function(e) {
+  var dd  = document.getElementById('adminEditNewNameDropdown');
+  var inp = document.getElementById('adminEditNewName');
+  if (dd && inp && !inp.contains(e.target) && !dd.contains(e.target)) dd.style.display = 'none';
+});
+
+function _eagGrantFromForm() {
+  var _debugSess = _authGetSession();
+  console.log('[DEBUG grant] sess.id:', _debugSess ? _debugSess.id : 'NO SESSION', 'role:', _debugSess ? _debugSess.role : 'N/A');
+  var userId   = document.getElementById('eagUserSelect').value;
+  var allCust  = document.getElementById('eagAllCustomers').checked;
+  var custName = allCust ? '*' : document.getElementById('eagCustNameInput').value.trim();
+  var phone    = allCust ? null : (document.getElementById('eagCustPhoneInput').value.trim() || null);
+  var duration = document.getElementById('eagDurationSelect').value;
+  if (!userId) { toast('⚠ Select a staff member'); return; }
+  if (!custName) { toast('⚠ Enter or select a customer name'); return; }
+  grantEditAccess(userId, custName, phone, duration ? parseFloat(duration) : null);
+  var allEl = document.getElementById('eagAllCustomers');
+  if (allEl) { allEl.checked = false; _eagToggleAllCustomers(false); }
+  document.getElementById('eagCustNameInput').value = '';
+  document.getElementById('eagCustPhoneInput').value = '';
+  var dd = document.getElementById('eagCustDropdown'); if (dd) dd.style.display = 'none';
+}
+
+var _eagSearchTimer = null;
+async function _eagSearchCustomers(query) {
+  clearTimeout(_eagSearchTimer);
+  var dropdown = document.getElementById('eagCustDropdown');
+  if (!query || query.trim().length < 2) {
+    if (dropdown) dropdown.style.display = 'none';
+    return;
+  }
+  _eagSearchTimer = setTimeout(async function() {
+    if (!sb) return;
+    try {
+      var q = query.trim();
+      var results = [];
+      var seen = {};
+
+      var { data: exRows } = await sb.from('excel_invoices')
+        .select('customer_name, phone')
+        .ilike('customer_name', '%' + q + '%')
+        .limit(15);
+      (exRows || []).forEach(function(r) {
+        var key = (r.customer_name||'') + '|' + (r.phone||'');
+        if (!seen[key] && r.customer_name) { seen[key] = true; results.push({ name: r.customer_name, phone: r.phone || '' }); }
+      });
+
+      var { data: invRows } = await sb.from('invoices')
+        .select('cust_name, phone')
+        .ilike('cust_name', '%' + q + '%')
+        .limit(15);
+      (invRows || []).forEach(function(r) {
+        var key = (r.cust_name||'') + '|' + (r.phone||'');
+        if (!seen[key] && r.cust_name) { seen[key] = true; results.push({ name: r.cust_name, phone: r.phone || '' }); }
+      });
+
+      if (!dropdown) return;
+      if (!results.length) {
+        dropdown.innerHTML = '<div style="padding:10px 12px;color:#94a3b8;font-size:0.78rem;font-family:Montserrat,sans-serif;">No matching customers</div>';
+        dropdown.style.display = 'block';
+        return;
+      }
+
+      dropdown.innerHTML = results.slice(0, 20).map(function(r) {
+        return '<div onclick="_eagSelectCustomer(\'' + encodeURIComponent(JSON.stringify({name:r.name,phone:r.phone})) + '\')" '
+          + 'style="padding:9px 12px;cursor:pointer;font-family:Montserrat,sans-serif;font-size:0.78rem;border-bottom:1px solid #f1f5f9;" '
+          + 'onmouseover="this.style.background=\'#f0f4ff\'" onmouseout="this.style.background=\'#fff\'">'
+          + '<strong>' + r.name + '</strong>' + (r.phone ? ' <span style="color:#94a3b8;">— ' + r.phone + '</span>' : '')
+          + '</div>';
+      }).join('');
+      dropdown.style.display = 'block';
+    } catch(e) { console.warn('[_eagSearchCustomers]', e); }
+  }, 350);
+}
+
+function _eagSelectCustomer(encodedData) {
+  try {
+    var info = JSON.parse(decodeURIComponent(encodedData));
+    document.getElementById('eagCustNameInput').value = info.name;
+    document.getElementById('eagCustPhoneInput').value = info.phone || '';
+    document.getElementById('eagCustDropdown').style.display = 'none';
+  } catch(e) { console.warn(e); }
+}
+
+function _eagToggleAllCustomers(checked) {
+  var nameInput  = document.getElementById('eagCustNameInput');
+  var phoneInput = document.getElementById('eagCustPhoneInput');
+  var dropdown   = document.getElementById('eagCustDropdown');
+  if (!nameInput || !phoneInput) return;
+  if (checked) {
+    nameInput.value    = 'All Customers';
+    nameInput.readOnly = true;
+    nameInput.style.background  = '#f0fdf4';
+    nameInput.style.color       = '#059669';
+    nameInput.style.fontWeight  = '700';
+    phoneInput.value    = '';
+    phoneInput.disabled = true;
+    if (dropdown) dropdown.style.display = 'none';
+  } else {
+    nameInput.value    = '';
+    nameInput.readOnly = false;
+    nameInput.style.background = '';
+    nameInput.style.color      = '';
+    nameInput.style.fontWeight = '';
+    phoneInput.value    = '';
+    phoneInput.disabled = false;
+  }
+}
+
+document.addEventListener('click', function(e) {
+  var dropdown = document.getElementById('eagCustDropdown');
+  var input = document.getElementById('eagCustNameInput');
+  if (dropdown && input && !input.contains(e.target) && !dropdown.contains(e.target)) {
+    dropdown.style.display = 'none';
+  }
+});
 
 // Parses a DD-Mon-YYYY entry date (e.g. "05-Jun-2025") and returns
 // the number of calendar days elapsed since that date.
@@ -7686,7 +8360,7 @@ function _electronPrintHtml(htmlStr) {
   setTimeout(function() { window.print(); }, 600);
 }
 
-function renderDB() {
+async function renderDB() {
   const tbody = document.getElementById('dbBody');
   var _isMob = window.matchMedia('(max-width:767px)').matches;
   if (_isMob && !document.getElementById('_mobDbCellFix')) {
@@ -7785,22 +8459,6 @@ function renderDB() {
   // Reset to page 1 when actively searching
   if (dbNameQ || dbInvQ) _dbPage = 1;
 
-  // ── Phone edit banner (shows only on name search) ──
-  (function() {
-    var bannerEl = document.getElementById('dbPhoneEditBanner');
-    if (!bannerEl) return;
-    if (!dbNameQ || dbInvQ) { bannerEl.style.display = 'none'; bannerEl.innerHTML = ''; return; }
-    // Derive canonical name + current phone from first matching row
-    var bName = '', bPhone = '';
-    var exRow = (_excelDBCache||[]).find(function(r){ return (r.customer_name||'').toLowerCase().includes(dbNameQ); });
-    if (exRow) { bName = exRow.customer_name||''; bPhone = (exRow.phone||'').replace(/[^0-9]/g,''); }
-    var newRow = database.find(function(inv){ return !inv.isDraft && !inv.isNull && (inv.custName||'').toLowerCase().includes(dbNameQ); });
-    if (newRow) { if (!bName) bName = newRow.custName||''; if (!bPhone && newRow.phone) bPhone = (newRow.phone||'').replace(/[^0-9]/g,''); }
-    if (!bName) { bannerEl.style.display = 'none'; return; }
-    bannerEl.innerHTML = _buildDbPhoneBanner(bName, bPhone);
-    bannerEl.style.display = '';
-  })();
-
   // Exact match when name was selected from dropdown; partial match while typing
   const _nameMatch = _dbExactName
     ? function(n){ return (n||'').toLowerCase() === _dbExactName; }
@@ -7821,6 +8479,32 @@ function renderDB() {
     if (dbInvQ  && !_invMatch(inv.invNum)) return false;
     return true;
   });
+
+  // Pre-fetch current user's active edit-access grants (one query, not per-row)
+  var _editGrantSet = new Set();
+  var _editGrantAll = false;
+  var _sess = typeof _authGetSession === 'function' ? _authGetSession() : null;
+  var _isAdminDB = _sess && _sess.role === 'admin';
+  if (!_isAdminDB && _sess && sb) {
+    try {
+      var { data: _grants } = await sb.from('edit_access_grants')
+        .select('customer_name, phone, expires_at')
+        .eq('granted_to', _sess.id)
+        .eq('status', 'active');
+      (_grants || []).forEach(function(g) {
+        if (!g.expires_at || new Date(g.expires_at) > new Date()) {
+          if (g.customer_name === '*') { _editGrantAll = true; }
+          else { _editGrantSet.add((g.customer_name||'') + '|' + (g.phone||'')); }
+        }
+      });
+    } catch(e) { console.warn('[renderDB grants]', e); }
+  }
+  function _dbHasEditAccess(custName, phone) {
+    if (_isAdminDB) return true;
+    if (_editGrantAll) return true;
+    var _p = (phone && phone !== '—') ? phone : '';
+    return _editGrantSet.has((custName||'') + '|' + _p);
+  }
 
   // Filter excel rows by db name/invoice search if active
   const excelFiltered = (_excelDBCache || []).filter(function(r) {
@@ -7898,7 +8582,7 @@ function renderDB() {
         + '<td class="mono">' + row.phone + '</td>'
         + '<td class="mono" style="color:#0f766e;font-weight:700;white-space:nowrap;">' + row.invNum + '</td>'
         + '<td style="min-width:90px;white-space:nowrap;">'
-        +   (_isInvoiceLocked(row.date)
+        +   (_isInvoiceLocked(row.date) && !_dbHasEditAccess(row.custName, row.phone)
               ? '<span style="color:#d97706;font-weight:700;" title="🔒 Locked — 40+ days old">Rs.' + fmt(row.total) + ' 🔒</span>'
               : ('<span id="tbDisp_' + oNum + '" style="color:#d97706;font-weight:700;cursor:pointer;" '
                 +     'onclick="showTbEdit(\'' + oNum + '\',this)" title="Click to edit">Rs.' + fmt(row.total) + ' ✎</span>'
@@ -7924,11 +8608,13 @@ function renderDB() {
         <td>${inv.custName || (inv.isNull ? '<em style="color:#e74c3c">NULL</em>' : '—')}</td>
         <td class="mono">${inv.phone || '—'}</td>
         <td class="mono gold">${inv.invNum}${statusBadge}</td>
-        <td class="mono gold">${inv.isNull ? '<span style="color:#e74c3c">—</span>' : 'Rs.' + fmt(inv.afterDiscount ?? inv.total) + (_isInvoiceLocked(inv.date) ? ' 🔒' : '')}</td>
+        <td class="mono gold">${inv.isNull ? '<span style="color:#e74c3c">—</span>' : 'Rs.' + fmt(inv.afterDiscount ?? inv.total) + ((_isInvoiceLocked(inv.date) && !_dbHasEditAccess(inv.custName, inv.phone||'')) ? ' 🔒' : '')}</td>
         <td>
           <div class="db-action-row">
             <button class="db-icon-btn" title="View" onclick="viewInvoice(${idx})">👁</button>
-            ${!inv.isNull ? `<button class="db-icon-btn edit" title="Edit" onclick="editInvoice(${idx})">✎</button>` : ''}
+            ${!inv.isNull ? ((_isInvoiceLocked(inv.date) && !_dbHasEditAccess(inv.custName, inv.phone||''))
+              ? `<span title="🔒 Locked — 40+ days old. Request edit access from admin." style="color:#d97706;font-size:0.85rem;cursor:default;">🔒</span>`
+              : `<button class="db-icon-btn edit" title="Edit" onclick="editInvoice(${idx})">✎</button>`) : ''}
           </div>
         </td>
       </tr>`;
@@ -8477,9 +9163,17 @@ async function fixExcelInvoiceDates() {
   _excelDBCache = null;
 }
 
-function editInvoice(idx) {
+async function editInvoice(idx) {
   const inv = database[idx];
   if (!inv) return;
+
+  if (_isInvoiceLocked(inv.date)) {
+    var _canEditThis = await _hasEditAccess(inv.custName, inv.phone || '');
+    if (!_canEditThis) {
+      toast('🔒 This invoice is locked (40+ days old). Ask admin for edit access.');
+      return;
+    }
+  }
 
   showModal('✎ Edit Invoice ' + inv.invNum,
     `You are about to edit <strong>${inv.invNum}</strong> (${inv.custName || '—'}).<br><br>
@@ -10570,7 +11264,7 @@ async function fetchCustomerInvoices(name, phone, nameQuery) {
   if (typeof sb !== 'undefined' && sb) {
     // ── excel_invoices: identity-first fetch ──
     try {
-      var _exFull = 'customer_name,phone,order_num,date,total_bill,received,received1,received_entries,bad_debt,discount,remaining';
+      var _exFull = 'customer_name,phone,order_num,date,total_bill,received,received_entries,bad_debt,discount,remaining';
 
       // STEP 1 — Resolve customer identity (phone is primary, name is fallback)
       var resolvedPhone = ph0;
@@ -11822,69 +12516,7 @@ async function diagnoseMissingRows() {
   );
 }
 
-// ── Phone Edit Banner helpers ──
-function _buildDbPhoneBanner(name, phone) {
-  var safePhone = (phone||'').replace(/[^0-9]/g,'');
-  var enc = encodeURIComponent(name);
-  var phoneHtml = safePhone
-    ? '<span style="font-family:\'Courier New\',monospace;font-size:0.92rem;font-weight:700;color:#1e293b;letter-spacing:1px;">+92 ' + safePhone + '</span>'
-    : '<span style="font-family:Montserrat,sans-serif;font-size:0.82rem;color:#94a3b8;font-style:italic;">No phone on file</span>';
-  return '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 16px;'
-    + 'display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
-    + '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">'
-    +   '<span style="font-family:Montserrat,sans-serif;font-size:0.85rem;font-weight:600;color:#334155;">' + name + '</span>'
-    +   '<span style="color:#e2e8f0;font-size:1rem;">|</span>'
-    +   phoneHtml
-    + '</div>'
-    + '<div style="display:flex;align-items:center;gap:6px;">'
-    +   '<button id="dbPhoneEditOpenBtn" onclick="openDbPhoneEdit(\'' + enc + '\',\'' + safePhone + '\')" '
-    +     'style="background:rgba(99,102,241,0.1);color:#6366f1;border:1.5px solid rgba(99,102,241,0.4);'
-    +     'border-radius:7px;padding:5px 13px;font-family:Montserrat,sans-serif;font-size:0.74rem;font-weight:700;cursor:pointer;">'
-    +     '✎ Edit Phone</button>'
-    +   '<span id="dbPhoneEditForm" style="display:none;align-items:center;gap:0;">'
-    +     '<span style="background:#f1f5f9;border:1.5px solid #6366f1;border-right:none;border-radius:7px 0 0 7px;'
-    +       'padding:5px 9px;font-family:Montserrat,sans-serif;font-size:0.8rem;font-weight:700;color:#6366f1;'
-    +       'white-space:nowrap;">+92</span>'
-    +     '<input id="dbPhoneEditInput" type="text" maxlength="10" placeholder="3XXXXXXXXX" '
-    +       'oninput="this.value=this.value.replace(/[^0-9]/g,\'\')" '
-    +       'onkeydown="if(event.key===\'Enter\'){saveDbPhoneEdit(\'' + enc + '\');}" '
-    +       'style="padding:5px 10px;border:1.5px solid #6366f1;border-radius:0 7px 7px 0;font-family:Montserrat,sans-serif;'
-    +       'font-size:0.8rem;outline:none;width:120px;margin-right:6px;">'
-    +     '<button onclick="saveDbPhoneEdit(\'' + enc + '\')" '
-    +       'style="background:#10b981;color:#fff;border:none;border-radius:7px;padding:5px 13px;'
-    +       'font-family:Montserrat,sans-serif;font-size:0.74rem;font-weight:700;cursor:pointer;">✓ Save</button>'
-    +     '<button onclick="closeDbPhoneEdit()" '
-    +       'style="background:rgba(100,116,139,0.12);color:#64748b;border:1.5px solid #cbd5e1;border-radius:7px;'
-    +       'padding:5px 9px;font-family:Montserrat,sans-serif;font-size:0.74rem;cursor:pointer;margin-left:4px;">✕</button>'
-    +   '</span>'
-    + '</div>'
-    + '</div>';
-}
-
-function openDbPhoneEdit(enc, currentPhone) {
-  var btn  = document.getElementById('dbPhoneEditOpenBtn');
-  var form = document.getElementById('dbPhoneEditForm');
-  var inp  = document.getElementById('dbPhoneEditInput');
-  if (btn)  btn.style.display  = 'none';
-  if (form) { form.style.display = 'flex'; }
-  if (inp)  { inp.value = currentPhone || ''; inp.focus(); if (inp.value) inp.select(); }
-}
-
-function closeDbPhoneEdit() {
-  var btn  = document.getElementById('dbPhoneEditOpenBtn');
-  var form = document.getElementById('dbPhoneEditForm');
-  if (btn)  btn.style.display  = '';
-  if (form) form.style.display = 'none';
-}
-
-async function saveDbPhoneEdit(enc) {
-  var name = decodeURIComponent(enc);
-  var inp  = document.getElementById('dbPhoneEditInput');
-  if (!inp) return;
-  var newPhone = inp.value.replace(/[^0-9]/g,'').trim();
-  if (!newPhone) { toast('⚠️ Enter a valid phone number'); inp.focus(); return; }
-  await updateCustomerPhone(name, newPhone);
-}
+// ── Total Bill inline edit helpers ──
 
 async function updateCustomerPhone(name, newPhone) {
   var trimName = name.trim();
@@ -11934,6 +12566,88 @@ async function updateCustomerPhone(name, newPhone) {
   toast('✅ Phone updated to ' + newPhone + ' — ' + displayTotal + ' invoice(s) updated for ' + trimName);
   renderDB();
   renderSummary();
+}
+
+// ── Identity Change Request helpers ──
+
+async function requestIdentityChange(oldName, oldPhone, newName, newPhone, reason) {
+  var sess = _authGetSession();
+  if (!sess) { toast('⚠ Not logged in'); return; }
+  if (!sb) { toast('📵 Cannot request — offline'); return; }
+  var changeType = (newName && newPhone) ? 'both' : (newName ? 'name' : 'phone');
+  try {
+    await sb.from('identity_change_requests').insert({
+      old_name: oldName,
+      old_phone: oldPhone || null,
+      new_name: newName || null,
+      new_phone: newPhone || null,
+      change_type: changeType,
+      requested_by: sess.id,
+      reason: reason || '',
+      status: 'pending',
+      requested_at: new Date().toISOString()
+    });
+    toast('📨 Change request sent to admin');
+  } catch(e) { console.error(e); toast('⚠ Failed to send request'); }
+}
+
+async function approveIdentityChange(requestId) {
+  var sess = _authGetSession();
+  if (!sess || sess.role !== 'admin') { toast('⛔ Admin only'); return; }
+  if (!sb) { toast('📵 Cannot approve — offline'); return; }
+  try {
+    var { data: reqRows } = await sb.from('identity_change_requests').select('*').eq('id', requestId).limit(1);
+    if (!reqRows || !reqRows.length) { toast('⚠ Request not found'); return; }
+    var req = reqRows[0];
+    var totalRows = 0;
+
+    if (req.new_name) {
+      var { data: rpcData, error: rpcErr } = await sb.rpc('update_customer_name', {
+        p_old_name: req.old_name, p_new_name: req.new_name
+      });
+      if (rpcErr) throw rpcErr;
+      totalRows += (rpcData && rpcData[0] && rpcData[0].total) || 0;
+    }
+
+    if (req.new_phone) {
+      if (typeof updateCustomerPhone === 'function') {
+        await updateCustomerPhone(req.new_name || req.old_name, req.new_phone);
+      }
+    }
+
+    await sb.from('identity_change_requests').update({
+      status: 'approved',
+      reviewed_by: sess.id,
+      reviewed_at: new Date().toISOString(),
+      rows_affected: totalRows
+    }).eq('id', requestId);
+
+    toast('✅ Change approved — ' + totalRows + ' record(s) updated');
+    if (typeof renderIdentityChangePanel === 'function') renderIdentityChangePanel();
+    if (typeof renderDB === 'function') renderDB();
+  } catch(e) { console.error(e); toast('⚠ Failed to approve: ' + (e.message || e)); }
+}
+
+async function denyIdentityChange(requestId) {
+  var sess = _authGetSession();
+  if (!sess || sess.role !== 'admin') { toast('⛔ Admin only'); return; }
+  try {
+    await sb.from('identity_change_requests').update({
+      status: 'denied',
+      reviewed_by: sess.id,
+      reviewed_at: new Date().toISOString()
+    }).eq('id', requestId);
+    toast('✕ Request denied');
+    if (typeof renderIdentityChangePanel === 'function') renderIdentityChangePanel();
+  } catch(e) { console.error(e); toast('⚠ Failed to deny'); }
+}
+
+async function _checkNameExists(name) {
+  if (!sb || !name) return { inv_count: 0, excel_count: 0 };
+  try {
+    var { data } = await sb.rpc('count_customer_invoices', { p_name: name });
+    return (data && data[0]) || { inv_count: 0, excel_count: 0 };
+  } catch(e) { console.warn(e); return { inv_count: 0, excel_count: 0 }; }
 }
 
 // ── Total Bill inline edit helpers ──
@@ -15044,7 +15758,7 @@ function switchTab(tab, el) {
   if (tab === 'search')   { _searchPage = 1; renderSearchTab(); }
   if (tab === 'summary')  { initSummaryFilters(); renderSummary(); initSqftDropdown(); }
   if (tab === 'finance')  { initFinanceTab(); const _finFirst = document.querySelector('#finSubTabs .fin-sub-tab'); if (_finFirst) _finFirst.click(); }
-  if (tab === 'settings') { ctrlLoad(); const _setFirst = document.querySelector('#setSubTabs .fin-sub-tab'); if (_setFirst) _setFirst.click(); }
+  if (tab === 'settings') { ctrlLoad(); const _setFirst = document.querySelector('#setSubTabs .fin-sub-tab'); if (_setFirst) _setFirst.click(); var _s=typeof _authGetSession==='function'&&_authGetSession();if(_s&&_s.role==='admin'&&typeof renderEditAccessPanel==='function')renderEditAccessPanel(); }
   if (tab === 'payment') {
     var _rpSavedName  = sessionStorage.getItem('rp_name')  || '';
     var _rpSavedPhone = sessionStorage.getItem('rp_phone') || '';
@@ -15539,6 +16253,8 @@ async function rpRenderCustomerPanel(name, phone) {
   var panel = document.getElementById('rpCustomerPanel');
   panel.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">Loading...</div>';
 
+  var _canEdit = await _hasEditAccess(name, phone);
+
   var d = await rpGetCustomerSummary(name);
   var newInvs = d.newInvs, exInvs = d.exInvs, payments = d.payments;
   var totalBilled = d.totalBilled, totalDiscount = d.totalDiscount;
@@ -15584,7 +16300,7 @@ async function rpRenderCustomerPanel(name, phone) {
     var _editBtn = '';
     if (_isExcel) {
       var _invDaysSince = (new Date() - new Date(inv.date)) / (1000*60*60*24);
-      if (_invDaysSince > 40) {
+      if (_invDaysSince > 40 && !_canEdit) {
         _editBtn = '<span style="color:#cbd5e1;font-size:0.65rem;margin-left:4px;" title="Locked after 40 days from invoice date">🔒</span>';
       } else {
         _editBtn = '<button onclick="rpEditExcelTotal(\'' + String(inv.invNum).replace(/^INV-/i,'') + '\',\'' + inv.total + '\')" style="padding:1px 6px;background:#eff6ff;border:1px solid #3b82f6;border-radius:4px;color:#1d4ed8;font-size:0.65rem;cursor:pointer;font-family:Montserrat,sans-serif;margin-left:4px;">✏️</button>';
@@ -15603,7 +16319,7 @@ async function rpRenderCustomerPanel(name, phone) {
       actionBtn = '<button onclick="rpEditPayment(\'' + p.id + '\',\'' + p.amount + '\',\'' + encodeURIComponent(name) + '\',\'payment\',true)" style="padding:2px 8px;background:#f0fdf4;border:1px solid #059669;border-radius:5px;color:#059669;font-size:0.72rem;cursor:pointer;font-family:Montserrat,sans-serif;" title="Edit amount only">✏️ Edit</button>';
     } else if (p.invoice_ref) {
       actionBtn = '<span style="color:#cbd5e1;font-size:0.7rem;" title="Recorded from invoice ' + p.invoice_ref + ' — edit the invoice to change this amount">🔒</span>';
-    } else if (_daysSince > 40) {
+    } else if (_daysSince > 40 && !_canEdit) {
       actionBtn = '<span style="color:#cbd5e1;font-size:0.7rem;" title="Locked after 40 days — no further edits allowed">🔒 Locked</span>';
     } else {
       var _daysLeft = Math.ceil(40 - _daysSince);
@@ -15669,7 +16385,8 @@ async function rpRenderCustomerPanel(name, phone) {
   panel.innerHTML =
     '<div style="font-size:0.72rem;color:#64748b;padding:8px 12px;background:#f8fafc;border-radius:8px;margin-bottom:10px;border:1px solid #e2e8f0;">ℹ️ Invoice totals & payment entries lock automatically after 40 days. Discounts & bad debts can be edited anytime.</div>' +
     '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:14px;">' +
-      '<div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.95rem;color:#1e293b;margin-bottom:12px;">' + name + (phone ? ' <span style="font-weight:400;color:#64748b;font-size:0.78rem;">📞 ' + phone + '</span>' : '') + '</div>' +
+      '<div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.95rem;color:#1e293b;margin-bottom:6px;">' + name + (phone ? ' <span style="font-weight:400;color:#64748b;font-size:0.78rem;">📞 ' + phone + '</span>' : '') + '</div>' +
+      (function(){ var _s=_authGetSession(); if(_s&&_s.role==='admin') return ''; var _enc=encodeURIComponent(name); var _encPh=encodeURIComponent(phone||''); return '<div style="margin-bottom:10px;"><button onclick="document.getElementById(\'rpIcrForm_'+_enc+'\').style.display=\'\';this.style.display=\'none\';" style="padding:5px 12px;background:rgba(245,158,11,0.1);color:#92400e;border:1.5px solid rgba(245,158,11,0.4);border-radius:7px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.72rem;cursor:pointer;">📨 Request Name/Phone Change</button><div id="rpIcrForm_'+_enc+'" style="display:none;margin-top:8px;background:#fffbeb;border:1.5px solid #fde68a;border-radius:8px;padding:10px;"><input type="text" id="rpIcrNewName" placeholder="New name (optional)" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.76rem;margin-bottom:6px;"><input type="text" id="rpIcrNewPhone" maxlength="10" placeholder="New phone (optional)" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.76rem;margin-bottom:6px;"><input type="text" id="rpIcrReason" placeholder="Reason" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.76rem;margin-bottom:6px;"><button onclick="rpSubmitIcrRequest(\''+_enc+'\',\''+_encPh+'\')" style="padding:5px 12px;background:#059669;color:#fff;border:none;border-radius:6px;font-size:0.72rem;cursor:pointer;">Submit</button></div></div>'; })() +
       '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">' +
         '<div style="background:#f8fafc;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Total Billed</div><div style="font-size:1.1rem;font-weight:700;color:#1e293b;">Rs.' + fmt(totalBilled) + '</div></div>' +
         '<div style="background:#f5f3ff;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Discount</div><div style="font-size:1.1rem;font-weight:700;color:#7c3aed;">Rs.' + fmt(totalDiscount) + '</div></div>' +
@@ -15717,6 +16434,20 @@ async function rpRenderCustomerPanel(name, phone) {
       '</div>' +
       '<div id="rpEntryStatus" style="margin-top:8px;font-size:0.75rem;"></div>' +
     '</div>';
+}
+
+async function rpSubmitIcrRequest(encName, encPhone) {
+  var name  = decodeURIComponent(encName);
+  var phone = decodeURIComponent(encPhone || '');
+  var newName  = (document.getElementById('rpIcrNewName')  || {}).value || '';
+  var newPhone = (document.getElementById('rpIcrNewPhone') || {}).value || '';
+  var reason   = (document.getElementById('rpIcrReason')   || {}).value || '';
+  newName  = newName.trim();
+  newPhone = newPhone.replace(/[^0-9]/g, '').trim();
+  if (!newName && !newPhone) { toast('⚠ Enter a new name or phone'); return; }
+  await requestIdentityChange(name, phone || null, newName || null, newPhone || null, reason);
+  var formEl = document.getElementById('rpIcrForm_' + encName);
+  if (formEl) formEl.style.display = 'none';
 }
 
 async function rpAddEntry() {
@@ -26002,19 +26733,20 @@ function _deRenderInlinePreview() {
 
 // ── Override switchSettingsTab to handle new panels ───────────
 (function(){
-  var _allP=['setCategories','setInvoice','setPartners','setData','setDragEditor','setWatermark','setTemplates'];
+  var _allP=['setCategories','setInvoice','setPartners','setData','setDragEditor','setWatermark','setTemplates','setEditAccess'];
   switchSettingsTab=function(tab,el){
     document.querySelectorAll('#setSubTabs .fin-sub-tab').forEach(function(t){t.classList.remove('active');});
     if(el) el.classList.add('active');
     _allP.forEach(function(id){var p=document.getElementById(id);if(p)p.style.display='none';});
-    var map={categories:'setCategories',invoice:'setInvoice',partners:'setPartners',data:'setData',dragEditor:'setDragEditor',watermark:'setWatermark',templates:'setTemplates'};
+    var map={categories:'setCategories',invoice:'setInvoice',partners:'setPartners',data:'setData',dragEditor:'setDragEditor',watermark:'setWatermark',templates:'setTemplates',editaccess:'setEditAccess'};
     var pid=map[tab]; if(pid){var p=document.getElementById(pid);if(p)p.style.display='';}
-    if(tab==='categories')  renderCategoriesTab();
-    if(tab==='invoice')     loadInvoiceSettings();
-    if(tab==='partners')    renderPartnersUI();
-    if(tab==='dragEditor')  initDragEditor();
-    if(tab==='watermark')   wmLoad();
-    if(tab==='templates')   tmplRenderAll();
+    if(tab==='categories') renderCategoriesTab();
+    if(tab==='invoice')    loadInvoiceSettings();
+    if(tab==='partners')   renderPartnersUI();
+    if(tab==='dragEditor') initDragEditor();
+    if(tab==='watermark')  wmLoad();
+    if(tab==='templates')  tmplRenderAll();
+    if(tab==='editaccess') { renderEditAccessPanel(); renderIdentityChangePanel(); }
   };
 })();
 
@@ -27199,6 +27931,13 @@ function _authApplyPermissions(sess) {
   var cashCustodySubTabSidebar = document.getElementById('cashCustodySubTabSidebar');
   if(cashCustodySubTabSidebar) cashCustodySubTabSidebar.style.display = isAdmin ? '' : 'none';
 
+  // Show Edit Access Control sub-tab only for admin
+  var eagEditAccessSubTab = document.getElementById('eagEditAccessSubTab');
+  if(eagEditAccessSubTab) eagEditAccessSubTab.style.display = isAdmin ? '' : 'none';
+  var eagEditAccessSubTabSidebar = document.getElementById('eagEditAccessSubTabSidebar');
+  if(eagEditAccessSubTabSidebar) eagEditAccessSubTabSidebar.style.display = isAdmin ? '' : 'none';
+
+
   // Auto-switch to first permitted tab
   var order = ['invoice','payment','production','summary','search','database','finance','settings'];
   var lastTab = localStorage.getItem('last_active_tab') || '';
@@ -27648,6 +28387,16 @@ function _authInjectSettingsTab() {
     subTabs.appendChild(ccBtn);
   }
 
+  // 1c. Add Edit Access Control sub-tab button (admin only)
+  if(subTabs && !document.getElementById('eagEditAccessSubTab')) {
+    var eaBtn = document.createElement('div');
+    eaBtn.id = 'eagEditAccessSubTab';
+    eaBtn.className = 'fin-sub-tab';
+    eaBtn.innerHTML = '🔐 Edit Access <span id="eagPendingBadge" style="display:none;background:#ef4444;color:#fff;border-radius:10px;padding:1px 7px;font-size:0.65rem;margin-left:4px;">0</span>';
+    eaBtn.style.display = 'none';
+    eaBtn.onclick = function(){ window.switchSettingsTab('editaccess', this); };
+    subTabs.appendChild(eaBtn);
+  }
   // 2. Inject panel container
   var sp = document.querySelector('#settingsTab .db-panel');
   if(sp && !document.getElementById('authUsersPanel')) {
@@ -27712,6 +28461,10 @@ function _authInjectSettingsTab() {
     if (_c1) _c1.style.display = _isAdmin ? '' : 'none';
     var _c2 = document.getElementById('cashCustodySubTabSidebar');
     if (_c2) _c2.style.display = _isAdmin ? '' : 'none';
+    var _e1 = document.getElementById('eagEditAccessSubTab');
+    if (_e1) _e1.style.display = _isAdmin ? '' : 'none';
+    var _e2 = document.getElementById('eagEditAccessSubTabSidebar');
+    if (_e2) _e2.style.display = _isAdmin ? '' : 'none';
   } catch(_e) { console.warn('[settings inject] visibility error:', _e); }
 }
 
