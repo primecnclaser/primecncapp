@@ -3044,8 +3044,6 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         </button>
       </div>
 
-      <div style="margin:4px 0 0;padding:5px 14px;border:1px solid #bae6fd;border-radius:6px;background:#f0f9ff;font-family:'Montserrat',sans-serif;font-size:0.67rem;color:#0369a1;letter-spacing:0.1px;">🔒 After 40 days: Total Bill becomes locked and cannot be edited. Payments lock after 40 days of being added. Discounts and Bad Debt can always be edited. Manage all payments from the Receive Payment tab.</div>
-
       <div id="dbTableWrap" class="db-table-wrap" style="border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:none;">
         <table class="db-table">
           <thead>
@@ -5801,11 +5799,6 @@ function _invDaysOld(dateStr) {
   if (isNaN(y) || isNaN(mo) || isNaN(d)) return 0;
   return Math.floor((Date.now() - new Date(y, mo, d).getTime()) / 86400000);
 }
-// Returns true if Total Bill / Received / Discount edits should be locked for this invoice date
-function _isInvoiceLocked(dateStr) {
-  return _invDaysOld(dateStr) >= 40;
-}
-
 // ══════════════════════════════════════════════
 // EDIT ACCESS CONTROL — helpers & panel
 // ══════════════════════════════════════════════
@@ -8750,8 +8743,8 @@ async function renderDB() {
         + '<td class="mono">' + row.phone + '</td>'
         + '<td class="mono" style="color:#0f766e;font-weight:700;white-space:nowrap;">' + row.invNum + '</td>'
         + '<td style="min-width:90px;white-space:nowrap;">'
-        +   (_isInvoiceLocked(row.date) && !_dbHasEditAccess(row.custName, row.phone)
-              ? '<span style="color:#d97706;font-weight:700;" title="🔒 Locked — 40+ days old">Rs.' + fmt(row.total) + ' 🔒</span>'
+        +   (!_dbHasEditAccess(row.custName, row.phone)
+              ? '<span style="color:#d97706;font-weight:700;" title="🔒 No edit access — request from admin">Rs.' + fmt(row.total) + ' 🔒</span>'
               : ('<span id="tbDisp_' + oNum + '" style="color:#d97706;font-weight:700;cursor:pointer;" '
                 +     'onclick="showTbEdit(\'' + oNum + '\',this)" title="Click to edit">Rs.' + fmt(row.total) + ' ✎</span>'
                 + '<input type="number" id="tbInp_' + oNum + '" class="db-editable" value="' + (row.total||'') + '" style="display:none;color:#d97706;width:82px;font-weight:700;"'
@@ -8776,13 +8769,13 @@ async function renderDB() {
         <td>${inv.custName || (inv.isNull ? '<em style="color:#e74c3c">NULL</em>' : '—')}</td>
         <td class="mono">${inv.phone || '—'}</td>
         <td class="mono gold">${inv.invNum}${statusBadge}</td>
-        <td class="mono gold">${inv.isNull ? '<span style="color:#e74c3c">—</span>' : 'Rs.' + fmt(inv.afterDiscount ?? inv.total) + ((_isInvoiceLocked(inv.date) && !_dbHasEditAccess(inv.custName, inv.phone||'')) ? ' 🔒' : '')}</td>
+        <td class="mono gold">${inv.isNull ? '<span style="color:#e74c3c">—</span>' : 'Rs.' + fmt(inv.afterDiscount ?? inv.total) + (!_dbHasEditAccess(inv.custName, inv.phone||'') ? ' 🔒' : '')}</td>
         <td>
           <div class="db-action-row">
             <button class="db-icon-btn" title="View" onclick="viewInvoice(${idx})">👁</button>
-            ${!inv.isNull ? ((_isInvoiceLocked(inv.date) && !_dbHasEditAccess(inv.custName, inv.phone||''))
-              ? `<span title="🔒 Locked — 40+ days old. Request edit access from admin." style="color:#d97706;font-size:0.85rem;cursor:default;">🔒</span>`
-              : `<button class="db-icon-btn edit" title="Edit" onclick="editInvoice(${idx})">✎</button>`) : ''}
+            ${!inv.isNull ? (_dbHasEditAccess(inv.custName, inv.phone||'')
+              ? `<button class="db-icon-btn edit" title="Edit" onclick="editInvoice(${idx})">✎</button>`
+              : `<span title="🔒 No edit access. Request from admin." style="color:#d97706;font-size:0.85rem;cursor:default;">🔒</span>`) : ''}
           </div>
         </td>
       </tr>`;
@@ -9233,12 +9226,10 @@ async function editInvoice(idx) {
   const inv = database[idx];
   if (!inv) return;
 
-  if (_isInvoiceLocked(inv.date)) {
-    var _canEditThis = await _hasEditAccess(inv.custName, inv.phone || '');
-    if (!_canEditThis) {
-      toast('🔒 This invoice is locked (40+ days old). Ask admin for edit access.');
-      return;
-    }
+  var _canEditThis = await _hasEditAccess(inv.custName, inv.phone || '');
+  if (!_canEditThis) {
+    toast('🔒 No edit access for this customer. Request access from admin in Settings.');
+    return;
   }
 
   showModal('✎ Edit Invoice ' + inv.invNum,
@@ -9700,28 +9691,30 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
   if (!generalBar || !generalCards) return;
   generalBar.style.display = '';
 
-  // ── "Updated Till" — latest entry_date in finance_ledger (read-only display) ──
+  // ── "Updated Till" — last MANUAL INCOME entry_date in finance_ledger (read-only display) ──
   (async function() {
+    var _utEl = document.getElementById('genSummaryUpdatedTill');
+    if (!_utEl) return;
+    var _latestDate = null;
     try {
-      var _utEl = document.getElementById('genSummaryUpdatedTill');
-      if (!_utEl) return;
-      var _latestDate = null;
       if (sb && navigator.onLine) {
         var _utRes = await sb.from('finance_ledger')
           .select('entry_date')
+          .eq('entry_type', 'income')
+          .eq('source', 'manual')
           .order('entry_date', { ascending: false })
           .limit(1);
         if (_utRes.data && _utRes.data.length) _latestDate = _utRes.data[0].entry_date;
       } else {
         (_finLedgerLocal||[]).forEach(function(e){
-          if (e.entry_date && (!_latestDate || e.entry_date > _latestDate)) _latestDate = e.entry_date;
+          if (e.entry_type === 'income' && e.source === 'manual' && e.entry_date && (!_latestDate || e.entry_date > _latestDate)) _latestDate = e.entry_date;
         });
       }
-      if (_latestDate) {
-        var _utDisp = new Date(_latestDate + 'T00:00:00').toLocaleDateString('en-PK',{day:'2-digit',month:'short',year:'numeric'});
-        _utEl.textContent = 'Updated Till: ' + _utDisp;
-      }
     } catch(_utErr) { console.warn('[genSummaryUpdatedTill]', _utErr); }
+    // Fall back to today's date if the query failed or found nothing
+    var _utDate = _latestDate ? new Date(_latestDate + 'T00:00:00') : new Date();
+    var _utDisp = _utDate.toLocaleDateString('en-PK',{day:'2-digit',month:'short',year:'numeric'});
+    _utEl.textContent = 'Updated Till: ' + _utDisp;
   })();
 
   // ── Step 1: Count live-invoice customers immediately ──
@@ -16314,8 +16307,8 @@ async function rpRenderCustomerPanel(name, phone) {
     var _editBtn = '';
     if (_isExcel) {
       var _invDaysSince = (new Date() - new Date(inv.date)) / (1000*60*60*24);
-      if (_invDaysSince > 40 && !_canEdit) {
-        _editBtn = '<span style="color:#cbd5e1;font-size:0.65rem;margin-left:4px;" title="Locked after 40 days from invoice date">🔒</span>';
+      if (!_canEdit) {
+        _editBtn = '<span style="color:#cbd5e1;font-size:0.65rem;margin-left:4px;" title="No edit access — request from admin">🔒</span>';
       } else {
         _editBtn = '<button onclick="rpEditExcelTotal(\'' + String(inv.invNum).replace(/^INV-/i,'') + '\',\'' + inv.total + '\')" style="padding:1px 6px;background:#eff6ff;border:1px solid #3b82f6;border-radius:4px;color:#1d4ed8;font-size:0.65rem;cursor:pointer;font-family:Montserrat,sans-serif;margin-left:4px;">✏️</button>';
       }
@@ -16333,8 +16326,8 @@ async function rpRenderCustomerPanel(name, phone) {
       actionBtn = '<button onclick="rpEditPayment(\'' + p.id + '\',\'' + p.amount + '\',\'' + encodeURIComponent(name) + '\',\'payment\',true)" style="padding:2px 8px;background:#f0fdf4;border:1px solid #059669;border-radius:5px;color:#059669;font-size:0.72rem;cursor:pointer;font-family:Montserrat,sans-serif;" title="Edit amount only">✏️ Edit</button>';
     } else if (p.invoice_ref) {
       actionBtn = '<span style="color:#cbd5e1;font-size:0.7rem;" title="Recorded from invoice ' + p.invoice_ref + ' — edit the invoice to change this amount">🔒</span>';
-    } else if (_daysSince > 40 && !_canEdit) {
-      actionBtn = '<span style="color:#cbd5e1;font-size:0.7rem;" title="Locked after 40 days — no further edits allowed">🔒 Locked</span>';
+    } else if (!_canEdit) {
+      actionBtn = '<span style="color:#cbd5e1;font-size:0.7rem;" title="No edit access — request from admin">🔒 Locked</span>';
     } else {
       var _daysLeft = Math.ceil(40 - _daysSince);
       actionBtn = '<button onclick="rpEditPayment(\'' + p.id + '\',\'' + p.amount + '\',\'' + encodeURIComponent(name) + '\',\'payment\',false)" style="padding:2px 8px;background:#f0fdf4;border:1px solid #059669;border-radius:5px;color:#059669;font-size:0.72rem;cursor:pointer;font-family:Montserrat,sans-serif;" title="Editable for ' + _daysLeft + ' more day(s)">✏️ Edit</button>';
@@ -16397,7 +16390,6 @@ async function rpRenderCustomerPanel(name, phone) {
   }).join('');
 
   panel.innerHTML =
-    '<div style="font-size:0.72rem;color:#64748b;padding:8px 12px;background:#f8fafc;border-radius:8px;margin-bottom:10px;border:1px solid #e2e8f0;">ℹ️ Invoice totals & payment entries lock automatically after 40 days. Discounts & bad debts can be edited anytime.</div>' +
     '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:14px;">' +
       '<div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.95rem;color:#1e293b;margin-bottom:6px;">' + name + (phone ? ' <span style="font-weight:400;color:#64748b;font-size:0.78rem;">📞 ' + phone + '</span>' : '') + '</div>' +
       (function(){ var _s=_authGetSession(); if(_s&&_s.role==='admin') return ''; var _enc=encodeURIComponent(name); var _encPh=encodeURIComponent(phone||''); return '<div style="margin-bottom:10px;"><button onclick="document.getElementById(\'rpIcrForm_'+_enc+'\').style.display=\'\';this.style.display=\'none\';" style="padding:5px 12px;background:rgba(245,158,11,0.1);color:#92400e;border:1.5px solid rgba(245,158,11,0.4);border-radius:7px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.72rem;cursor:pointer;">📨 Request Name/Phone Change</button><div id="rpIcrForm_'+_enc+'" style="display:none;margin-top:8px;background:#fffbeb;border:1.5px solid #fde68a;border-radius:8px;padding:10px;"><input type="text" id="rpIcrNewName" placeholder="New name (optional)" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.76rem;margin-bottom:6px;"><input type="text" id="rpIcrNewPhone" maxlength="10" placeholder="New phone (optional)" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.76rem;margin-bottom:6px;"><input type="text" id="rpIcrReason" placeholder="Reason" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.76rem;margin-bottom:6px;"><button onclick="rpSubmitIcrRequest(\''+_enc+'\',\''+_encPh+'\')" style="padding:5px 12px;background:#059669;color:#fff;border:none;border-radius:6px;font-size:0.72rem;cursor:pointer;">Submit</button></div></div>'; })() +
@@ -16546,9 +16538,7 @@ async function rpDeletePayment(paymentId, encodedName) {
 function rpEditPayment(paymentId, currentAmount, encodedName, entryType, noDelete) {
   var _color = entryType === 'payment' ? '#059669' : entryType === 'bad_debt' ? '#ea580c' : '#7c3aed';
   var _label = entryType === 'payment' ? 'Payment' : entryType === 'bad_debt' ? 'Bad Debt' : 'Discount';
-  var _lockMsg = (entryType === 'payment' && !noDelete)
-    ? '<div style="font-size:0.72rem;color:#94a3b8;margin-top:8px;padding:6px 10px;background:#f8fafc;border-radius:6px;">ℹ️ Payment entries lock automatically after 40 days and cannot be edited or deleted.</div>'
-    : '';
+  var _lockMsg = '';
   showModal('✏️ Edit ' + _label + ' Entry',
     '<div style="font-size:0.85rem;color:#64748b;margin-bottom:14px;">Current amount: <strong style="color:' + _color + ';">Rs.' + currentAmount + '</strong></div>'
     + '<div style="margin-bottom:10px;"><label style="font-size:0.78rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;">New Amount (Rs.)</label>'
@@ -16711,8 +16701,7 @@ function rpEditExcelTotal(orderNum, currentTotal) {
   showModal('✏️ Edit Invoice Total Bill',
     '<div style="font-size:0.85rem;color:#64748b;margin-bottom:14px;">Invoice: <strong>INV-' + _rawNum + '</strong> &nbsp;|&nbsp; Current total: <strong style="color:#1e293b;">Rs.' + currentTotal + '</strong></div>'
     + '<div style="margin-bottom:10px;"><label style="font-size:0.78rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;">New Total Bill (Rs.)</label>'
-    + '<input type="number" id="_rpEditTotalAmt" value="' + currentTotal + '" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;"></div>'
-    + '<div style="font-size:0.72rem;color:#94a3b8;margin-top:8px;padding:6px 10px;background:#f8fafc;border-radius:6px;">ℹ️ Invoice totals lock automatically after 40 days and cannot be edited.</div>',
+    + '<input type="number" id="_rpEditTotalAmt" value="' + currentTotal + '" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.85rem;"></div>',
     [
       { label: 'Cancel', cls: 'btn-outline', fn: closeModal },
       { label: '✅ Save', cls: 'btn-primary', fn: async function() {
