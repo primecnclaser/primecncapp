@@ -40,10 +40,9 @@
 <title>Prime CNC Invoice System</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" onerror="console.error('Supabase CDN failed to load')"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="/logo.png">
 <link rel="shortcut icon" href="/favicon.ico">
@@ -27020,53 +27019,6 @@ window._forceAppRefresh = async function() {
     window.location.href = window.location.pathname + '?_r=' + Date.now();
   }, 300);
 };
-
-// Unregister all service workers on every load to prevent caching issues
-if ('serviceWorker' in navigator && !/Electron/.test(navigator.userAgent)) {
-  navigator.serviceWorker.getRegistrations().then(function(registrations) {
-    registrations.forEach(function(reg) { reg.unregister(); });
-  });
-}
-
-/* 3. Service worker registration for offline support */
-if ('serviceWorker' in navigator && !/Electron/.test(navigator.userAgent)) {
-  window.addEventListener('load', function () {
-    // One-time cleanup: delete any old/stale caches from previous SW versions
-    if (window.caches && caches.keys) {
-      caches.keys().then(function(keys) {
-        keys.forEach(function(key) {
-          if (key !== 'prime-cnc-static-v1') {
-            caches.delete(key).then(function(){ console.log('[SW] Removed stale cache:', key); });
-          }
-        });
-      }).catch(function(){});
-    }
-
-    navigator.serviceWorker.register('./sw.js')
-      .then(function (reg) {
-        console.log('[SW] Registered:', reg.scope);
-        if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-        reg.addEventListener('updatefound', function() {
-          var nw = reg.installing;
-          if (!nw) return;
-          nw.addEventListener('statechange', function() {
-            if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-              nw.postMessage({ type: 'SKIP_WAITING' });
-            }
-          });
-        });
-        reg.update().catch(function(){});
-      })
-      .catch(function (err) { console.warn('[SW] Registration failed:', err); });
-
-    var _swReloaded = false;
-    navigator.serviceWorker.addEventListener('controllerchange', function() {
-      if (_swReloaded) return;
-      _swReloaded = true;
-      window.location.reload();
-    });
-  });
-}
 
 (function() {
   var ADMIN_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
