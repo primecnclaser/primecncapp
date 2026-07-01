@@ -7502,8 +7502,11 @@ function calcTotals() {
 }
 
 function fmt(n) {
-  return Math.round(n || 0).toLocaleString('en-PK');
+  var r = Math.round(n || 0);
+  return (Object.is(r, -0) ? 0 : r).toLocaleString('en-PK');
 }
+
+function zeroFloor(x) { return Math.abs(x) < 1 ? 0 : x; }
 
 function numberToUrduWords(n) {
   if (!n || n <= 0) return '—';
@@ -9029,7 +9032,7 @@ function viewExcelInvoice(oNum) {
     ['Additional Received', recDetail, '#059669'],
     ['Discount', 'Rs.'+fmt(parseFloat(row.discount)||0), '#f39c12'],
     ['Bad Debt', 'Rs.'+fmt(parseFloat(row.bad_debt)||0), '#c0392b'],
-    ['Remaining', (eff<0?'-':'')+'Rs.'+fmt(Math.abs(eff)), remCol],
+    ['Remaining', (zeroFloor(eff)<0?'-':'')+'Rs.'+fmt(Math.abs(zeroFloor(eff))), remCol],
   ];
   var html = '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;">';
   pairs.forEach(function(p,i){
@@ -9630,10 +9633,18 @@ async function renderSummary() {
   try {
     if (sb && navigator.onLine) {
       let _scQ = sb.from('finance_ledger').select('amount').eq('category', 'Sheets Cutting').eq('entry_type', 'income').neq('source', 'historical_daily');
-      if (mode === 'day' && dateV)       _scQ = _scQ.eq('entry_date', dateV);
-      else if (mode === 'month' && monV) _scQ = _scQ.like('entry_date', monV + '%');
-      else if (mode === 'year' && yearV) _scQ = _scQ.like('entry_date', String(yearV) + '%');
-      const { data: _scData } = await _scQ;
+      if (mode === 'day' && dateV) {
+        _scQ = _scQ.eq('entry_date', dateV);
+      } else if (mode === 'month' && monV) {
+        var _mStart = monV + '-01';
+        var _mLast  = new Date(new Date(monV + '-01').getFullYear(), new Date(monV + '-01').getMonth() + 1, 0).getDate();
+        var _mEnd   = monV + '-' + String(_mLast).padStart(2, '0');
+        _scQ = _scQ.gte('entry_date', _mStart).lte('entry_date', _mEnd);
+      } else if (mode === 'year' && yearV) {
+        _scQ = _scQ.gte('entry_date', String(yearV) + '-01-01').lte('entry_date', String(yearV) + '-12-31');
+      }
+      const { data: _scData, error: _scError } = await _scQ;
+      if (_scError) console.error('[sumSC query error]', _scError);
       (_scData || []).forEach(function(e){ _scTotal += (parseFloat(e.amount) || 0); });
     } else {
       // offline fallback — sum received amounts from local database[]
@@ -10876,8 +10887,9 @@ async function showCustList(type) {
       ? '<tr><td colspan="6" style="padding:20px;text-align:center;color:#999;font-style:italic;">No customers found.</td></tr>'
       : rows.map(function(c,i) {
           var evenBg   = i%2===0?'#fff':'#f9fafb';
-          var remColor = c.remaining<0?'#8e44ad':(c.remaining>0?'#c0392b':'#1a7a4a');
-          var remDisp  = (c.remaining < 0 ? '−' : '') + Math.abs(Math.round(c.remaining)).toLocaleString('en-PK');
+          var _rem = zeroFloor(c.remaining);
+          var remColor = _rem<0?'#8e44ad':(_rem>0?'#c0392b':'#1a7a4a');
+          var remDisp  = (_rem < 0 ? '−' : '') + Math.abs(Math.round(_rem)).toLocaleString('en-PK');
           var safeKey = JSON.stringify({name:c.name,phone:c.phone}).replace(/"/g,'&quot;');
           return '<tr data-name="'+(c.name||'').toLowerCase()+'" style="background:'+evenBg+';border-bottom:1px solid #eee;cursor:pointer;" '
             +'onmouseover="this.style.background=\'#f0f4ff\'" onmouseout="this.style.background=\''+evenBg+'\'" '
@@ -11549,6 +11561,7 @@ async function renderCustomerDetail(targetEl, name, phone, showBackBtn, nameQuer
   }).join('')
   : '<tr><td colspan="4" style="'+td+'text-align:center;color:#94a3b8;font-style:italic;padding:18px;">No payments recorded</td></tr>';
 
+  totalRem = zeroFloor(totalRem);
   var remColor2    = totalRem>0?'#dc2626':(totalRem<0?'#7c3aed':'#059669');
   var remBg        = totalRem>0?'#fef2f2':(totalRem<0?'#f5f3ff':'#f0fdf4');
   var remBorder    = totalRem>0?'#fca5a5':(totalRem<0?'#c4b5fd':'#86efac');
@@ -12063,7 +12076,7 @@ ${_printHeaderHtml(_ps,
   <div class="totals-right">
     ${(()=>{
       const afterDisc = inv.afterDiscount!=null ? inv.afterDiscount : inv.total;
-      const remaining = (afterDisc||0) - (inv.received||0);
+      const remaining = zeroFloor((afterDisc||0) - (inv.received||0));
       const remColor = remaining > 0 ? '#c0392b' : '#1a7a4a';
       const _ec  = parseFloat(inv.extraCharges) || 0;
       const _ecL = inv.extraChargesLabel || 'Extra Charges';
@@ -12096,7 +12109,7 @@ ${_printHeaderHtml(_ps,
     </div>
     <div class="total-row" style="background:#f5f5f5">
       <span class="tl">Remaining &nbsp;(باقی رقم)</span>
-      <span class="tv" style="color:${remColor}">Rs. ${Math.round(remaining).toLocaleString('en-PK')}</span>
+      <span class="tv" style="color:${remColor}">Rs. ${fmt(remaining)}</span>
     </div>`;
     })()}
   </div>
@@ -13644,7 +13657,7 @@ function autoSavePDF(data) {
     '<tbody>'+itemRows+'</tbody></table>'+
     (function(){
       var _ad=data.afterDiscount!=null?data.afterDiscount:data.total;
-      var _rem=(_ad||0)-(data.received||0);
+      var _rem=zeroFloor((_ad||0)-(data.received||0));
       var _rc=_rem>0?'#c0392b':'#1a7a4a';
       return '<div class="totals-section">'+
         '<div class="totals-left">'+
@@ -13657,7 +13670,7 @@ function autoSavePDF(data) {
           '<div class="total-row" style="background:#fff8ee"><span class="tl" style="color:#b7650a">Discount</span><span class="tv" style="color:#b7650a">Rs. '+Math.round(data.discount||0).toLocaleString('en-PK')+'</span></div>'+
           '<div class="total-row" style="background:#f0faf4"><span class="tl" style="color:#1a7a4a">After Discount</span><span class="tv" style="color:#1a7a4a">Rs. '+Math.round(_ad||0).toLocaleString('en-PK')+'</span></div>'+
           '<div class="total-row" style="background:#ebebeb"><span class="tl">وصول شدہ (Received)</span><span class="tv" style="color:#1a7a4a">Rs. '+Math.round(data.received||0).toLocaleString('en-PK')+'</span></div>'+
-          '<div class="total-row" style="background:#f5f5f5"><span class="tl">Remaining (باقی رقم)</span><span class="tv" style="color:'+_rc+'">Rs. '+Math.round(_rem).toLocaleString('en-PK')+'</span></div>'+
+          '<div class="total-row" style="background:#f5f5f5"><span class="tl">Remaining (باقی رقم)</span><span class="tv" style="color:'+_rc+'">Rs. '+fmt(_rem)+'</span></div>'+
         '</div>'+
       '</div>';
     })()+
@@ -16259,6 +16272,8 @@ async function rpRenderCustomerPanel(name, phone) {
   var totalBilled = d.totalBilled, totalDiscount = d.totalDiscount;
   var totalPaid = d.totalPaid, totalBadDebt = d.totalBadDebt;
   var remaining = d.remaining, advanceCredit = d.advanceCredit;
+  // Treat sub-Rs.1 floating point noise (e.g. -0.0000001) as exactly 0 — avoids "-Rs.0" display
+  var displayRemaining = Math.abs(remaining) < 1 ? 0 : remaining;
 
   // Sort invoices by date, most recent first
   var dateSorter = function(a, b) {
@@ -16391,7 +16406,7 @@ async function rpRenderCustomerPanel(name, phone) {
         '<div style="background:#f5f3ff;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Discount</div><div style="font-size:1.1rem;font-weight:700;color:#7c3aed;">Rs.' + fmt(totalDiscount) + '</div></div>' +
         '<div style="background:#f0fdf4;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Received</div><div style="font-size:1.1rem;font-weight:700;color:#059669;">Rs.' + fmt(totalPaid) + '</div></div>' +
         '<div style="background:#fff7ed;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Bad Debt</div><div style="font-size:1.1rem;font-weight:700;color:#ea580c;">Rs.' + fmt(totalBadDebt) + '</div></div>' +
-        '<div style="background:' + (remaining > 0 ? '#fef2f2' : remaining < 0 ? '#f5f3ff' : '#f0fdf4') + ';border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Remaining</div><div style="font-size:1.1rem;font-weight:700;color:' + (remaining > 0 ? '#dc2626' : remaining < 0 ? '#7c3aed' : '#059669') + ';">' + (remaining < 0 ? '-' : '') + 'Rs.' + fmt(Math.abs(remaining)) + '</div></div>' +
+        '<div style="background:' + (displayRemaining > 0 ? '#fef2f2' : displayRemaining < 0 ? '#f5f3ff' : '#f0fdf4') + ';border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Remaining</div><div style="font-size:1.1rem;font-weight:700;color:' + (displayRemaining > 0 ? '#dc2626' : displayRemaining < 0 ? '#7c3aed' : '#059669') + ';">' + (displayRemaining < 0 ? '-' : '') + 'Rs.' + fmt(Math.abs(displayRemaining)) + '</div></div>' +
       '</div>' +
       (advanceCredit > 0 ? '<div style="margin-top:10px;background:#ede9fe;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#6d28d9;text-transform:uppercase;">Advance Credit</div><div style="font-size:1.1rem;font-weight:700;color:#6d28d9;">Rs.' + fmt(advanceCredit) + '</div></div>' : '') +
     '</div>' +
@@ -17391,7 +17406,7 @@ function generateCustomerStatement() {
   var shopPhone    = _s.phone;
   var logoData     = _s.logo;
 
-  function fmtRs(n) { return 'Rs.\u00a0' + Math.round(n||0).toLocaleString('en-PK'); }
+  function fmtRs(n) { var r = Math.round(n||0); return 'Rs.\u00a0' + (Object.is(r,-0)?0:r).toLocaleString('en-PK'); }
 
   // Grand totals from bills
   var grandTotal = 0, grandDiscount = 0;
@@ -17427,7 +17442,7 @@ function generateCustomerStatement() {
   });
 
   var grandReceived  = allPayments.reduce(function(s,p){ return s+(p.amount||0); }, 0);
-  var grandRemaining = grandAfterDisc - grandReceived;
+  var grandRemaining = zeroFloor(grandAfterDisc - grandReceived);
   var remClr = grandRemaining > 0 ? '#c0392b' : '#1a7a4a';
 
   // Invoice rows — Sr | Bill No | Date | Total (no Net Pay, Total is last col)
@@ -17591,7 +17606,8 @@ function openInlinePreview(idx) {
   const shopFb       = _ps.fb;
   const logoData     = (typeof _ctrlLogo !== 'undefined' && _ctrlLogo) ? _ctrlLogo : (_ps.logo || localStorage.getItem('inv_logo') || '');
 
-  const remainColor = (inv.remaining > 0) ? '#c0392b' : '#1a7a4a';
+  const remainingDisp = zeroFloor(inv.remaining || 0);
+  const remainColor = (remainingDisp > 0) ? '#c0392b' : '#1a7a4a';
 
   const itemRows = (inv.items || []).filter(x => x.sizes || x.amt > 0).map((x, i) => {
     const fisInputs = x.mode === 'kg'
@@ -17716,7 +17732,7 @@ function openInlinePreview(idx) {
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#f5f5f5;">
           <span style="font-size:0.7rem;font-weight:600;color:#0f1e45;">Remaining (باقی رقم)</span>
-          <span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:${remainColor};">Rs. ${Math.round(inv.remaining||0).toLocaleString('en-PK')}</span>
+          <span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:${remainColor};">Rs. ${fmt(remainingDisp)}</span>
         </div>
       </div>
     </div>`;
@@ -17756,7 +17772,8 @@ function openSearchInlinePreview(idx) {
   const shopFb       = _ps.fb;
   const logoData     = (typeof _ctrlLogo !== 'undefined' && _ctrlLogo) ? _ctrlLogo : (_ps.logo || localStorage.getItem('inv_logo') || '');
 
-  const remainColor = (inv.remaining > 0) ? '#c0392b' : '#1a7a4a';
+  const remainingDisp = zeroFloor(inv.remaining || 0);
+  const remainColor = (remainingDisp > 0) ? '#c0392b' : '#1a7a4a';
 
   const itemRows = (inv.items || []).filter(x => x.sizes || x.amt > 0).map((x, i) => {
     const fisInputs = x.mode === 'kg'
@@ -17849,7 +17866,7 @@ function openSearchInlinePreview(idx) {
           <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#fff8ee;border-bottom:1px solid #d4c5a9;"><span style="font-size:0.7rem;font-weight:600;color:#b7650a;">Discount</span><span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:#b7650a;">Rs. ${Math.round(inv.discount||0).toLocaleString('en-PK')}</span></div>
           <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#f0faf4;border-bottom:1px solid #d4c5a9;"><span style="font-size:0.7rem;font-weight:600;color:#1a7a4a;">After Discount</span><span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:#1a7a4a;">Rs. ${Math.round(inv.afterDiscount||0).toLocaleString('en-PK')}</span></div>
           <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#ebebeb;border-bottom:1px solid #d4c5a9;"><span style="font-size:0.7rem;font-weight:600;color:#0f1e45;">وصول شدہ (Received)</span><span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:#1a7a4a;">Rs. ${Math.round(inv.received||0).toLocaleString('en-PK')}</span></div>
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#f5f5f5;"><span style="font-size:0.7rem;font-weight:600;color:#0f1e45;">Remaining (باقی رقم)</span><span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:${remainColor};">Rs. ${Math.round(inv.remaining||0).toLocaleString('en-PK')}</span></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#f5f5f5;"><span style="font-size:0.7rem;font-weight:600;color:#0f1e45;">Remaining (باقی رقم)</span><span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:${remainColor};">Rs. ${fmt(remainingDisp)}</span></div>
         </div>
       </div>`;
     })()}
