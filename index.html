@@ -639,7 +639,7 @@ body {
 .db-table thead th:nth-child(5),  .db-table td:nth-child(5)  { width: 8%;  } /* Inv #     */
 .db-table thead th:nth-child(6),  .db-table td:nth-child(6)  { width: 9%;  } /* Bill      */
 .db-table thead th:nth-child(7),  .db-table td:nth-child(7)  { width: 7%;  } /* Received  */
-.db-table thead th:nth-child(8),  .db-table td:nth-child(8)  { width: 9%;  } /* Received1 */
+.db-table thead th:nth-child(8),  .db-table td:nth-child(8)  { width: 9%;  }
 .db-table thead th:nth-child(9),  .db-table td:nth-child(9)  { width: 8%;  } /* Discount  */
 .db-table thead th:nth-child(10), .db-table td:nth-child(10) { width: 8%;  } /* Bad Debt  */
 .db-table thead th:nth-child(11), .db-table td:nth-child(11) { width: 8%;  } /* Remaining */
@@ -1431,7 +1431,7 @@ body {
   .db-table .btn { min-height: unset !important; }
   .db-table .db-btn { min-height: unset !important; padding: 4px 6px !important; font-size: 0.6rem !important; }
 
-  /* ── Fix: received1 (col 8) and badDebt (col 10) — prevent stacked divs causing tall rows ── */
+  /* ── Fix: badDebt (col 10) — prevent stacked divs causing tall rows ── */
   .db-table td:nth-child(8),
   .db-table td:nth-child(10) {
     min-width: 0 !important;
@@ -3694,11 +3694,14 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
 
       <!-- ═══ EDIT ACCESS CONTROL ═══ -->
       <div id="setEditAccess" style="display:none;padding:18px;">
-        <div style="font-family:Montserrat,sans-serif;font-weight:800;font-size:1rem;color:#1e293b;margin-bottom:16px;">🔐 Edit Access Control</div>
+        <div style="background:linear-gradient(135deg,#4f46e5,#6366f1);border-radius:12px;padding:14px 18px;margin-bottom:18px;box-shadow:0 4px 14px rgba(79,70,229,0.25);">
+          <div style="font-family:Montserrat,sans-serif;font-weight:800;font-size:1rem;color:#fff;">🔐 Edit Access Control</div>
+          <div style="font-family:Montserrat,sans-serif;font-size:0.72rem;color:rgba(255,255,255,0.85);margin-top:2px;">Manage time-lock bypass permissions for staff</div>
+        </div>
 
         <!-- Pending Requests -->
         <div style="margin-bottom:24px;">
-          <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;color:#92400e;margin-bottom:10px;">📥 Pending Requests</div>
+          <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;color:#4338ca;margin-bottom:10px;display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;background:#4f46e5;border-radius:50%;display:inline-block;"></span>Pending Requests</div>
           <div id="eagPendingList" style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:12px;">
             <div style="text-align:center;color:#94a3b8;padding:16px;font-family:Montserrat,sans-serif;font-size:0.8rem;">Loading...</div>
           </div>
@@ -3717,8 +3720,8 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
 
         <!-- Grant New Access -->
         <div>
-          <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;color:#1e293b;margin-bottom:10px;">+ Grant New Access</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;">
+          <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;color:#4338ca;margin-bottom:10px;display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;background:#4f46e5;border-radius:50%;display:inline-block;"></span>Grant New Access</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;background:#eef2ff;border:1.5px solid #c7d2fe;border-radius:10px;padding:14px;">
             <div>
               <label style="font-size:0.7rem;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">Staff Member</label>
               <select id="eagUserSelect" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.8rem;">
@@ -3760,12 +3763,18 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
           </div>
         </div>
 
-        <hr style="margin:24px 0;border:none;border-top:1.5px solid #e2e8f0;">
+        <div style="display:flex;align-items:center;gap:12px;margin:32px 0 24px;">
+          <div style="flex:1;height:2px;background:linear-gradient(90deg,transparent,#cbd5e1);"></div>
+          <div style="font-family:Montserrat,sans-serif;font-size:0.68rem;font-weight:700;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;white-space:nowrap;">Customer Identity Management</div>
+          <div style="flex:1;height:2px;background:linear-gradient(90deg,#cbd5e1,transparent);"></div>
+        </div>
 
         <!-- Direct Edit Customer Name/Phone (Admin) -->
         <div style="margin-bottom:24px;">
-          <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;color:#1e293b;margin-bottom:10px;">🔧 Direct Edit Customer Name / Phone</div>
-          <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;position:relative;">
+          <div style="background:linear-gradient(135deg,#0d9488,#14b8a6);border-radius:10px;padding:10px 14px;margin-bottom:12px;">
+            <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.82rem;color:#fff;">🔧 Direct Edit Customer Name / Phone</div>
+          </div>
+          <div style="background:#f0fdfa;border:1.5px solid #99f6e4;border-radius:10px;padding:14px;position:relative;">
             <label style="font-size:0.7rem;font-weight:700;color:#64748b;">Search Customer</label>
             <input type="text" id="adminEditSearchInput" placeholder="Type customer name..." autocomplete="off"
               oninput="_adminEditSearchCustomers(this.value)"
@@ -3801,18 +3810,18 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
 
         <!-- Identity Change Requests (merged in) -->
         <div style="margin-bottom:24px;">
-          <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;color:#92400e;margin-bottom:10px;">🪪 Identity Change — Pending Requests</div>
-          <div id="icrPendingList" style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:12px;">
+          <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;color:#0f766e;margin-bottom:10px;display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;background:#14b8a6;border-radius:50%;display:inline-block;"></span>Identity Change — Pending Requests</div>
+          <div id="icrPendingList" style="background:#f0fdfa;border:1.5px solid #99f6e4;border-radius:10px;padding:12px;">
             <div style="text-align:center;color:#94a3b8;padding:16px;font-family:Montserrat,sans-serif;font-size:0.8rem;">Loading...</div>
           </div>
         </div>
 
         <div>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;color:#475569;">📜 Identity Change History (last 50)</div>
-            <button onclick="renderIdentityChangeHistory()" style="padding:5px 12px;background:#64748b;color:#fff;border:none;border-radius:8px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.7rem;cursor:pointer;">🔄 Refresh</button>
+            <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;color:#0f766e;display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;background:#14b8a6;border-radius:50%;display:inline-block;"></span>Identity Change History (last 50)</div>
+            <button onclick="renderIdentityChangeHistory()" style="padding:5px 12px;background:#0d9488;color:#fff;border:none;border-radius:8px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.7rem;cursor:pointer;">🔄 Refresh</button>
           </div>
-          <div id="icrHistoryList" style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:12px;max-height:320px;overflow-y:auto;">
+          <div id="icrHistoryList" style="background:#f0fdfa;border:1.5px solid #99f6e4;border-radius:10px;padding:12px;max-height:320px;overflow-y:auto;">
             <div style="text-align:center;color:#94a3b8;padding:16px;font-family:Montserrat,sans-serif;font-size:0.8rem;">Click Refresh to load</div>
           </div>
         </div>
@@ -4876,7 +4885,7 @@ let _pbPendingEdits = JSON.parse(localStorage.getItem('inv_pb_pending_edits') ||
 function _savePbPending() { localStorage.setItem('inv_pb_pending_edits', JSON.stringify(_pbPendingEdits)); }
 let isSyncing = false;
 
-// ─── PENDING FIELD-UPDATE QUEUE (received1, badDebt, remaining) ───
+// ─── PENDING FIELD-UPDATE QUEUE (badDebt, remaining) ───
 let _pendingUpdates = JSON.parse(localStorage.getItem('inv_pending_updates') || '[]');
 function _savePendingUpdates() {
   localStorage.setItem('inv_pending_updates', JSON.stringify(_pendingUpdates));
@@ -5180,7 +5189,7 @@ async function _syncToHO() {
     // ── Fetch all invoices ──
     var { data: invData, error: invErr } = await sb
       .from('invoices')
-      .select('date, total, received, received1, total_sqft, total_kg, bad_debt')
+      .select('date, total, received, total_sqft, total_kg, bad_debt')
       .eq('branch_id', BRANCH_ID);
     if (invErr) throw invErr;
 
@@ -5229,7 +5238,7 @@ async function _syncToHO() {
       var m = getMonth(mk);
       m.total_invoices += 1;
       m.total_billed += parseFloat(inv.total) || 0;
-      m.total_collection += (parseFloat(inv.received) || 0) + (parseFloat(inv.received1) || 0);
+      m.total_collection += (parseFloat(inv.received) || 0);
       m.total_sqft += parseFloat(inv.total_sqft) || 0;
       m.total_kg += parseFloat(inv.total_kg) || 0;
       m.bad_debt += parseFloat(inv.bad_debt) || 0;
@@ -6149,19 +6158,41 @@ async function adminApplyEdit() {
   var newPhone = document.getElementById('adminEditNewPhone').value.trim();
   if (!newName && !newPhone) { toast('⚠ Enter a new name or phone'); return; }
   try {
+    var rpcData = null;
     if (newName && newName !== oldName) {
       var check = await _checkNameExists(newName);
       var existingCount = (check.inv_count || 0) + (check.excel_count || 0);
       if (existingCount > 0) {
         if (!confirm('⚠ "' + newName + '" already has ' + existingCount + ' record(s). This will merge them. Continue?')) return;
       }
-      var { data: rpcData, error: rpcErr } = await sb.rpc('update_customer_name', { p_old_name: oldName, p_new_name: newName });
-      if (rpcErr) throw rpcErr;
+      var _rpc = await sb.rpc('update_customer_name', { p_old_name: oldName, p_new_name: newName });
+      rpcData = _rpc.data;
+      if (_rpc.error) throw _rpc.error;
       toast('✅ Renamed — ' + ((rpcData && rpcData[0] && rpcData[0].total) || 0) + ' record(s) updated');
     }
     if (newPhone) {
       await updateCustomerPhone(newName || oldName, newPhone);
     }
+    // Log to identity_change_requests for audit trail
+    try {
+      var _logSess = _authGetSession();
+      var _changeType = (newName && newName !== oldName && newPhone) ? 'both'
+                      : (newName && newName !== oldName) ? 'name' : 'phone';
+      await sb.from('identity_change_requests').insert({
+        old_name:      oldName,
+        old_phone:     document.getElementById('adminEditCurrentPhone').textContent || null,
+        new_name:      (newName && newName !== oldName) ? newName : null,
+        new_phone:     newPhone || null,
+        change_type:   _changeType,
+        requested_by:  _logSess ? _logSess.id : null,
+        reviewed_by:   _logSess ? _logSess.id : null,
+        reason:        'Direct admin edit',
+        status:        'approved',
+        granted_at:    new Date().toISOString(),
+        reviewed_at:   new Date().toISOString(),
+        rows_affected: ((rpcData && rpcData[0] && rpcData[0].total) || 0)
+      });
+    } catch(_logErr) { console.warn('[adminApplyEdit log]', _logErr); }
     adminCancelEdit();
     if (typeof renderDB === 'function') renderDB();
   } catch(e) { console.error(e); toast('⚠ Failed: ' + (e.message || e)); }
@@ -6604,7 +6635,7 @@ async function loadFromSupabase(silent) {
       // Step 2: fetch the last 200 (most recent) invoices
       const { data: _mbRecent, error: _mbErr } = await sb
         .from('invoices')
-        .select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,received1,remaining,bad_debt,created_at,edited_at,is_advance,extra_charges,extra_charges_label,order_status,status_updated_at,total_sqft,total_kg,received1_entries')
+        .select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,remaining,bad_debt,created_at,edited_at,is_advance,extra_charges,extra_charges_label,order_status,status_updated_at,total_sqft,total_kg')
         .order('created_at', { ascending: true })
         .range(_mbFrom, _mbCount - 1);
       if (_mbErr) throw _mbErr;
@@ -6621,13 +6652,6 @@ async function loadFromSupabase(silent) {
         discount:      parseFloat(inv.discount)      || 0,
         afterDiscount: parseFloat(inv.total)         || 0,
         received:      parseFloat(inv.received)      || 0,
-        received1:     parseFloat(inv.received1)     || '',
-        received1Entries: (() => {
-          const raw = inv.received1_entries;
-          if (!raw) return [];
-          if (Array.isArray(raw)) return raw;
-          try { return JSON.parse(raw); } catch(e) { return []; }
-        })(),
         remaining:     parseFloat(inv.remaining)     || 0,
         badDebt:       parseFloat(inv.bad_debt)      || '',
         extraCharges:  parseFloat(inv.extra_charges)  || 0,
@@ -6675,7 +6699,7 @@ async function loadFromSupabase(silent) {
             if (typeof toast === 'function') toast('⏳ Loading older records in background...');
             const { data: _mbOlder } = await sb
               .from('invoices')
-              .select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,received1,remaining,bad_debt,created_at,edited_at,is_advance,extra_charges,extra_charges_label,order_status,status_updated_at,total_sqft,total_kg,received1_entries')
+              .select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,remaining,bad_debt,created_at,edited_at,is_advance,extra_charges,extra_charges_label,order_status,status_updated_at,total_sqft,total_kg')
               .order('created_at', { ascending: true })
               .range(0, _mbFrom - 1);
             if (_mbOlder && _mbOlder.length) {
@@ -6699,7 +6723,7 @@ async function loadFromSupabase(silent) {
   try {
     const { data: invs, error } = await sb
       .from('invoices')
-      .select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,received1,remaining,bad_debt,created_at,edited_at,is_advance,extra_charges,extra_charges_label,order_status,status_updated_at,total_sqft,total_kg,received1_entries')
+      .select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,remaining,bad_debt,created_at,edited_at,is_advance,extra_charges,extra_charges_label,order_status,status_updated_at,total_sqft,total_kg')
       .order('created_at', { ascending: true });
 
     if (error) throw error;
@@ -6716,13 +6740,6 @@ async function loadFromSupabase(silent) {
       discount:     parseFloat(inv.discount)     || 0,
       afterDiscount:parseFloat(inv.total)        || 0,
       received:     parseFloat(inv.received)     || 0,
-      received1:    parseFloat(inv.received1)    || '',
-      received1Entries: (() => {
-        const raw = inv.received1_entries;
-        if (!raw) return [];
-        if (Array.isArray(raw)) return raw;
-        try { return JSON.parse(raw); } catch(e) { return []; }
-      })(),
       remaining:    parseFloat(inv.remaining)    || 0,
       badDebt:      parseFloat(inv.bad_debt)     || '',
       extraCharges: parseFloat(inv.extra_charges) || 0,
@@ -6872,17 +6889,14 @@ async function saveToSupabase(data) {
 }
 
 // ══════════════════════════════════════════════
-// SUPABASE — UPDATE FIELD (received1, badDebt)
+// SUPABASE — UPDATE FIELD (badDebt)
 // ══════════════════════════════════════════════
-async function updateSupabaseField(supaId, field, value, entries) {
+async function updateSupabaseField(supaId, field, value) {
   if (!supaId) return;
-  const fieldMap = { received1: 'received1', badDebt: 'bad_debt' };
+  const fieldMap = { badDebt: 'bad_debt' };
   const col = fieldMap[field];
   if (!col) return;
   const update = { [col]: value || 0 };
-  if (field === 'received1' && entries) {
-    update['received1_entries'] = JSON.stringify(entries);
-  }
   if (!navigator.onLine || !sb) {
     _addToPendingUpdates(supaId, update);
     setSyncStatus('offline', '● Offline — update queued');
@@ -6897,10 +6911,6 @@ async function updateSupabaseField(supaId, field, value, entries) {
     setSyncStatus('offline', '● Update queued — will retry');
   }
 }
-
-// received1_entries column confirmed exists in both staging and live Supabase
-let _r1ColExists = true;
-async function _probeReceived1EntriesCol() { return true; }
 
 function setSyncStatus(state, label) {
   const el = document.getElementById('syncStatus');
@@ -6948,7 +6958,7 @@ function init() {
   if (navigator.onLine && pendingQueue.length > 0) {
     setTimeout(flushPendingQueue, 2000); // slight delay after init
   }
-  // Flush any pending field updates (received1, badDebt, remaining)
+  // Flush any pending field updates (badDebt, remaining)
   if (navigator.onLine && _pendingUpdates.length > 0) {
     setTimeout(flushPendingUpdates, 2500);
   }
@@ -6976,7 +6986,6 @@ function init() {
       }
     }
   });
-  if (typeof _probeReceived1EntriesCol === 'function') _probeReceived1EntriesCol();
 }
 
 // Auto-restore session if previously logged in
@@ -7888,17 +7897,12 @@ async function doSubmit(data) {
   if (typeof data._editIdx === 'number') {
     const editDate = new Date().toLocaleDateString('en-PK', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
     const prevSupaId = database[data._editIdx]._supaId;
-    const prevReceived1 = database[data._editIdx].received1;
-    const prevReceived1Entries = database[data._editIdx].received1Entries;
     database[data._editIdx] = {
       ...data,
       isAdvance: classifyAdvance(data),   // re-classify — moves between tabs automatically
       editedAt: editDate,
       savedAt: database[data._editIdx].savedAt,
-      _supaId: prevSupaId,
-      // Preserve any additional payments made after the original advance was saved
-      received1: prevReceived1,
-      received1Entries: prevReceived1Entries
+      _supaId: prevSupaId
     };
     delete database[data._editIdx]._editIdx;
     localStorage.setItem('inv_database', JSON.stringify(database));
@@ -8595,10 +8599,7 @@ async function renderDB() {
     tbody.innerHTML = advanceInvs.slice().reverse().map((inv, ri) => {
       const idx = database.indexOf(inv);
       const serialNo = advanceInvs.length - ri;
-      const r1sum = Array.isArray(inv.received1Entries)
-        ? inv.received1Entries.reduce((s,e) => s + (e.amount||0), 0)
-        : (parseFloat(inv.received1) || 0);
-      const totalAdvance = (inv.received || 0) + r1sum;
+      const totalAdvance = inv.received || 0;
       return `<tr style="border-left:4px solid #8e44ad;background:rgba(142,68,173,0.07);">
         <td class="mono${_isMob ? ' _msr' : ''}" style="text-align:center;color:#8e44ad">${serialNo}</td>
         <td class="date-col${_isMob ? ' _mdt' : ''}">${fmtDateDisplay(inv.date)}</td>
@@ -8703,14 +8704,11 @@ async function renderDB() {
   // Merge and sort by invoice number descending (highest/latest on top)
   const newRows = filtered.slice().reverse().map(function(inv) {
     const idx = database.indexOf(inv);
-    const r1sum = Array.isArray(inv.received1Entries)
-      ? inv.received1Entries.reduce((s,e) => s+(e.amount||0), 0)
-      : (parseFloat(inv.received1)||0);
     const _afterDisc = inv.afterDiscount != null ? inv.afterDiscount : inv.total;
-    const remaining = Math.max(0, (_afterDisc||0) - (inv.received||0) - r1sum);
+    const remaining = Math.max(0, (_afterDisc||0) - (inv.received||0));
     // Extract numeric part of invoice number for sorting
     const invNumSort = parseInt((inv.invNum||'').replace(/[^0-9]/g,'')) || 0;
-    return { _isImported: false, _idx: idx, _inv: inv, _r1sum: r1sum, _remaining: remaining,
+    return { _isImported: false, _idx: idx, _inv: inv, _remaining: remaining,
              date: normalizeDate(inv.date||''), custName: inv.custName, phone: inv.phone, invNum: inv.invNum,
              total: inv.total, received: inv.received, discount: inv.discount, _sortNum: invNumSort };
   });
@@ -8734,7 +8732,7 @@ async function renderDB() {
   const allRows = mergedRows.map(function(row, ri) {
     const serialNo = mergedRows.length - ri;
     if (row._isImported) {
-      // ── IMPORTED row — Total Bill, Received1, Discount all editable ──
+      // ── IMPORTED row — Total Bill, Discount all editable ──
       const totalRecv = row.received + row.received1;
       const effRemaining = row.total - totalRecv - row.discount - (row.bad_debt||0);
       var remColor = effRemaining > 0 ? '#e74c3c' : effRemaining < 0 ? '#8e44ad' : '#27ae60';
@@ -8836,81 +8834,11 @@ function updateDBCount() {
 }
 
 async function saveDBField(idx, field, value) {
-  if (field === 'received1') {
-    const amt = value === '' ? null : parseFloat(value) || 0;
-    if (amt === null || amt === 0) {
-      // Don't save empty/zero — just ignore
-      return;
-    }
-    // Use payment date picker if set, otherwise today
-    const _dpEl = document.getElementById('paymentDatePicker');
-    const _dpVal = _dpEl && _dpEl.value ? _dpEl.value : new Date().toISOString().split('T')[0];
-    const [_yr, _mo, _dy] = _dpVal.split('-');
-    const _months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const dateStr = `${_dy}-${_months[parseInt(_mo)-1]}-${_yr}`;
-    // received1Entries is the array of {amount, date}
-    if (!Array.isArray(database[idx].received1Entries)) {
-      database[idx].received1Entries = [];
-    }
-    database[idx].received1Entries.push({ amount: amt, date: dateStr });
-    // Keep received1 as the sum for backward compat
-    database[idx].received1 = database[idx].received1Entries.reduce((s,e) => s + (e.amount||0), 0);
-    // Recalculate totalReceived and remaining
-    const totalRec = (database[idx].received || 0) + database[idx].received1;
-    const afterDisc = (database[idx].afterDiscount != null ? database[idx].afterDiscount : database[idx].total) || 0;
-    database[idx].remaining = afterDisc - totalRec;
-    localStorage.setItem('inv_database', JSON.stringify(database));
-    const supaId = database[idx]._supaId;
-    if (supaId) {
-      const _r1upd = {
-        received1: database[idx].received1,
-        received1_entries: JSON.stringify(database[idx].received1Entries),
-        remaining: database[idx].remaining
-      };
-      if (!navigator.onLine || !sb) {
-        _addToPendingUpdates(supaId, _r1upd);
-        setSyncStatus('offline', '● Offline — payment queued');
-      } else {
-        // Probe column existence once, then choose payload accordingly
-        await _probeReceived1EntriesCol();
-        const _payload = _r1ColExists
-          ? _r1upd
-          : { received1: _r1upd.received1, remaining: _r1upd.remaining };
-        try {
-          const { error } = await sb.from('invoices').update(_payload).eq('id', supaId);
-          if (error) throw error;
-          // If column was missing, still queue the full update for when it's added
-          if (!_r1ColExists) _addToPendingUpdates(supaId, _r1upd);
-        } catch(e) {
-          console.error('received1 save failed — queued:', e);
-          _addToPendingUpdates(supaId, _r1upd);
-          setSyncStatus('offline', '● Payment queued — will retry');
-        }
-      }
-    }
-    renderDB();
-    // Refresh inline preview if open
-    const previewEl = document.getElementById('inlineInvPreview');
-    if (previewEl && previewEl.style.display !== 'none') openInlinePreview(idx);
-    // Auto-refresh Finance tab Sheet Cutting if same date is selected
-    const _finDate = (document.getElementById('dailyDate')||{}).value||'';
-    const _finType = (document.getElementById('dailyType')||{}).value||'';
-    const _finCat  = (document.getElementById('dailyCat') ||{}).value||'';
-    if (_finDate === _dpVal && _finType === 'income' && _finCat === 'Sheets Cutting') {
-      fetchAutoAmount();
-    }
-    toast('✅ Received entry saved: Rs.' + amt.toLocaleString('en-PK') + ' on ' + dateStr);
-    renderSummary();
-    return;
-  }
   if (field === 'badDebt') {
     const amt = parseFloat(value) || 0;
     database[idx].badDebt = amt;
     const afterDisc = (database[idx].afterDiscount != null ? database[idx].afterDiscount : database[idx].total) || 0;
-    const r1sum = Array.isArray(database[idx].received1Entries)
-      ? database[idx].received1Entries.reduce((s,e) => s+(e.amount||0), 0)
-      : (parseFloat(database[idx].received1)||0);
-    database[idx].remaining = Math.max(0, afterDisc - (database[idx].received||0) - r1sum - amt);
+    database[idx].remaining = Math.max(0, afterDisc - (database[idx].received||0) - amt);
     localStorage.setItem('inv_database', JSON.stringify(database));
     const supaId = database[idx]._supaId;
     if (supaId) {
@@ -8940,7 +8868,7 @@ async function saveDBField(idx, field, value) {
 
 // ══════════════════════════════════════════════
 // SAVE EXCEL (IMPORTED) FIELD — updates excel_invoices in Supabase
-// field: 'total_bill' | 'received1' | 'discount'
+// field: 'total_bill' | 'discount'
 // ══════════════════════════════════════════════
 async function saveExcelField(orderNum, field, value) {
   if (!orderNum) return;
@@ -9180,38 +9108,6 @@ function editExcelInvoice(oNum) {
       }
     }
   ]);
-}
-
-// ══════════════════════════════════════════════
-// DELETE INDIVIDUAL RECEIVED ENTRY — new invoices
-// ══════════════════════════════════════════════
-function deleteReceived1Entry(idx, entryIdx) {
-  const inv = database[idx];
-  if (!inv) return;
-  if (!Array.isArray(inv.received1Entries) || entryIdx < 0 || entryIdx >= inv.received1Entries.length) return;
-  const entry = inv.received1Entries[entryIdx];
-  const amtStr = 'Rs.' + Math.round(entry.amount||0).toLocaleString('en-PK') + ' on ' + (entry.date||'');
-  showModal('Delete Payment Entry', 'Delete entry ' + amtStr + '? This cannot be undone.',
-    [
-      { label: 'Cancel', cls: 'btn-outline', fn: closeModal },
-      { label: 'Delete', cls: 'btn-danger', fn: function() {
-        closeModal();
-        const removed = inv.received1Entries.splice(entryIdx, 1)[0];
-        inv.received1 = inv.received1Entries.reduce(function(s,e){ return s+(parseFloat(e.amount)||0); }, 0);
-        const _afterDisc = inv.afterDiscount != null ? inv.afterDiscount : inv.total;
-        inv.remaining = Math.max(0, (_afterDisc||0) - (inv.received||0) - inv.received1);
-        localStorage.setItem('inv_database', JSON.stringify(database));
-        const supaId = inv._supaId;
-        if (supaId) {
-          updateSupabaseField(supaId, 'received1', inv.received1, inv.received1Entries);
-          try { sb.from('invoices').update({ remaining: inv.remaining }).eq('id', supaId); } catch(e) {}
-        }
-        renderDB();
-        renderSummary();
-        toast('✅ Entry Rs.' + Math.round(removed.amount||0).toLocaleString('en-PK') + ' deleted');
-      }}
-    ]
-  );
 }
 
 // ══════════════════════════════════════════════
@@ -9715,17 +9611,13 @@ async function renderSummary() {
   const totalRemaining = Math.max(0, totalActualRemaining - totalBadDebt);
 
   filtered.forEach(inv => {
-    const r1sum = Array.isArray(inv.received1Entries)
-      ? inv.received1Entries.reduce((s,e) => s + (e.amount||0), 0)
-      : (parseFloat(inv.received1) || 0);
-
     if (inv.isAdvance && !inv.isNull) {
-      totalAdvance  += (inv.received || 0) + r1sum;
-      totalReceived += (inv.received || 0) + r1sum;
+      totalAdvance  += inv.received || 0;
+      totalReceived += inv.received || 0;
     } else if (!inv.isNull) {
       orderCount++;
       totalBill      += inv.total     || 0;
-      totalReceived  += (inv.received || 0) + r1sum;
+      totalReceived  += inv.received  || 0;
       totalDiscount  += inv.discount  || 0;
     }
     totalSqft += inv.totalSqft || 0;
@@ -9744,8 +9636,9 @@ async function renderSummary() {
       (_scData || []).forEach(function(e){ _scTotal += (parseFloat(e.amount) || 0); });
     } else {
       // offline fallback — sum received amounts from local database[]
+      // received1 excluded — customer_payments is the single source of truth
       filtered.forEach(function(inv) {
-        _scTotal += (parseFloat(inv.received) || 0) + (parseFloat(inv.received1) || 0);
+        _scTotal += (parseFloat(inv.received) || 0);
       });
     }
   } catch(_scErr) { console.warn('[sumSC]', _scErr); }
@@ -9846,11 +9739,8 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
     const k  = ph ? ('ph_'+ph) : ('nm_'+nmL);
     _allCustKeys.add(k);
     if (!inv.isAdvance) {
-      const r1sum = Array.isArray(inv.received1Entries)
-        ? inv.received1Entries.reduce((s,e) => s+(e.amount||0), 0)
-        : (parseFloat(inv.received1)||0);
       const afterDisc = inv.afterDiscount != null ? inv.afterDiscount : inv.total;
-      const rem = (afterDisc||0) - (inv.received||0) - r1sum;
+      const rem = (afterDisc||0) - (inv.received||0);
       newInvCustMap[k] = (newInvCustMap[k]||0) + rem;
       _newInvCustBD[k] = (_newInvCustBD[k]||0) + (parseFloat(inv.badDebt)||0);
     }
@@ -10066,7 +9956,7 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
     let allInvRows = [], from2 = 0, done2 = false;
     while (!done2) {
       const { data: invRows, error: invErr } = await sb.from('invoices')
-        .select('cust_name,phone,total,discount,received,received1,bad_debt,remaining,inv_num')
+        .select('cust_name,phone,total,discount,received,bad_debt,remaining,inv_num')
         .range(from2, from2 + batchSize - 1);
       if (invErr) { console.error('[invoices] fetch error:', invErr); break; }
       allInvRows = allInvRows.concat(invRows || []);
@@ -10081,11 +9971,9 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
       const nm = (r.cust_name || '').trim();
       const k  = ph ? ('ph_'+ph) : ('nm_'+nm.toLowerCase());
       // Recalculate remaining fresh from actual columns
-      const r1entries = (() => { const raw = r.received1_entries; if (!raw) return []; if (Array.isArray(raw)) return raw; try { return JSON.parse(raw); } catch(e) { return []; } })();
-      const r1sum = Array.isArray(r1entries) ? r1entries.reduce((s,e)=>s+(e.amount||0),0) : (parseFloat(r.received1)||0);
       const disc  = parseFloat(r.discount)||0;
       const bill  = (parseFloat(r.total)||0) - disc;
-      const recv  = (parseFloat(r.received)||0) + r1sum;
+      const recv  = parseFloat(r.received)||0;
       const bd    = parseFloat(r.bad_debt)||0;
       const rem   = bill - recv - bd;
       if (!excelCustMap[k]) excelCustMap[k] = { remaining: 0, badDebt: 0 };
@@ -11397,7 +11285,6 @@ async function fetchCustomerInvoices(name, phone, nameQuery) {
     r.date = normalizeDate(r.date);
     r.order_num = normalizeOrderNum(r.order_num);
     r._src = 'excel';
-    r._hasR1 = 'received1' in r;
     // Parse received_entries JSONB if returned as string
     if (typeof r.received_entries === 'string') {
       try { r.received_entries = JSON.parse(r.received_entries); } catch(e) { r.received_entries = []; }
@@ -11505,12 +11392,12 @@ async function fetchCustomerInvoices(name, phone, nameQuery) {
       var invQ = [];
       if (exactName) invQ.push(
         sb.from('invoices')
-          .select('inv_num,date,cust_name,phone,total,discount,received,received1,remaining,bad_debt')
+          .select('inv_num,date,cust_name,phone,total,discount,received,remaining,bad_debt')
           .eq('cust_name', exactName)
       );
       if (ph0) invQ.push(
         sb.from('invoices')
-          .select('inv_num,date,cust_name,phone,total,discount,received,received1,remaining,bad_debt')
+          .select('inv_num,date,cust_name,phone,total,discount,received,remaining,bad_debt')
           .eq('phone', phone)
       );
       var invRes = invQ.length ? await Promise.all(invQ) : [];
@@ -11520,21 +11407,17 @@ async function fetchCustomerInvoices(name, phone, nameQuery) {
         });
       });
       invResults.forEach(function(r) {
-        var r1entries = [];
-        try { const _r = r.received1_entries; r1entries = !_r ? [] : Array.isArray(_r) ? _r : JSON.parse(_r); } catch(e) {}
-        var r1sum = Array.isArray(r1entries) ? r1entries.reduce(function(s,e){return s+(e.amount||0);},0) : (parseFloat(r.received1)||0);
         var disc = parseFloat(r.discount)||0;
         var bill = (parseFloat(r.total)||0) - disc;
-        var recv = (parseFloat(r.received)||0) + r1sum;
         var bd   = parseFloat(r.bad_debt)||0;
         results.push({
           customer_name: r.cust_name||'', phone: r.phone||'',
           order_num: r.inv_num||'', date: r.date||'',
           total_bill: bill,
           received: parseFloat(r.received)||0,   // original first payment (no date)
-          received_entries: r1entries,             // dated individual entries [{amount,date}]
+          received_entries: [],
           bad_debt: bd, discount: disc,
-          remaining: bill - (parseFloat(r.received)||0) - r1sum - bd,
+          remaining: bill - (parseFloat(r.received)||0) - bd,
           _src: 'invoice'
         });
       });
@@ -11549,18 +11432,15 @@ async function fetchCustomerInvoices(name, phone, nameQuery) {
     var nameMatch  = exactName && (inv.custName||'') === exactName;
     var phoneMatch = ph0 && iph && ph0 === iph;
     if (nameMatch || phoneMatch) {
-      var r1sum = Array.isArray(inv.received1Entries)
-        ? inv.received1Entries.reduce(function(s,e){return s+(e.amount||0);},0)
-        : (parseFloat(inv.received1)||0);
       var afterDisc = (inv.afterDiscount!=null?inv.afterDiscount:inv.total)||0;
-      var recv = (inv.received||0)+r1sum;
+      var recv = inv.received||0;
       var bd   = parseFloat(inv.badDebt)||0;
       results.push({
         customer_name: inv.custName||'', phone: inv.phone||'',
         order_num: inv.invNum||'', date: inv.date||'',
         total_bill: afterDisc,
         received: inv.received||0,                  // original first payment (no date)
-        received_entries: Array.isArray(inv.received1Entries) ? inv.received1Entries : [],
+        received_entries: [],
         bad_debt: bd, discount: inv.discount||0,
         remaining: afterDisc - recv - bd, _src: 'local'
       });
@@ -11690,11 +11570,9 @@ async function renderCustomerDetail(targetEl, name, phone, showBackBtn, nameQuer
   };
   // Populate invoice-list print data for _printSearchPanel
   var _srRows = allInvs.map(function(r) {
-    var r1sum = Array.isArray(r.received_entries)
-      ? r.received_entries.reduce(function(s,e){return s+(parseFloat(e.amount)||0);},0) : 0;
     return { date: r.date||'', invNum: r.order_num||'—',
       bill: parseFloat(r.total_bill)||0, recv: parseFloat(r.received)||0,
-      r1sum: r1sum, disc: parseFloat(r.discount)||0 };
+      disc: parseFloat(r.discount)||0 };
   });
   window._searchPrintData = {
     custName: displayName, phone: displayPhone, area: custArea||'',
@@ -11703,7 +11581,6 @@ async function renderCustomerDetail(targetEl, name, phone, showBackBtn, nameQuer
     totalRecv:       totalRecv,
     totalRemaining:  totalRem,
     totalReceived:   _srRows.reduce(function(s,r){return s+r.recv;},0),
-    totalReceivedR1: _srRows.reduce(function(s,r){return s+r.r1sum;},0),
     totalDiscount:   totalDisc
   };
 
@@ -12178,31 +12055,15 @@ ${_printHeaderHtml(_ps,
   <div class="totals-left">
     <label>Bill Received (Rs.)</label>
     <div class="tval">Rs. ${Math.round(inv.received||0).toLocaleString('en-PK')}</div>
-    ${(()=>{
-      const entries = Array.isArray(inv.received1Entries) && inv.received1Entries.length > 0
-        ? inv.received1Entries
-        : (inv.received1 ? [{amount:parseFloat(inv.received1)||0,date:''}] : []);
-      return entries.map((e,i)=>`<label>وصول شدہ ${i+1} — Received ${i+1}${e.date?' ('+e.date+')':''}</label><div class="tval" style="color:#1a7a4a">Rs. ${Math.round(e.amount||0).toLocaleString('en-PK')}</div>`).join('');
-    })()}
     <label>Discount (Rs.)</label>
     <div class="tval">Rs. ${Math.round(inv.discount||0).toLocaleString('en-PK')}</div>
     ${_gaugeKgPanelHTML(inv.items)}
   </div>
   <div class="totals-right">
     ${(()=>{
-      const entries = Array.isArray(inv.received1Entries) && inv.received1Entries.length > 0
-        ? inv.received1Entries
-        : (inv.received1 ? [{amount:parseFloat(inv.received1)||0,date:''}] : []);
-      const r1sum = entries.reduce((s,e)=>s+(e.amount||0),0);
       const afterDisc = inv.afterDiscount!=null ? inv.afterDiscount : inv.total;
-      const totalRec = (inv.received||0) + r1sum;
-      const remaining = (afterDisc||0) - totalRec;
+      const remaining = (afterDisc||0) - (inv.received||0);
       const remColor = remaining > 0 ? '#c0392b' : '#1a7a4a';
-      const rec1Rows = entries.map((e,i)=>`
-        <div class="total-row" style="background:#e8f8f0">
-          <span class="tl" style="color:#1a7a4a">وصول شدہ ${i+1} &nbsp;<span style="font-size:0.62rem;font-family:'Montserrat', sans-serif;">(Received ${i+1}${e.date?' · '+e.date:''})</span></span>
-          <span class="tv" style="color:#1a7a4a">Rs. ${Math.round(e.amount||0).toLocaleString('en-PK')}</span>
-        </div>`).join('');
       const _ec  = parseFloat(inv.extraCharges) || 0;
       const _ecL = inv.extraChargesLabel || 'Extra Charges';
       const _gross = (inv.total||0) + _ec;
@@ -12232,7 +12093,6 @@ ${_printHeaderHtml(_ps,
       <span class="tl">وصول شدہ &nbsp;<span style="font-size:0.62rem;font-family:'Montserrat', sans-serif;">(Received)</span></span>
       <span class="tv" style="color:#1a7a4a">Rs. ${Math.round(inv.received||0).toLocaleString('en-PK')}</span>
     </div>
-    ${rec1Rows}
     <div class="total-row" style="background:#f5f5f5">
       <span class="tl">Remaining &nbsp;(باقی رقم)</span>
       <span class="tv" style="color:${remColor}">Rs. ${Math.round(remaining).toLocaleString('en-PK')}</span>
@@ -12800,7 +12660,7 @@ async function _checkNameExists(name) {
 }
 
 // ── Total Bill inline edit helpers ──
-// ── Compact cell popover system (Received1 / Discount / Bad Debt) ──
+// ── Compact cell popover system (Discount / Bad Debt) ──
 // Closes any open popover and removes outside-click listener
 function _dbClosePopover() {
   var pop = document.getElementById('_dbCellPopover');
@@ -12839,7 +12699,6 @@ function _dbBadge(icon, label, color, hasValue) {
   return '<button type="button" style="display:flex;align-items:center;justify-content:center;gap:3px;min-height:24px;width:100%;max-width:100%;padding:2px 4px;border:1px solid ' + c + '33;border-radius:6px;background:' + (hasValue ? c + '14' : 'transparent') + ';color:' + c + ';font-family:Montserrat,sans-serif;font-size:0.66rem;font-weight:700;cursor:pointer;white-space:normal;line-height:1.25;text-align:center;overflow:hidden;box-sizing:border-box;">' + icon + ' ' + label + '</button>';
 }
 
-// ── Received1 popover — EXCEL rows ──
 // ── Discount popover — EXCEL rows ──
 function showExcelDiscPopover(btnEl, orderNum, discount) {
   var html = '<div style="font-size:0.72rem;font-weight:700;color:#92400e;margin-bottom:6px;">Discount — ' + orderNum + '</div>'
@@ -13542,7 +13401,6 @@ async function saveHistAsDraft() {
     total:        bill,
     afterDiscount: bill - disc,
     received:     recv,
-    received1:    recv1,
     discount:     disc,
     badDebt:      bd,
     remaining:    rem,
@@ -13784,16 +13642,12 @@ function autoSavePDF(data) {
     '</tr><tr class="sub-head"><th>فٹ</th><th>انچ</th><th class="dim1-group">سوتر</th><th>فٹ</th><th>انچ</th><th class="dim2-group">سوتر</th></tr></thead>'+
     '<tbody>'+itemRows+'</tbody></table>'+
     (function(){
-      var _e=Array.isArray(data.received1Entries)&&data.received1Entries.length>0?data.received1Entries:(data.received1?[{amount:parseFloat(data.received1)||0,date:''}]:[]);
-      var _r1=_e.reduce(function(s,e){return s+(e.amount||0);},0);
       var _ad=data.afterDiscount!=null?data.afterDiscount:data.total;
-      var _rem=(_ad||0)-(data.received||0)-_r1;
+      var _rem=(_ad||0)-(data.received||0);
       var _rc=_rem>0?'#c0392b':'#1a7a4a';
-      var _leftRec1=_e.map(function(e,i){return '<label>وصول شدہ '+(i+1)+' — Received '+(i+1)+(e.date?' ('+e.date+')':'')+'</label><div class="tval" style="color:#1a7a4a">Rs. '+Math.round(e.amount||0).toLocaleString('en-PK')+'</div>';}).join('');
-      var _rightRec1=_e.map(function(e,i){return '<div class="total-row" style="background:#e8f8f0"><span class="tl" style="color:#1a7a4a">وصول شدہ '+(i+1)+' (Received '+(i+1)+(e.date?' · '+e.date:'')+')</span><span class="tv" style="color:#1a7a4a">Rs. '+Math.round(e.amount||0).toLocaleString('en-PK')+'</span></div>';}).join('');
       return '<div class="totals-section">'+
         '<div class="totals-left">'+
-          '<label>Bill Received (Rs.)</label><div class="tval">Rs. '+Math.round(data.received||0).toLocaleString('en-PK')+'</div>'+_leftRec1+
+          '<label>Bill Received (Rs.)</label><div class="tval">Rs. '+Math.round(data.received||0).toLocaleString('en-PK')+'</div>'+
           '<label>Discount (Rs.)</label><div class="tval">Rs. '+Math.round(data.discount||0).toLocaleString('en-PK')+'</div>'+
         '</div>'+
         '<div class="totals-right">'+
@@ -13801,7 +13655,7 @@ function autoSavePDF(data) {
           (data.extraCharges > 0 ? '<div class="total-row" style="background:#f5f3ff"><span class="tl" style="color:#5b21b6">'+(data.extraChargesLabel||'Extra Charges')+'</span><span class="tv" style="color:#5b21b6">Rs. '+Math.round(data.extraCharges||0).toLocaleString('en-PK')+'</span></div>'+'<div class="total-row" style="background:#ede9fe"><span class="tl" style="color:#4c1d95;font-weight:700">Gross Total</span><span class="tv" style="color:#4c1d95;font-weight:700">Rs. '+Math.round((data.total||0)+(data.extraCharges||0)).toLocaleString('en-PK')+'</span></div>' : '')+
           '<div class="total-row" style="background:#fff8ee"><span class="tl" style="color:#b7650a">Discount</span><span class="tv" style="color:#b7650a">Rs. '+Math.round(data.discount||0).toLocaleString('en-PK')+'</span></div>'+
           '<div class="total-row" style="background:#f0faf4"><span class="tl" style="color:#1a7a4a">After Discount</span><span class="tv" style="color:#1a7a4a">Rs. '+Math.round(_ad||0).toLocaleString('en-PK')+'</span></div>'+
-          '<div class="total-row" style="background:#ebebeb"><span class="tl">وصول شدہ (Received)</span><span class="tv" style="color:#1a7a4a">Rs. '+Math.round(data.received||0).toLocaleString('en-PK')+'</span></div>'+_rightRec1+
+          '<div class="total-row" style="background:#ebebeb"><span class="tl">وصول شدہ (Received)</span><span class="tv" style="color:#1a7a4a">Rs. '+Math.round(data.received||0).toLocaleString('en-PK')+'</span></div>'+
           '<div class="total-row" style="background:#f5f5f5"><span class="tl">Remaining (باقی رقم)</span><span class="tv" style="color:'+_rc+'">Rs. '+Math.round(_rem).toLocaleString('en-PK')+'</span></div>'+
         '</div>'+
       '</div>';
@@ -13874,11 +13728,10 @@ function confirmClearDB() {
 
 function exportCSV() {
   if (!database.length) { toast('No invoices to export'); return; }
-  const headers = ['Serial No','Date','Customer','Phone','Invoice#','Total Bill','Received','Received 1','Discount','Bad Debt','Remaining'];
+  const headers = ['Serial No','Date','Customer','Phone','Invoice#','Total Bill','Received','Discount','Bad Debt','Remaining'];
   const rows = database.map((inv, i) => [
     i + 1, inv.date, inv.custName, inv.phone, inv.invNum,
     inv.total.toFixed(2), inv.received.toFixed(2),
-    inv.received1 || '',
     (inv.discount||0).toFixed(2),
     inv.badDebt || '',
     Math.max(0, inv.remaining||0).toFixed(2)
@@ -14578,7 +14431,7 @@ async function exportInvoicesCSV() {
 
     if (btn) btn.textContent = '⏳ Fetching invoices...';
 
-    var r1 = await sb.from('invoices').select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,received1,remaining,bad_debt,created_at,received1_entries,edited_at,is_advance,extra_charges,extra_charges_label');
+    var r1 = await sb.from('invoices').select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,remaining,bad_debt,created_at,edited_at,is_advance,extra_charges,extra_charges_label');
     var r2 = await sb.from('excel_invoices').select('id,order_num,customer_name,phone,total_bill,discount,bad_debt,received,received_entries,remaining,date,source,created_at,order_status,status_updated_at');
 
     var inv1 = (r1.data || []).map(function(r) {
@@ -14608,11 +14461,9 @@ async function exportInvoicesCSV() {
         extra_charges_label: r.extra_charges_label || '',
         total: r.total_bill || 0,
         received: r.received || 0,
-        received1: r.received1 || 0,
         remaining: r.remaining || 0,
         bad_debt: r.bad_debt || 0,
         is_advance: false,
-        received1_entries: r.received_entries || '',
         created_at: r.created_at || '',
         edited_at: '',
         id: r.id || ''
@@ -14646,18 +14497,16 @@ async function exportInvoicesCSV() {
       { key: 'extra_charges_label', label: 'Extra Label',         width: 14 },
       { key: 'total',               label: 'Total',               width: 12 },
       { key: 'received',            label: 'Received',            width: 12 },
-      { key: 'received1',           label: 'Received 2',          width: 12 },
       { key: 'remaining',           label: 'Remaining',           width: 12 },
       { key: 'bad_debt',            label: 'Bad Debt',            width: 11 },
       { key: 'is_advance',          label: 'Advance?',            width: 10 },
-      { key: 'received1_entries',   label: 'Payment Entries',     width: 25 },
       { key: 'created_at',          label: 'Created At',          width: 18 },
       { key: 'edited_at',           label: 'Edited At',           width: 18 },
       { key: 'source',              label: 'Source',              width: 11 },
       { key: 'id',                  label: 'ID',                  width: 14 }
     ];
 
-    var numericCols = ['sub_total','discount','extra_charges','total','received','received1','remaining','bad_debt'];
+    var numericCols = ['sub_total','discount','extra_charges','total','received','remaining','bad_debt'];
 
     var hdrStyle = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center', wrapText: true }, border: { bottom: { style: 'thin', color: { rgb: '2E75B6' } } } };
     var custStyle = { font: { bold: true, sz: 10, color: { rgb: '1E3A5F' } }, fill: { fgColor: { rgb: 'D5E8F0' } }, alignment: { wrapText: true, vertical: 'top' } };
@@ -17032,7 +16881,7 @@ function _buildSummaryCards(totalBills, totalReceived, totalRemaining) {
 }
 
 // ── Build layout: left = invoices, right = ALL payments in sequence (no gaps) ──
-function _buildSplitTable(invoiceRows, totalBills, totalDiscount, totalReceived, totalReceivedR1) {
+function _buildSplitTable(invoiceRows, totalBills, totalDiscount, totalReceived) {
   var thS = 'padding:7px 8px;font-size:0.58rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#cbd5e1;white-space:nowrap;';
   var tdS = 'padding:6px 8px;font-family:Montserrat,sans-serif;font-size:0.75rem;';
   var tfS = 'padding:7px 8px;font-family:Montserrat,sans-serif;font-size:0.75rem;font-weight:800;color:#f0c96e;';
@@ -17043,7 +16892,7 @@ function _buildSplitTable(invoiceRows, totalBills, totalDiscount, totalReceived,
     var bg = (i%2===0)?'#fff':'#f8fafc';
     var dateD = fmtDateDisplay(r.date);
     var discH = r.disc > 0 ? 'Rs.'+Math.round(r.disc).toLocaleString('en-PK') : '<span style="color:#cbd5e1;">—</span>';
-    var totalRecv = (r.recv||0) + (r.r1sum||0);
+    var totalRecv = r.recv||0;
     var recH = totalRecv > 0 ? 'Rs.'+Math.round(totalRecv).toLocaleString('en-PK') : '<span style="color:#cbd5e1;">—</span>';
     invRowsHtml += '<tr style="background:'+bg+';border-bottom:1px solid #f1f5f9;">'
       + '<td style="'+tdS+'color:#94a3b8;text-align:center;">'+(i+1)+'</td>'
@@ -17057,7 +16906,7 @@ function _buildSplitTable(invoiceRows, totalBills, totalDiscount, totalReceived,
       + '</tr>';
   });
 
-  var totalRec = totalReceived + totalReceivedR1;
+  var totalRec = totalReceived;
 
   var leftTable = '<table style="width:100%;border-collapse:collapse;">'
     + '<thead><tr style="background:#1e293b;">'
@@ -17156,16 +17005,13 @@ async function _renderSearchByInv(invNum) {
     var n = (inv.invNum||'').toUpperCase();
     return n === invNumUpper || n === withPrefix || n === withoutPfx;
   }).forEach(function(inv) {
-    var r1sum = Array.isArray(inv.received1Entries)
-      ? inv.received1Entries.reduce(function(s,e){ return s+(e.amount||0); }, 0)
-      : (parseFloat(inv.received1)||0);
     var bill = inv.afterDiscount != null ? inv.afterDiscount : (inv.total||0);
-    var rem  = Math.max(0, bill - (inv.received||0) - r1sum);
+    var rem  = Math.max(0, bill - (inv.received||0));
     matchedInvoices.push({
       date: inv.date||'', invNum: inv.invNum||'—',
       custName: inv.custName||'', phone: inv.phone||'',
       bill: bill, disc: inv.discount||0,
-      recv: inv.received||0, r1sum: r1sum, remaining: rem,
+      recv: inv.received||0, remaining: rem,
       source: 'local'
     });
   });
@@ -17182,7 +17028,7 @@ async function _renderSearchByInv(invNum) {
             date: r.date||'', invNum: r.inv_num||'—',
             custName: r.cust_name||'', phone: r.phone||'',
             bill: parseFloat(r.total_bill)||0, disc: parseFloat(r.discount)||0,
-            recv: parseFloat(r.received)||0, r1sum: 0,
+            recv: parseFloat(r.received)||0,
             remaining: parseFloat(r.remaining)||0,
             source: 'supabase'
           });
@@ -17201,7 +17047,7 @@ async function _renderSearchByInv(invNum) {
             date: r.date||'', invNum: normalizeOrderNum(r.order_num)||'—',
             custName: r.customer_name||'', phone: r.phone||'',
             bill: parseFloat(r.total_bill)||0, disc: parseFloat(r.discount)||0,
-            recv: parseFloat(r.received)||0, r1sum: 0,
+            recv: parseFloat(r.received)||0,
             remaining: parseFloat(r.remaining)||0,
             source: 'excel'
           });
@@ -17237,7 +17083,6 @@ async function _renderSearchByInv(invNum) {
             else if (p.type === 'bad_debt') _liveBD += parseFloat(p.amount)||0;
           });
           matchedInvoices[_mi].recv = _liveRecv;
-          matchedInvoices[_mi].r1sum = 0;
           matchedInvoices[_mi].disc = (_inv.disc||0) + _liveDisc;
           matchedInvoices[_mi].remaining = Math.max(0, _inv.bill - matchedInvoices[_mi].disc - _liveRecv - _liveBD);
         }
@@ -17270,7 +17115,7 @@ async function _renderSearchByInv(invNum) {
       + '<td style="'+tdS+'">'+r.custName+'</td>'
       + '<td style="'+tdS+'color:#64748b;">'+r.phone+'</td>'
       + '<td style="'+tdS+'font-weight:700;text-align:right;color:#1e293b;">Rs.'+Math.round(r.bill).toLocaleString('en-PK')+'</td>'
-      + '<td style="'+tdS+'text-align:right;color:#059669;font-weight:600;">Rs.'+Math.round(r.recv + r.r1sum).toLocaleString('en-PK')+'</td>'
+      + '<td style="'+tdS+'text-align:right;color:#059669;font-weight:600;">Rs.'+Math.round(r.recv).toLocaleString('en-PK')+'</td>'
       + '<td style="'+tdS+'text-align:right;color:#d97706;">'+discH+'</td>'
       + '<td style="'+tdS+'text-align:right;font-weight:700;color:'+remColor+';">Rs.'+Math.round(Math.abs(r.remaining)).toLocaleString('en-PK')+'</td>'
       + '</tr>';
@@ -17331,7 +17176,6 @@ function _printSearchPanel(mode) {
   var totalRecv        = pd.totalRecv        || 0;
   var totalRemaining   = pd.totalRemaining   || 0;
   var totalReceived    = pd.totalReceived    || 0;
-  var totalReceivedR1  = pd.totalReceivedR1  || 0;
   var totalDiscount    = pd.totalDiscount    || 0;
 
   var today = new Date().toLocaleDateString('en-PK',{day:'2-digit',month:'long',year:'numeric'});
@@ -17344,14 +17188,12 @@ function _printSearchPanel(mode) {
     var even  = i%2===0?'':'background:#f8fafc;';
     var discH = r.disc > 0 ? Math.round(r.disc).toLocaleString('en-PK') : '—';
     var recH  = r.recv  > 0 ? Math.round(r.recv).toLocaleString('en-PK')  : '—';
-    var r1H   = r.r1sum > 0 ? Math.round(r.r1sum).toLocaleString('en-PK') : '—';
     return '<tr style="'+even+'border-bottom:1px solid #e2e8f0;">'
       + '<td style="padding:6px 8px;text-align:center;color:#94a3b8;font-size:8pt;">'+(i+1)+'</td>'
       + '<td style="padding:6px 8px;font-size:8pt;white-space:nowrap;">'+dateD+'</td>'
       + '<td style="padding:6px 8px;font-size:8pt;color:#4f46e5;font-weight:700;">'+r.invNum+'</td>'
       + '<td style="padding:6px 8px;font-size:8pt;font-weight:700;text-align:right;">'+Math.round(r.bill).toLocaleString('en-PK')+'</td>'
       + '<td style="padding:6px 8px;font-size:8pt;color:#059669;text-align:right;">'+recH+'</td>'
-      + '<td style="padding:6px 8px;font-size:8pt;color:#0f766e;text-align:right;">'+r1H+'</td>'
       + '<td style="padding:6px 8px;font-size:8pt;color:#d97706;text-align:right;">'+discH+'</td>'
       + '</tr>';
   }).join('');
@@ -17453,7 +17295,6 @@ function _printSearchPanel(mode) {
     + '<th style="text-align:left;">Invoice #<\/th>'
     + '<th style="text-align:right;">Total Bill<\/th>'
     + '<th style="text-align:right;color:#4ade80;">Received<\/th>'
-    + '<th style="text-align:right;color:#2dd4bf;">Received 1<\/th>'
     + '<th style="text-align:right;color:#fbbf24;">Discount<\/th>'
     + '<\/tr><\/thead>'
     + '<tbody>'+rowsHtml+'<\/tbody>'
@@ -17461,7 +17302,6 @@ function _printSearchPanel(mode) {
     + '<td colspan="3" style="text-align:right;">Grand Total<\/td>'
     + '<td style="text-align:right;">'+Math.round(totalBills).toLocaleString('en-PK')+'<\/td>'
     + '<td style="text-align:right;color:#4ade80;">'+Math.round(totalReceived).toLocaleString('en-PK')+'<\/td>'
-    + '<td style="text-align:right;color:#2dd4bf;">'+Math.round(totalReceivedR1).toLocaleString('en-PK')+'<\/td>'
     + '<td style="text-align:right;color:#fbbf24;">'+Math.round(totalDiscount).toLocaleString('en-PK')+'<\/td>'
     + '<\/tr><\/tfoot>'
     + '<\/table>');
@@ -17563,17 +17403,9 @@ function generateCustomerStatement() {
   // Collect ALL payments as one flat customer-level pool (independent of invoices)
    var allPayments = [];
    invoices.slice().reverse().forEach(function(inv) {
-    // First: the initial received amount
+    // The initial received amount
     if (inv.received && inv.received > 0) {
       allPayments.push({ amount: inv.received, date: inv.date || '' });
-    }
-    // Then: received1Entries in order (1st, 2nd, 3rd...)
-    if (Array.isArray(inv.received1Entries) && inv.received1Entries.length > 0) {
-      inv.received1Entries.forEach(function(e) {
-        allPayments.push({ amount: e.amount||0, date: e.date||'' });
-      });
-    } else if (!Array.isArray(inv.received1Entries) && inv.received1 && parseFloat(inv.received1) > 0) {
-      allPayments.push({ amount: parseFloat(inv.received1)||0, date: '' });
     }
   });
 
@@ -17856,32 +17688,10 @@ function openInlinePreview(idx) {
       </table>
     </div>
     ${(() => {
-      // Build received1 entries rows
-      const entries = Array.isArray(inv.received1Entries) && inv.received1Entries.length > 0
-        ? inv.received1Entries
-        : (inv.received1 ? [{ amount: parseFloat(inv.received1)||0, date: '' }] : []);
-
-      const rec1Rows = entries.map((e,i) =>
-        `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 14px;background:#f0faf4;border-bottom:1px solid #d4c5a9;">
-          <span style="font-size:0.68rem;font-weight:600;color:#1a7a4a;">
-            وصول شدہ ${i+1} &nbsp;<span style="font-family:'Montserrat', sans-serif;direction:ltr;font-size:0.62rem;color:#8a8a9a;">(Received ${i+1})</span>
-            ${e.date ? `<span style="font-size:0.6rem;color:#8a8a9a;margin-left:6px;font-family:Montserrat, sans-serif;">${e.date}</span>` : ''}
-          </span>
-          <span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:#1a7a4a;">Rs. ${Math.round(e.amount||0).toLocaleString('en-PK')}</span>
-        </div>`
-      ).join('');
-
       return `<div style="border-top:2px solid #0f1e45;display:grid;grid-template-columns:1fr auto;">
       <div style="padding:10px 14px;border-right:1.5px solid #d4c5a9;">
         <div style="font-size:0.65rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Bill Received</div>
         <div style="font-size:0.92rem;font-family:Montserrat, sans-serif;color:#1a7a4a;font-weight:600;">Rs. ${Math.round(inv.received||0).toLocaleString('en-PK')}</div>
-        ${entries.length > 0 ? `<div style="margin-top:10px;border-top:1px dashed #d4c5a9;padding-top:8px;">
-          <div style="font-size:0.65rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Received Entries</div>
-          ${entries.map((e,i) => `<div style="font-size:0.78rem;font-family:Montserrat, sans-serif;color:#1a7a4a;margin-bottom:3px;">
-            <span style="color:#8a8a9a;font-size:0.65rem;">${i+1}.</span> Rs.${Math.round(e.amount||0).toLocaleString('en-PK')}
-            ${e.date ? `<span style="color:#b0a090;font-size:0.65rem;margin-left:4px;">${e.date}</span>` : ''}
-          </div>`).join('')}
-        </div>` : ''}
         <div style="font-size:0.65rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:3px;">Discount (Rs.)</div>
         <div style="font-size:0.92rem;font-family:Montserrat, sans-serif;color:#b7650a;font-weight:600;">Rs. ${Math.round(inv.discount||0).toLocaleString('en-PK')}</div>
         ${_gaugeKgPanelHTML(inv.items)}
@@ -17903,7 +17713,6 @@ function openInlinePreview(idx) {
           <span style="font-size:0.7rem;font-weight:600;color:#0f1e45;">وصول شدہ &nbsp;<span style="font-family:'Montserrat', sans-serif;direction:ltr;font-size:0.62rem;">(Received)</span></span>
           <span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:#1a7a4a;">Rs. ${Math.round(inv.received||0).toLocaleString('en-PK')}</span>
         </div>
-        ${rec1Rows}
         <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#f5f5f5;">
           <span style="font-size:0.7rem;font-weight:600;color:#0f1e45;">Remaining (باقی رقم)</span>
           <span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:${remainColor};">Rs. ${Math.round(inv.remaining||0).toLocaleString('en-PK')}</span>
@@ -17971,16 +17780,6 @@ function openSearchInlinePreview(idx) {
     </tr>`;
   }).join('');
 
-  const entries = Array.isArray(inv.received1Entries) && inv.received1Entries.length > 0
-    ? inv.received1Entries
-    : (inv.received1 ? [{ amount: parseFloat(inv.received1)||0, date: '' }] : []);
-  const rec1Rows = entries.map((e,i) =>
-    `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 14px;background:#f0faf4;border-bottom:1px solid #d4c5a9;">
-      <span style="font-size:0.68rem;font-weight:600;color:#1a7a4a;">وصول شدہ ${i+1} <span style="font-size:0.62rem;color:#8a8a9a;">(Received ${i+1})</span>${e.date?`<span style="font-size:0.6rem;color:#8a8a9a;margin-left:4px;">${e.date}</span>`:''}</span>
-      <span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:#1a7a4a;">Rs. ${Math.round(e.amount||0).toLocaleString('en-PK')}</span>
-    </div>`
-  ).join('');
-
   const displayPhone = inv.phone ? ('+92-' + inv.phone) : '—';
   const logoHtml = logoData ? `<img src="${logoData}" style="max-width:100px;max-height:75px;object-fit:contain;">` : `<span style="font-size:0.62rem;color:rgba(201,168,76,0.5);text-align:center;">🏪<br>Logo</span>`;
 
@@ -18040,10 +17839,6 @@ function openSearchInlinePreview(idx) {
         <div style="padding:10px 14px;border-right:1.5px solid #d4c5a9;">
           <div style="font-size:0.62rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Bill Received</div>
           <div style="font-size:0.88rem;font-family:Montserrat, sans-serif;color:#1a7a4a;font-weight:600;">Rs. ${Math.round(inv.received||0).toLocaleString('en-PK')}</div>
-          ${entries.length > 0 ? `<div style="margin-top:8px;border-top:1px dashed #d4c5a9;padding-top:6px;">
-            <div style="font-size:0.62rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Received Entries</div>
-            ${entries.map((e,i) => `<div style="font-size:0.76rem;font-family:Montserrat, sans-serif;color:#1a7a4a;margin-bottom:2px;"><span style="color:#8a8a9a;font-size:0.62rem;">${i+1}.</span> Rs.${Math.round(e.amount||0).toLocaleString('en-PK')} ${e.date?`<span style="color:#b0a090;font-size:0.62rem;">${e.date}</span>`:''}</div>`).join('')}
-          </div>` : ''}
           <div style="font-size:0.62rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.5px;margin-top:8px;margin-bottom:3px;">Discount</div>
           <div style="font-size:0.88rem;font-family:Montserrat, sans-serif;color:#b7650a;font-weight:600;">Rs. ${Math.round(inv.discount||0).toLocaleString('en-PK')}</div>
           ${_gaugeKgPanelHTML(inv.items)}
@@ -18053,7 +17848,6 @@ function openSearchInlinePreview(idx) {
           <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#fff8ee;border-bottom:1px solid #d4c5a9;"><span style="font-size:0.7rem;font-weight:600;color:#b7650a;">Discount</span><span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:#b7650a;">Rs. ${Math.round(inv.discount||0).toLocaleString('en-PK')}</span></div>
           <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#f0faf4;border-bottom:1px solid #d4c5a9;"><span style="font-size:0.7rem;font-weight:600;color:#1a7a4a;">After Discount</span><span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:#1a7a4a;">Rs. ${Math.round(inv.afterDiscount||0).toLocaleString('en-PK')}</span></div>
           <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#ebebeb;border-bottom:1px solid #d4c5a9;"><span style="font-size:0.7rem;font-weight:600;color:#0f1e45;">وصول شدہ (Received)</span><span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:#1a7a4a;">Rs. ${Math.round(inv.received||0).toLocaleString('en-PK')}</span></div>
-          ${rec1Rows}
           <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#f5f5f5;"><span style="font-size:0.7rem;font-weight:600;color:#0f1e45;">Remaining (باقی رقم)</span><span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:${remainColor};">Rs. ${Math.round(inv.remaining||0).toLocaleString('en-PK')}</span></div>
         </div>
       </div>`;
@@ -20292,10 +20086,7 @@ async function postInvoiceToLedger(inv) {
   const invDate = inv.date || new Date().toISOString().split('T')[0];
   // BLOCK: 2025 dates fully covered by historical_daily — never write invoice entries for them
   if (invDate.slice(0, 4) === '2025') return;
-  const r1sum = Array.isArray(inv.received1Entries)
-    ? inv.received1Entries.reduce((s,e) => s+(parseFloat(e.amount)||0), 0)
-    : (parseFloat(inv.received1) || 0);
-  const amount = (parseFloat(inv.received) || 0) + r1sum;
+  const amount = parseFloat(inv.received) || 0;
   if (!amount) return;
   try {
     // Remove any existing ledger entry for this invoice (safe upsert via ref_id)
@@ -21211,13 +21002,13 @@ async function fetchEntriesWithCorrectInvoiceAmounts(filters = {}) {
       const dateTo   = filters.monthTo   ? filters.monthTo + '-' + String(lastDayOfMonth(filters.monthTo)).padStart(2,'0') : '2099-12-31';
       const { data: invRows } = await sb
         .from('invoices')
-        .select('inv_num, received, received1, date')
+        .select('inv_num, received, date')
         .gte('date', dateFrom)
         .lte('date', dateTo);
 
       const receivedMap = {};
       (invRows || []).forEach(r => {
-        receivedMap[r.inv_num] = (parseFloat(r.received) || 0) + (parseFloat(r.received1) || 0);
+        receivedMap[r.inv_num] = parseFloat(r.received) || 0;
       });
 
       entries = entries.map(e => {
@@ -24261,9 +24052,8 @@ function pbBuildUnifiedMap() {
     if (!map[key]) map[key] = { name: inv.custName || '-', phone: inv.phone || '', area: inv.area || '', totalBill: 0, totalReceived: 0, pending: 0, orders: [] };
     if (inv.custName && map[key].name === '-') map[key].name = inv.custName;
     if (inv.area && !map[key].area) map[key].area = inv.area;
-    var r1sum    = Array.isArray(inv.received1Entries) ? inv.received1Entries.reduce(function(s, e) { return s + (e.amount || 0); }, 0) : (parseFloat(inv.received1) || 0);
     var afterDisc = (inv.afterDiscount != null ? inv.afterDiscount : inv.total) || 0;
-    var paid     = (inv.received || 0) + r1sum;
+    var paid     = inv.received || 0;
     var rem      = Math.max(0, afterDisc - paid);
     map[key].totalBill     += inv.total || 0;
     map[key].totalReceived += paid;
