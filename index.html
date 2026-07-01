@@ -2265,7 +2265,7 @@ body {
 <!-- ║  SECTION 8 — USER BAR / HEADER                     ║ -->
 <!-- ═══════════════════════════════════════════════════════ -->
 <div id="userBar">
-  <div id="_ubBrand"><span id="_ubBrandText">⚙️ Complete Shop System</span><span id="_appVersionLabel" style="font-size:0.6rem;font-weight:700;color:#f59e0b;font-family:Montserrat,sans-serif;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:middle;">v1.0.5</span></div>
+  <div id="_ubBrand"><span id="_ubBrandText">⚙️ Complete Shop System</span><span id="_appVersionLabel" style="font-size:0.6rem;font-weight:700;color:#f59e0b;font-family:Montserrat,sans-serif;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:middle;">v1.0.6</span></div>
   <div id="topShopName"></div>
   <!-- Col 3: all SPAN children — no div:last-child matches inside -->
   <div id="_ubProfile">
@@ -26896,12 +26896,33 @@ setInterval(function() {
     <button class="mob-nav-btn" data-tab="production" onclick="_mobSwitchTab('production',this)">🏭<span>Production</span></button>
     <button class="mob-nav-btn mnb-active" data-tab="summary" onclick="_mobSwitchTab('summary',this)">📊<span>Summary</span></button>
     <button class="mob-nav-btn" data-tab="search"     onclick="_mobSwitchTab('search',this)">🔍<span>Search</span></button>
+    <button class="mob-nav-btn" data-tab="database"   onclick="_mobSwitchTab('database',this)" style="display:none">🗃️<span>Database</span></button>
+    <button class="mob-nav-btn" data-tab="finance"    onclick="_mobSwitchTab('finance',this)" style="display:none">💰<span>Finance</span></button>
+    <button class="mob-nav-btn" data-tab="settings"   onclick="_mobSwitchTab('settings',this)" style="display:none">⚙️<span>Settings</span></button>
     <button class="mob-nav-btn" data-tab="more"       onclick="_mobShowMore()">⋯<span>More</span></button>
   </nav>
   <div id="mobMoreMenu" style="display:none;position:fixed;bottom:62px;left:0;right:0;background:#1e293b;border-top:2px solid #f59e0b;z-index:9998;padding:8px 0;">
     <button class="mob-nav-btn" data-tab="database" onclick="_mobSwitchTab('database',this);_mobHideMore();" style="width:100%;flex-direction:row;gap:10px;padding:12px 20px;justify-content:flex-start;border-bottom:1px solid rgba(255,255,255,0.1);">🗃️ <span>Database</span></button>
     <button class="mob-nav-btn" data-tab="finance"  onclick="_mobSwitchTab('finance',this);_mobHideMore();"  style="width:100%;flex-direction:row;gap:10px;padding:12px 20px;justify-content:flex-start;border-bottom:1px solid rgba(255,255,255,0.1);">💰 <span>Finance</span></button>
     <button class="mob-nav-btn" data-tab="settings" onclick="_mobSwitchTab('settings',this);_mobHideMore();" style="width:100%;flex-direction:row;gap:10px;padding:12px 20px;justify-content:flex-start;">⚙️ <span>Settings</span></button>
+  </div>
+
+  <!-- Bottom sheet "More" tray (replaces flat #mobMoreMenu) -->
+  <div id="mobMoreBackdrop" onclick="_mobHideMore()"></div>
+  <div id="mobMoreTray">
+    <div class="mmt-handle"></div>
+    <button class="mmt-row" data-tab="database" onclick="_mobSwitchTab('database',this);_mobHideMore();">
+      <span style="font-size:1.3rem;">🗃️</span>
+      <span>Database</span>
+    </button>
+    <button class="mmt-row" data-tab="finance" onclick="_mobSwitchTab('finance',this);_mobHideMore();">
+      <span style="font-size:1.3rem;">💰</span>
+      <span>Finance</span>
+    </button>
+    <button class="mmt-row" data-tab="settings" onclick="_mobSwitchTab('settings',this);_mobHideMore();">
+      <span style="font-size:1.3rem;">⚙️</span>
+      <span>Settings</span>
+    </button>
   </div>
 
 <script>
@@ -26919,8 +26940,14 @@ function _mobSwitchTab(tab, btnEl) {
   document.querySelectorAll('.mob-nav-btn').forEach(function(b) {
     b.classList.remove('mnb-active');
   });
-  var moreTabs = ['database','finance','settings'];
-  if (moreTabs.indexOf(tab) !== -1) {
+  // Highlight the tab's own main-bar button if it's currently visible there
+  // (dynamically promoted tabs live in the main bar, not just the fixed
+  // database/finance/settings set — see the dynamic rebalancing logic in
+  // _authApplyPermissions()); otherwise it's only reachable via the More
+  // tray, so highlight the More button instead.
+  var mainBarBtn = document.querySelector('#mobileBottomNav [data-tab="' + tab + '"]');
+  var isVisibleInMainBar = mainBarBtn && mainBarBtn.style.display !== 'none';
+  if (!isVisibleInMainBar) {
     var moreBtn = document.querySelector('.mob-nav-btn[data-tab="more"]');
     if (moreBtn) moreBtn.classList.add('mnb-active');
   } else if (btnEl) {
@@ -26930,13 +26957,20 @@ function _mobSwitchTab(tab, btnEl) {
 }
 
 function _mobShowMore() {
-  var menu = document.getElementById('mobMoreMenu');
-  if (menu) menu.style.display = (menu.style.display === 'none' ? 'block' : 'none');
+  var tray = document.getElementById('mobMoreTray');
+  var backdrop = document.getElementById('mobMoreBackdrop');
+  if (tray) tray.classList.add('mmt-open');
+  if (backdrop) backdrop.classList.add('mmt-open');
+  // Legacy flat menu — hide it
+  var old = document.getElementById('mobMoreMenu');
+  if (old) old.style.display = 'none';
 }
 
 function _mobHideMore() {
-  var menu = document.getElementById('mobMoreMenu');
-  if (menu) menu.style.display = 'none';
+  var tray = document.getElementById('mobMoreTray');
+  var backdrop = document.getElementById('mobMoreBackdrop');
+  if (tray) tray.classList.remove('mmt-open');
+  if (backdrop) backdrop.classList.remove('mmt-open');
 }
 
 /* 2. Mobile print → PDF redirect
@@ -27787,14 +27821,24 @@ function _authApplyPermissions(sess) {
                  finance:'[data-tab="finance"]',  settings:'[data-tab="settings"]',
                  payment:'[data-tab="payment"]',  production:'[data-tab="production"]'};
 
+  var _mobOverflowTabs = ['database','finance','settings'];
   Object.keys(tabIds).forEach(function(tab) {
     var allowed = isAdmin || !!perm[tab];
     var sideEl  = document.querySelector(tabIds[tab]);
     var mobEl   = document.querySelector('#mobileBottomNav '+mobSels[tab]);
     var mobMoreEl = document.querySelector('#mobMoreMenu '+mobSels[tab]);
+    var mobTrayEl = document.querySelector('#mobMoreTray [data-tab="'+tab+'"]');
     if(sideEl) sideEl.style.display = allowed ? '' : 'none';
-    if(mobEl)  mobEl.style.display  = allowed ? '' : 'none';
+    if(mobEl) {
+      // database/finance/settings also have a (normally hidden) main-bar
+      // button used only when dynamically promoted out of the More tray —
+      // that promotion is decided later, so always reset it to hidden here
+      // regardless of permission; only the always-resident main-bar tabs
+      // (invoice/payment/production/summary/search) follow `allowed` directly.
+      mobEl.style.display = (_mobOverflowTabs.indexOf(tab) !== -1) ? 'none' : (allowed ? '' : 'none');
+    }
     if(mobMoreEl) mobMoreEl.style.display = allowed ? '' : 'none';
+    if(mobTrayEl) mobTrayEl.style.display = allowed ? '' : 'none';
   });
 
   // Hide More button if all items inside More menu are hidden
@@ -27853,6 +27897,30 @@ function _authApplyPermissions(sess) {
   } else {
     document.body.classList.remove('auth-applying-permissions');
   }
+
+  // ── Dynamic mobile nav: if only 1 More item is visible, move it to main bar ──
+  (function() {
+    var moreItems = document.querySelectorAll('#mobMoreTray .mmt-row');
+    var visibleMoreItems = Array.from(moreItems).filter(function(btn) {
+      return btn.style.display !== 'none';
+    });
+    var mainNavBtns = document.querySelectorAll('#mobileBottomNav .mob-nav-btn:not([data-tab="more"])');
+    var visibleMainBtns = Array.from(mainNavBtns).filter(function(btn) {
+      return btn.style.display !== 'none';
+    });
+
+    // If only 1 item in More tray AND there is room in main bar (fewer than 5 visible), move it
+    if (visibleMoreItems.length === 1 && visibleMainBtns.length < 5) {
+      var onlyItem = visibleMoreItems[0];
+      var tabName = onlyItem.getAttribute('data-tab');
+      // Show the matching main-bar button for this tab
+      var mainBtn = document.querySelector('#mobileBottomNav [data-tab="' + tabName + '"]');
+      if (mainBtn) mainBtn.style.display = '';
+      // Hide the More button entirely since nothing is left in the tray
+      var moreBtn = document.querySelector('#mobileBottomNav [data-tab="more"]');
+      if (moreBtn) moreBtn.style.display = 'none';
+    }
+  })();
 }
 
 // ─── CAN ACCESS CHECK ─────────────────────────────────────────
