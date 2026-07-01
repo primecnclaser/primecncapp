@@ -198,6 +198,18 @@ body {
   box-sizing: border-box;
   min-width: 0;
 }
+/* Hide all tab content while login permissions are being applied, to prevent
+   any tab (including the default-visible Invoice tab) from flashing */
+.auth-applying-permissions #invoiceTab,
+.auth-applying-permissions #databaseTab,
+.auth-applying-permissions #paymentTab,
+.auth-applying-permissions #searchTab,
+.auth-applying-permissions #summaryTab,
+.auth-applying-permissions #settingsTab,
+.auth-applying-permissions #productionTab,
+.auth-applying-permissions #financeTab {
+  display: none !important;
+}
 
 /* ─── TABS ─── */
 .tabs { display: flex; flex-direction: column; gap: 6px; }
@@ -2640,7 +2652,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
   <div class="tab-content-area">
 
   <!-- INVOICE TAB -->
-  <div id="invoiceTab">
+  <div id="invoiceTab" style="display:none">
     <!-- New Invoice sub-tab bar -->
     <div id="invSubTabs" style="display:flex;gap:4px;padding:4px 4px 0;background:#f1f5f9;border-radius:10px 10px 0 0;border:1px solid #e2e8f0;border-bottom:none;margin-bottom:0;">
       <button id="invTabFull" onclick="switchInvTab('full')"
@@ -27130,7 +27142,7 @@ var _authInitPatched = false;
     _appInitDone = true;
     _origInit.apply(this, arguments);
     var s = _authGetSession();
-    if (s) { setTimeout(function(){ _authApplyPermissions(s); }, 150); }
+    if (s) { setTimeout(function(){ _authApplyPermissions(s); }, 0); }
   };
 })();
 
@@ -27621,6 +27633,8 @@ async function _authDoFinishLogin(sess) {
   }
 
   _authHideOverlay();
+  // Show brief loading state while permissions are being applied
+  document.body.classList.add('auth-applying-permissions');
   if (typeof _startAdminTimer === 'function') _startAdminTimer();
 
   // Start live polling — syncs profile fields for everyone (incl. admin),
@@ -27891,7 +27905,12 @@ function _authApplyPermissions(sess) {
   if(!allowed2 || !lastTab) lastTab = order.find(function(t){ return isAdmin||!!perm[t]; }) || 'summary';
   var tabEl = document.querySelector('.tab.tab-'+lastTab);
   if(tabEl && typeof window.switchTab === 'function') {
-    setTimeout(function(){ window.switchTab(lastTab, tabEl); }, 160);
+    setTimeout(function(){
+      window.switchTab(lastTab, tabEl);
+      document.body.classList.remove('auth-applying-permissions');
+    }, 0);
+  } else {
+    document.body.classList.remove('auth-applying-permissions');
   }
 }
 
