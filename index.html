@@ -6188,11 +6188,12 @@ async function adminApplyEdit() {
         reviewed_by:   _logSess ? _logSess.id : null,
         reason:        'Direct admin edit',
         status:        'approved',
-        granted_at:    new Date().toISOString(),
+        requested_at:  new Date().toISOString(),
         reviewed_at:   new Date().toISOString(),
-        rows_affected: ((rpcData && rpcData[0] && rpcData[0].total) || 0)
+        rows_affected: ((rpcData && rpcData[0] && rpcData[0].total) || 0),
+        branch_id:     'branch_main'
       });
-    } catch(_logErr) { console.warn('[adminApplyEdit log]', _logErr); }
+    } catch(_logErr) { console.error('[adminApplyEdit log FAILED]', _logErr); toast('⚠ Edit applied but audit log failed'); }
     adminCancelEdit();
     if (typeof renderDB === 'function') renderDB();
   } catch(e) { console.error(e); toast('⚠ Failed: ' + (e.message || e)); }
