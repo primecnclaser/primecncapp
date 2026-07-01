@@ -641,21 +641,14 @@ body {
   table-layout: fixed;
   font-size: 0.72rem;
 }
-/* ── Column widths — 12 cols, sum = 100% ── */
-.db-table thead th:nth-child(1),  .db-table td:nth-child(1)  { width: 3%;  } /* Sr        */
-.db-table thead th:nth-child(2),  .db-table td:nth-child(2)  { width: 7%;  } /* Date      */
-.db-table thead th:nth-child(3),  .db-table td:nth-child(3)  { width: 14%; } /* Name      */
-.db-table thead th:nth-child(4),  .db-table td:nth-child(4)  { width: 11%; } /* Phone     */
-.db-table thead th:nth-child(5),  .db-table td:nth-child(5)  { width: 8%;  } /* Inv #     */
-.db-table thead th:nth-child(6),  .db-table td:nth-child(6)  { width: 9%;  } /* Bill      */
-.db-table thead th:nth-child(7),  .db-table td:nth-child(7)  { width: 7%;  } /* Received  */
-.db-table thead th:nth-child(8),  .db-table td:nth-child(8)  { width: 9%;  }
-.db-table thead th:nth-child(9),  .db-table td:nth-child(9)  { width: 8%;  } /* Discount  */
-.db-table thead th:nth-child(10), .db-table td:nth-child(10) { width: 8%;  } /* Bad Debt  */
-.db-table thead th:nth-child(11), .db-table td:nth-child(11) { width: 8%;  } /* Remaining */
-.db-table thead th:nth-child(12), .db-table td:nth-child(12) { width: 8%;  } /* Action    */
-/* Action column: icon buttons sit side-by-side, square, no overflow */
-.db-table td:nth-child(12) { padding-left: 4px !important; padding-right: 4px !important; }
+/* ── Column widths — 7 cols, sum = 100% ── */
+.db-table thead th:nth-child(1),  .db-table td:nth-child(1)  { width: 5%;  }  /* Sr No */
+.db-table thead th:nth-child(2),  .db-table td:nth-child(2)  { width: 10%; }  /* Date */
+.db-table thead th:nth-child(3),  .db-table td:nth-child(3)  { width: 28%; }  /* Name */
+.db-table thead th:nth-child(4),  .db-table td:nth-child(4)  { width: 18%; }  /* Phone */
+.db-table thead th:nth-child(5),  .db-table td:nth-child(5)  { width: 13%; }  /* Invoice # */
+.db-table thead th:nth-child(6),  .db-table td:nth-child(6)  { width: 16%; }  /* Total Bill */
+.db-table thead th:nth-child(7),  .db-table td:nth-child(7)  { width: 10%; padding-left: 4px !important; padding-right: 4px !important; }  /* Action */
 .db-icon-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 26px; height: 26px; padding: 0; border-radius: 6px;
@@ -1429,47 +1422,19 @@ body {
   .db-table thead th:nth-child(2), .db-table td:nth-child(2) { width: 62px !important; min-width: 62px !important; }
   .db-table thead th:nth-child(3), .db-table td:nth-child(3) { width: 100px !important; min-width: 100px !important; }
   .db-table thead th:nth-child(4), .db-table td:nth-child(4) { width: 88px !important; min-width: 88px !important; }
+  .db-table thead th:nth-child(5), .db-table td:nth-child(5) { width: 72px !important; min-width: 72px !important; }
+  .db-table thead th:nth-child(6), .db-table td:nth-child(6) { width: 72px !important; min-width: 72px !important; }
   /* Action column — sticky so buttons never go off-screen */
-  .db-table thead th:nth-child(12), .db-table td:nth-child(12) {
+  .db-table thead th:nth-child(7), .db-table td:nth-child(7) {
     position: sticky !important; right: 0 !important; z-index: 3 !important;
-    width: 64px !important; min-width: 64px !important;
+    width: 72px !important; min-width: 72px !important;
     background: #fff !important; box-shadow: -3px 0 6px rgba(0,0,0,0.10) !important;
   }
-  .db-table tbody tr:nth-child(even) td:nth-child(12) { background: #f8fafc !important; }
-  .db-table tbody tr:hover td:nth-child(12) { background: #eef2ff !important; }
+  .db-table tbody tr:nth-child(even) td:nth-child(7) { background: #f8fafc !important; }
+  .db-table tbody tr:hover td:nth-child(7) { background: #eef2ff !important; }
   /* db-btn inside table must not inherit the 44px touch-target height */
   .db-table .btn { min-height: unset !important; }
   .db-table .db-btn { min-height: unset !important; padding: 4px 6px !important; font-size: 0.6rem !important; }
-
-  /* ── Fix: badDebt (col 10) — prevent stacked divs causing tall rows ── */
-  .db-table td:nth-child(8),
-  .db-table td:nth-child(10) {
-    min-width: 0 !important;
-    width: auto !important;
-    white-space: normal !important;
-    vertical-align: middle !important;
-    padding: 4px 3px !important;
-    height: auto !important;
-    min-height: unset !important;
-  }
-  .db-table td:nth-child(8) > div,
-  .db-table td:nth-child(10) > div {
-    display: inline !important;
-    margin-bottom: 0 !important;
-    white-space: nowrap !important;
-  }
-  .db-table td:nth-child(8) input,
-  .db-table td:nth-child(10) input {
-    display: block !important;
-    margin-top: 1px !important;
-    width: 65px !important;
-    height: 18px !important;
-    padding: 1px 3px !important;
-    font-size: 0.6rem !important;
-    line-height: 1 !important;
-    border-radius: 3px !important;
-    min-height: unset !important;
-  }
 
   /* ── Summary tab — overflow protection ── */
   #summaryTab { overflow-x: hidden; }
@@ -12040,6 +12005,10 @@ async function viewInvoice(idx) {
   .totals-section { page-break-inside: avoid; break-inside: avoid; }
   .totals-left { page-break-inside: avoid; break-inside: avoid; }
   .totals-right { page-break-inside: avoid; break-inside: avoid; }
+  @media screen and (max-width: 767px) {
+    table.items { font-size: 0.6rem !important; }
+    table.items td, table.items th { padding: 3px 2px !important; }
+  }
   @media print { .print-btn { display: none !important; } }
 </style>
 </head>
@@ -12065,7 +12034,7 @@ ${_printHeaderHtml(_ps,
   <div class="cfield"><label>Area / Address</label><div class="val">${inv.area||'—'}</div></div>
 </div>
 
-<table class="items">
+<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;"><table class="items" style="min-width:688px;">
   <thead>
     <tr>
       <th rowspan="2" class="en">#</th>
@@ -12086,7 +12055,7 @@ ${_printHeaderHtml(_ps,
     </tr>
   </thead>
   <tbody>${itemRows}</tbody>
-</table>
+</table></div>
 
 <div class="totals-section">
   <div class="totals-left">
