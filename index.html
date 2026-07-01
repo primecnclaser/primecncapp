@@ -43,7 +43,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" onerror="console.error('Supabase CDN failed to load')"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="/logo.png">
@@ -5456,6 +5455,23 @@ var _dbPageSize = 50;
 let _dbExactName = null;       // exact name selected from dropdown (null = partial/type search)
 let _searchPage = 1;           // pagination page for search tab
 
+// ── LAZY-LOAD html2pdf.js (no longer a blocking <head> script) ──
+var _html2pdfLoaded = false;
+var _html2pdfLoading = null;
+
+function _loadHtml2Pdf() {
+  if (_html2pdfLoaded && typeof html2pdf === 'function') return Promise.resolve();
+  if (_html2pdfLoading) return _html2pdfLoading;
+  _html2pdfLoading = new Promise(function(resolve, reject) {
+    var script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    script.onload = function() { _html2pdfLoaded = true; _html2pdfLoading = null; resolve(); };
+    script.onerror = function() { _html2pdfLoading = null; reject(new Error('Failed to load html2pdf.js')); };
+    document.head.appendChild(script);
+  });
+  return _html2pdfLoading;
+}
+
 // ── OFFLINE DETECTION ─────────────────────────────────────────
 (function() {
   var _offlineOverlay = null;
@@ -8276,8 +8292,9 @@ function _savePDFBlob(blob, filename) {
   }
 }
 
-function _savePDFEl(el, filename) {
-  if (!el || typeof html2pdf === 'undefined') { alert('PDF library not loaded. Try again.'); return; }
+async function _savePDFEl(el, filename) {
+  if (!el) { alert('PDF library not loaded. Try again.'); return; }
+  try { await _loadHtml2Pdf(); } catch(e) { alert('PDF library failed to load. Check your connection and try again.'); return; }
   var _orient = _getPageOrientation(el);
   var _fname  = filename || 'Prime-CNC.pdf';
   html2pdf().set({
@@ -8292,7 +8309,7 @@ function _savePDFEl(el, filename) {
   });
 }
 
-function _savePDFMainInvoice() {
+async function _savePDFMainInvoice() {
   const phone = document.getElementById('shopPhone')?.value;
   const email = document.getElementById('shopEmail')?.value;
   const fb    = document.getElementById('shopFb')?.value;
@@ -8314,7 +8331,8 @@ function _savePDFMainInvoice() {
   const topnav = document.querySelector('.topnav');
   const tabs = document.querySelector('.tabs');
   const sidebar = document.querySelector('.tabs-sidebar');
-  if (!el || typeof html2pdf === 'undefined') { window.print(); return; }
+  if (!el) { window.print(); return; }
+  try { await _loadHtml2Pdf(); } catch(e) { window.print(); return; }
   if (actionBar) actionBar.style.display = 'none';
   if (topnav) topnav.style.display = 'none';
   if (tabs) tabs.style.display = 'none';
@@ -8413,7 +8431,8 @@ function _injectPDFToPopup(pw, filename) {
 // Downloads an HTML string as PDF using a positioned-off-screen popup.
 // The popup opens beyond the right edge of the display so the user doesn't see it;
 // it auto-closes after the PDF downloads.
-function _silentPDFFromHtml(htmlStr, filename) {
+async function _silentPDFFromHtml(htmlStr, filename) {
+  try { await _loadHtml2Pdf(); } catch(e) { toast('⚠ PDF library failed to load'); return; }
   var _fname  = filename || 'Prime-CNC.pdf';
   var _orient = _getPageOrientation(htmlStr);
   htmlStr = htmlStr.replace(/@page\s*\{[^}]*\}/g, '@page{size:A4 ' + _orient + ';margin:10mm;}');
@@ -26958,12 +26977,13 @@ function _mobHideMore() {
       avoiding print dialogs that are awkward on mobile browsers. */
 (function () {
   var _mobPrintNative = window.print.bind(window);
-  window.print = function () {
+  window.print = async function () {
     var isMobile = window.matchMedia('(max-width: 767px)').matches;
-    if (!isMobile || typeof html2pdf === 'undefined') { _mobPrintNative(); return; }
+    if (!isMobile) { _mobPrintNative(); return; }
     var invTab = document.getElementById('invoiceTab');
     var el = invTab ? invTab.querySelector('.panel') : null;
     if (!el || (invTab && invTab.style.display === 'none')) { _mobPrintNative(); return; }
+    try { await _loadHtml2Pdf(); } catch(e) { _mobPrintNative(); return; }
     var invNum = (document.getElementById('invNum') || {}).value || 'Invoice';
     var phone  = (document.getElementById('shopPhone') || {}).value || '';
     var email  = (document.getElementById('shopEmail') || {}).value || '';
