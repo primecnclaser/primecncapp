@@ -1,0 +1,221 @@
+AUDIT REPORT — Search Tab Structure
+Generated: 2026-07-02
+Scope: HTML structure of the Search tab, the existing per-customer
+statement generator, and where a new "Bulk Statement Export" section
+would go. READ ONLY — no changes made.
+
+════════════════════════════════════════════════════════════════════════
+1. CURRENT SEARCH TAB HTML STRUCTURE
+════════════════════════════════════════════════════════════════════════
+
+Main container id: searchTab   (index.html:3093)
+
+Complete HTML (index.html:3092-3167):
+
+  <!-- SEARCH TAB -->
+  <div id="searchTab" style="display:none">
+    <div class="db-panel">
+      <div style="
+        display:flex;gap:14px;margin-bottom:24px;flex-wrap:wrap;
+        background:linear-gradient(135deg,rgba(26,49,102,0.95) 0%,rgba(15,30,69,0.98) 100%);
+        border:2px solid rgba(201,168,76,0.6);border-radius:18px;
+        padding:24px 26px;box-shadow:0 8px 34px rgba(0,0,0,0.4);
+        position:relative;
+      ">
+        <!-- accent stripe -->
+        <div style="position:absolute;top:0;left:0;right:0;height:5px;background:linear-gradient(90deg,#c9a84c,#f0c96e,#25D366,#f0c96e,#c9a84c);"></div>
+        <div style="width:100%;margin-bottom:14px;display:flex;align-items:center;gap:12px;">
+          <span style="font-size:1.6rem;">🔍</span>
+          <span style="font-family:'Playfair Display',serif;color:var(--gold2);font-size:1.35rem;font-weight:700;letter-spacing:0.5px;">Search Invoices</span>
+          <span style="flex:1;height:1.5px;background:linear-gradient(90deg,rgba(201,168,76,0.4),transparent);"></span>
+        </div>
+        <div style="flex:1;min-width:200px;">
+          <label style="...">📞 By Phone Number</label>
+          <input type="text" id="searchPhone" placeholder="Enter phone number..." inputmode="numeric" autocomplete="new-password"
+            oninput="this.value=this.value.replace(/[^0-9]/g,'');onSearchPhone(this.value)" ...>
+        </div>
+        <div style="flex:1;min-width:200px;">
+          <label style="...">👤 By Name</label>
+          <div style="position:relative;">
+            <input type="text" id="searchName" placeholder="Type a name to see suggestions..."
+              oninput="onSearchName(this.value)" ...>
+            <div id="searchNameDrop" style="display:none;position:absolute;...max-height:260px;overflow-y:auto;..."></div>
+          </div>
+        </div>
+        <div style="flex:1;min-width:200px;">
+          <label style="...">🧾 By Invoice Number</label>
+          <input type="text" id="searchInv" placeholder="🔢 Invoice #..." inputmode="numeric" autocomplete="new-password"
+            oninput="this.value=this.value.replace(/[^0-9]/g,'');onSearchInv(this.value)" ...>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:10px;">
+          <button class="btn" onclick="clearSearch()" ...>✕ Clear</button>
+          <button id="stmtBtn" onclick="generateCustomerStatement()" style="display:none; ...">
+            📄 Customer Statement
+          </button>
+        </div>
+      </div>
+
+      <!-- Unified Search Results Panel -->
+      <div id="searchResultPanel" style="display:none;"></div>
+
+      <!-- hidden legacy body kept for any code that still references it -->
+      <table style="display:none"><tbody id="searchDbBody"></tbody></table>
+      <!-- hidden legacy inline preview kept for any code that still references it -->
+      <div id="searchInlineInvPreview" style="display:none;">
+        <div id="searchInlineInvContent"></div>
+      </div>
+    </div>
+  </div>
+
+--- Sections/panels that exist ---
+  1. Filter bar (dark gold-bordered card) — three parallel search inputs
+     (phone / name / invoice#), each wired to its own oninput handler
+     (onSearchPhone / onSearchName / onSearchInv), plus "✕ Clear" and
+     "📄 Customer Statement" buttons.
+  2. #searchResultPanel — empty <div>, display:none by default. This is
+     where ALL actual result content gets injected dynamically by JS
+     (renderCustomerDetail() for name/phone matches, or inline markup
+     built by _renderSearchByInv() for invoice-number matches). There
+     is no static markup here to show — it's 100% JS-rendered.
+  3. Two hidden "legacy" elements (#searchDbBody, #searchInlineInvPreview)
+     kept only so any old code that still references their ids doesn't
+     throw — not actively used by the current render path.
+
+--- "Print Statement" button for individual customers ---
+  It's the #stmtBtn button (index.html:3146-3153), labeled "📄 Customer
+  Statement" (not literally "Print Statement," but this is the button
+  in question — it opens a print-ready statement window).
+  - It's hidden by default (style="display:none").
+  - It is shown ONLY by selectSearchName() (index.html:12327/12335) —
+    i.e. only after the user searches by NAME and picks a customer from
+    the autocomplete dropdown.
+  - It is explicitly hidden again by clearSearch() (12351) and by the
+    phone-search / invoice-search render paths (16927, 16953, 16970) —
+    so it's a name-search-only affordance, never shown for phone or
+    invoice-number searches.
+
+════════════════════════════════════════════════════════════════════════
+2. EXISTING STATEMENT GENERATION
+════════════════════════════════════════════════════════════════════════
+
+--- Function signature ---
+  function generateCustomerStatement()          (index.html:17354)
+
+  Takes ZERO parameters. This is notable: even though the button that
+  calls it (#stmtBtn) only appears after a NAME-based search/selection,
+  the function itself does NOT receive that customer's name — instead
+  it re-reads whatever is currently typed in the PHONE input field:
+
+    var sp = (document.getElementById('searchPhone') ? document.getElementById('searchPhone').value : '').trim().toLowerCase();
+    if (!sp) { toast('Enter a phone number to search first'); return; }
+
+  Consequence: if a customer was found by name search and has NO phone
+  on record (the `!phone` branch in selectSearchName, index.html:12326),
+  the Statement button is shown, but clicking it will just show
+  "Enter a phone number to search first" and produce nothing — because
+  it depends on the phone field being populated, not on which customer
+  is actually being viewed in the results panel.
+
+--- What data does it fetch ---
+  var invoices = database.filter(function(inv){ return (inv.phone||'').toLowerCase().indexOf(sp) !== -1; });
+
+  Only queries the in-memory `database` array (new invoices submitted
+  through the app). It does NOT query:
+    - excel_invoices / _excelDBCache (imported/historical invoices)
+    - customer_payments (the ledger table used elsewhere for accurate
+      totals — see rpGetCustomerSummary / buildAllCustomerSummaries)
+  All totals (grandTotal, grandDiscount, grandReceived, grandRemaining)
+  are derived purely from `database[]` invoice records' own `total`,
+  `discount`, and `received` fields — plus, notably, grandRemaining is
+  computed as `zeroFloor(grandAfterDisc - grandReceived)` with NO
+  bad_debt term subtracted anywhere in the function (doesn't use the
+  shared calcRemaining()/calcCustomerRemaining() helpers added
+  recently either).
+
+--- What HTML it produces (structure) ---
+  Builds a full standalone HTML document (DOCTYPE + head + body) as a
+  JS string and opens it in a new window via window.open(), then calls
+  win.print() after a timeout. Structure, top to bottom:
+    1. Shop header (via _printHeaderHtml/_printHeaderCSS) + "Statement
+       Date" on the right.
+    2. Customer info block — 3-column grid: Name / Cell Number / Area.
+    3. Stats boxes — 4-column grid: Total Billed, Total Received,
+       Total Remaining, Total Discount.
+    4. Two-column layout: LEFT = "Invoice Details" table (Sr | Bill No
+       | Date | Total), one row per invoice, footer = grand total.
+       RIGHT = "Payment History" table, 2 payments per row (amount +
+       date), footer = totals.
+    5. Grand summary bar — Total Received | Balance Remaining.
+    6. Footer — app credit line + shop name (Urdu).
+
+--- Does it already handle both new invoices and Excel invoices? ---
+  NO. It only handles `database[]` (new/app-submitted invoices). Excel
+  /imported invoices (`excel_invoices` / `_excelDBCache`) are completely
+  absent from this statement — a customer whose history is entirely (or
+  partly) in imported Excel data would get an incomplete or empty
+  statement from this function today.
+
+════════════════════════════════════════════════════════════════════════
+3. INSERTION POINT for a Bulk Statement Export section
+════════════════════════════════════════════════════════════════════════
+
+Best location: immediately after the filter-bar's closing </div> and
+before the "Unified Search Results Panel" comment — i.e. as its own
+new panel/card sitting between the search filters and the results
+area. This keeps it visible regardless of what's been searched (it
+doesn't depend on searchResultPanel state), and matches how this tab
+already separates "controls" from "results."
+
+Exact context — 5 lines before and after (index.html:3150-3160):
+
+  3150            onmouseover="this.style.background='#1a7a4a'"
+  3151            onmouseout="this.style.background='linear-gradient(135deg,#1a7a4a,#25a366)'">
+  3152            📄 Customer Statement
+  3153          </button>
+  3154        </div>
+  3155      </div>                                    <!-- ← filter-bar card closes here -->
+  3156
+  3157      <!-- Unified Search Results Panel -->      <-- INSERT NEW SECTION between 3155 and 3157
+  3158      <div id="searchResultPanel" style="display:none;"></div>
+  3159
+  3160      <!-- hidden legacy body kept for any code that still references it -->
+
+  A new "Bulk Statement Export" card would be inserted as its own
+  sibling <div> right after line 3155 (the filter-bar's closing tag)
+  and before line 3157 (the results-panel comment), inside the same
+  outer <div class="db-panel"> wrapper that already holds both.
+
+════════════════════════════════════════════════════════════════════════
+4. EXISTING FILTER/DATE CONTROLS IN SEARCH TAB
+════════════════════════════════════════════════════════════════════════
+
+None. The Search tab itself has zero date-range or date-filter
+controls — only the three text inputs (phone/name/invoice#) described
+in section 1. There is nothing date-related to reuse from within this
+tab.
+
+However, the Summary tab (immediately adjacent, id="summaryTab",
+starting right after Search tab at index.html:3170) already implements
+a reusable date-filter pattern that could be borrowed for styling/UX
+consistency if a Bulk Statement Export needs a date range:
+
+  index.html:3176-3199 — `.analytics-bar` / `.analytics-filters` /
+  `.af-group` classes, containing:
+    - a "View By" <select> (day / month / year) — id="summaryMode2",
+      onchange="onSummaryModeChange2(); renderSummary()"
+    - a single <input type="date"> — id="summaryDate2" (shown for
+      "day" mode)
+    - an <input type="month"> — id="summaryMonth2" (shown for "month"
+      mode, wrapped in #summaryMonthWrap2)
+    - a <select> of years — id="summaryYear2" (shown for "year" mode,
+      wrapped in #summaryYearWrap2, initially display:none)
+
+  This is a single-date + mode-selector pattern, not a true from/to
+  date-range picker — there is no from/to range control anywhere in
+  the app today. If a genuine date RANGE is needed for bulk export
+  (e.g. "statements for invoices between date A and date B"), it would
+  need to be built new — but the `.analytics-bar`/`.af-group` CSS
+  classes and the day/month/year mode-switch UX pattern are readily
+  reusable for visual/structural consistency with the rest of the app.
+
+NO CODE CHANGES WERE MADE — this is a read-only structural audit.
