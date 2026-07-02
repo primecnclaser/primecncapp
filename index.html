@@ -7488,6 +7488,15 @@ function fmt(n) {
   return (Object.is(r, -0) ? 0 : r).toLocaleString('en-PK');
 }
 
+// ── Shared remaining-balance calculators (single source of truth) ──
+function calcRemaining({ total=0, extraCharges=0, discount=0, received=0, received1=0, badDebt=0 }) {
+  return (total + extraCharges) - discount - received - received1 - badDebt;
+}
+
+function calcCustomerRemaining({ totalBilled=0, totalDiscount=0, totalPaid=0, totalBadDebt=0 }) {
+  return totalBilled - totalDiscount - totalPaid - totalBadDebt;
+}
+
 function zeroFloor(x) { return Math.abs(x) < 1 ? 0 : x; }
 
 function numberToUrduWords(n) {
@@ -8694,7 +8703,7 @@ async function renderDB() {
   const newRows = filtered.slice().reverse().map(function(inv) {
     const idx = database.indexOf(inv);
     const _afterDisc = inv.afterDiscount != null ? inv.afterDiscount : inv.total;
-    const remaining = Math.max(0, (_afterDisc||0) - (inv.received||0));
+    const remaining = Math.max(0, calcRemaining({ total: _afterDisc, received: inv.received||0, badDebt: inv.badDebt||0 }));
     // Extract numeric part of invoice number for sorting
     const invNumSort = parseInt((inv.invNum||'').replace(/[^0-9]/g,'')) || 0;
     return { _isImported: false, _idx: idx, _inv: inv, _remaining: remaining,
@@ -8874,7 +8883,7 @@ async function saveExcelField(orderNum, field, value) {
 
   if (field === 'total_bill') {
     row.total_bill = amt;
-    row.remaining = amt - (parseFloat(row.received)||0) - (parseFloat(row.received1)||0) - (parseFloat(row.discount)||0);
+    row.remaining = amt - (parseFloat(row.received)||0) - (parseFloat(row.received1)||0) - (parseFloat(row.discount)||0) - (parseFloat(row.bad_debt)||0);
     try {
       if (typeof sb !== 'undefined' && sb)
         await sb.from('excel_invoices').update({ total_bill: amt, remaining: row.remaining }).eq('order_num', _rawOrderNum);
@@ -15770,7 +15779,7 @@ async function rpGetCustomerSummary(name) {
 
   // Final formula: Remaining = TotalBilled - TotalDiscount - TotalPaid - TotalBadDebt
   result.totalDiscount = result.invoiceDiscountSum + result.manualDiscount;
-  result.remaining = result.totalBilled - result.totalDiscount - result.totalPaid - result.totalBadDebt;
+  result.remaining = calcCustomerRemaining({ totalBilled: result.totalBilled, totalDiscount: result.totalDiscount, totalPaid: result.totalPaid, totalBadDebt: result.totalBadDebt });
   result.advanceCredit = result.remaining < 0 ? Math.abs(result.remaining) : 0;
 
   return result;
@@ -16022,7 +16031,7 @@ async function buildAllCustomerSummaries() {
 
   Object.keys(summaries).forEach(function(k){
     var c = summaries[k];
-    c.remaining = c.totalBilled - c.totalDiscount - c.totalPaid - c.totalBadDebt;
+    c.remaining = calcCustomerRemaining({ totalBilled: c.totalBilled, totalDiscount: c.totalDiscount, totalPaid: c.totalPaid, totalBadDebt: c.totalBadDebt });
   });
 
   _allCustomerSummaryCache = summaries;
@@ -16649,7 +16658,9 @@ function rpEditExcelTotal(orderNum, currentTotal) {
               row.total_bill = newTotal;
               row.remaining = newTotal - (parseFloat(row.received)||0) - (parseFloat(row.received1)||0) - (parseFloat(row.discount)||0) - (parseFloat(row.bad_debt)||0);
             }
-            await sb.from('excel_invoices').update({ total_bill: newTotal }).eq('order_num', _rawNum);
+            if (row) {
+              await sb.from('excel_invoices').update({ total_bill: newTotal, remaining: row.remaining }).eq('order_num', _rawNum);
+            }
             if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
             await rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
             toast && toast('✅ Invoice total updated.');
@@ -16945,7 +16956,7 @@ async function _renderSearchByInv(invNum) {
     return n === invNumUpper || n === withPrefix || n === withoutPfx;
   }).forEach(function(inv) {
     var bill = inv.afterDiscount != null ? inv.afterDiscount : (inv.total||0);
-    var rem  = Math.max(0, bill - (inv.received||0));
+    var rem  = Math.max(0, calcRemaining({ total: bill, received: inv.received||0, badDebt: inv.badDebt||0 }));
     matchedInvoices.push({
       date: inv.date||'', invNum: inv.invNum||'—',
       custName: inv.custName||'', phone: inv.phone||'',

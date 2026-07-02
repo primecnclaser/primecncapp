@@ -1,0 +1,355 @@
+AUDIT REPORT — Manual "Remaining Balance" Calculations in index.html
+Generated: 2026-07-02
+Scope: every place that manually computes an invoice/customer remaining
+balance (total - received - discount - bad_debt, or a variation).
+READ ONLY — no changes made.
+
+Note: the Salaries tab also has fields/variables called "remaining"
+(employee salary/loan remaining) at lines ~21845, ~22611-22613, ~22949.
+Those are a completely different business concept (payroll, not
+customer invoices) and are OUT OF SCOPE for this audit — excluded below.
+
+════════════════════════════════════════════════════════════════════════
+CANONICAL FORMULA (what "correct" means below)
+════════════════════════════════════════════════════════════════════════
+
+  remaining = (total_bill [+ extra_charges]) - discount - received
+              [- received1] - bad_debt
+
+  - `invoices` table (new invoices / database[] array): fields are
+    total, extraCharges, discount, received, bad_debt. No received1 —
+    this table only ever has one "received" field.
+  - `excel_invoices` table (imported/historical invoices): fields are
+    total_bill, discount, received, received1 (a SECOND received
+    amount, used for partial top-up payments), bad_debt.
+  - Ledger-aggregate contexts (customer-level, summed across many
+    invoices via the `customer_payments` table) use:
+      remaining = totalBilled - totalDiscount - totalPaid - totalBadDebt
+
+A site is marked CORRECT if it includes every term that its table
+actually supports. A site is marked INCONSISTENT / BUG if it silently
+drops a term (almost always bad_debt) that the same table/row does
+support elsewhere in the code.
+
+════════════════════════════════════════════════════════════════════════
+SITE-BY-SITE FINDINGS
+════════════════════════════════════════════════════════════════════════
+
+1. Line 7462 — function calcTotals()
+   Formula:  const remaining = afterDiscount - received;
+             (afterDiscount = (total + extraCharges) - discount)
+   Fields:   total, extraCharges, discount, received. No bad_debt.
+   Context:  New Invoice tab's live on-screen calculator, BEFORE the
+             invoice is submitted (in-memory only, not yet in any table).
+   Verdict:  CORRECT — bad_debt genuinely doesn't exist yet at this
+             point (an invoice can't have a bad-debt write-off before
+             it's even been created).
+
+2. Line 8697 — function renderDB() (Submitted-invoices tab render loop)
+   Formula:  const remaining = Math.max(0, (_afterDisc||0) - (inv.received||0));
+   Fields:   total/afterDiscount, received. Missing: bad_debt.
+   Context:  `database[]` in-memory array / `invoices` table, display
+             recompute (this is NOT the persisted value — it's a fresh
+             on-the-fly recalculation just for showing the DB table row).
+   Verdict:  INCONSISTENT / BUG. This table's rows DO support bad_debt
+             (see #3, saveDBField, which correctly subtracts it). An
+             invoice with a bad-debt write-off will show an inflated
+             "remaining" here versus its actual persisted value.
+
+3. Line 8830 — function saveDBField() (badDebt field edit handler)
+   Formula:  database[idx].remaining =
+               Math.max(0, afterDisc - (database[idx].received||0) - amt);
+   Fields:   total/afterDiscount, received, bad_debt (amt = new bad_debt
+             value being saved). No received1 (this table has none).
+   Context:  `invoices` table — this IS the code path that persists
+             `remaining` to Supabase whenever bad_debt is edited.
+   Verdict:  CORRECT — the canonical, persisted formula for this table.
+             (Contrast with #2, which recomputes the SAME thing on
+             every render but forgets the bad_debt term.)
+
+4. Line 8877 — function saveExcelField(), 'total_bill' branch
+   Formula:  row.remaining = amt - (row.received||0) - (row.received1||0)
+               - (row.discount||0);
+             [amt = the NEW total_bill value being saved]
+   Fields:   total_bill, received, received1, discount. Missing: bad_debt.
+   Context:  `excel_invoices` table, inline "Total Bill" edit in the DB
+             tab.
+   Verdict:  CONFIRMED BUG. This is the clearest inconsistency in the
+             file: the SAME function (saveExcelField) has three
+             branches for three different fields on the SAME row/table,
+             and only this one — the total_bill branch — drops
+             bad_debt. Editing the Total Bill on any invoice that has a
+             bad-debt write-off will silently erase that write-off's
+             effect on `remaining` (both in memory and in the Supabase
+             write at the next line, which persists this wrong value).
+
+5. Line 8886 — function saveExcelField(), 'discount' branch
+   Formula:  row.remaining = (row.total_bill||0) - (row.received||0)
+               - (row.received1||0) - amt - (row.bad_debt||0);
+             [amt = the NEW discount value being saved]
+   Fields:   total_bill, received, received1, discount, bad_debt — all 5.
+   Context:  `excel_invoices` table, inline "Discount" edit.
+   Verdict:  CORRECT — full formula.
+
+6. Line 8920 — function saveExcelField(), 'bad_debt' branch
+   Formula:  row.remaining = (row.total_bill||0) - (row.received||0)
+               - (row.received1||0) - (row.discount||0) - amt;
+             [amt = the NEW bad_debt value being saved]
+   Fields:   total_bill, received, received1, discount, bad_debt — all 5.
+   Context:  `excel_invoices` table, inline "Bad Debt" edit.
+   Verdict:  CORRECT — full formula. (So branches 5 and 6 are right;
+             only branch 4, #4 above, is wrong — a formula that was
+             clearly written once correctly and then copy-pasted with
+             one term dropped, or vice-versa.)
+
+7. Line 9016 — function editExcelInvoice() ("Edit Invoice" modal, Received field)
+   Formula:  row.remaining = (row.total_bill||0) - rvAmt - (row.received1||0)
+               - (row.discount||0) - (row.bad_debt||0);
+   Fields:   total_bill, received, received1, discount, bad_debt — all 5.
+   Context:  `excel_invoices` table.
+   Verdict:  CORRECT — full formula.
+
+8. Lines 9076, 9086, 9137 — functions deleteExcelReceivedEntry() and
+   removeHistoricalReceivedEntries()
+   Formula:  row.remaining = row.remaining + (removedAmount);   (or -)
+   Fields:   none directly — these are INCREMENTAL DELTA adjustments to
+             whatever `remaining` already holds, not a fresh
+             total-discount-received-baddebt recompute.
+   Context:  `excel_invoices` table, undo/delete of a received-payment
+             entry.
+   Verdict:  Not wrong by itself (correct arithmetic IF the starting
+             `remaining` was accurate), but it's a THIRD calculation
+             pattern (delta adjustment) layered on top of the "full
+             recompute" pattern used everywhere else. If the stored
+             `remaining` was ever already stale (e.g. because of bug
+             #4 above), these deltas just perpetuate the stale value
+             instead of correcting it.
+
+9. Line 9698 — general summary / dashboard customer-map builder
+   Formula:  const rem = (afterDisc||0) - (inv.received||0);
+             newInvCustMap[k] += rem;
+             ... (bad debt subtracted SEPARATELY, per-customer, at
+             lines 9704-9706:
+               newInvCustMap[k] -= Math.min(_newInvCustBD[k], newInvCustMap[k]||0);)
+   Fields:   total/afterDiscount, received per-invoice; bad_debt
+             subtracted afterward at the customer-aggregate level
+             (clamped so it can't push the total negative).
+   Context:  `database[]` (new invoices), Summary/Dashboard cards.
+   Verdict:  CORRECT overall (two-step: per-invoice subtotal, then
+             aggregate bad-debt subtraction) — but the intermediate
+             per-invoice `rem` variable is NOT bad-debt-adjusted on its
+             own, so it must never be used standalone outside this
+             two-step sequence.
+
+10. Line 9933 — same dashboard builder, `invoices` table fetched fresh
+    Formula:  const bill = (r.total||0) - disc;
+              const rem  = bill - recv - bd;
+    Fields:   total, discount, received, bad_debt — all 4 supported by
+              this table (no received1).
+    Context:  `invoices` table, rows not yet present in local `database[]`
+              (freshly fetched from Supabase for the dashboard).
+    Verdict:  CORRECT — full formula (discount folded into `bill` first,
+              same result as subtracting it separately).
+
+11. Line 12027 — function viewInvoice() (invoice print/view modal)
+    Formula:  const remaining = zeroFloor((afterDisc||0) - (inv.received||0));
+    Fields:   total/afterDiscount, received. Missing: bad_debt.
+    Context:  `database[]` / `invoices` table, the customer-facing
+              printed/viewed invoice document.
+    Verdict:  LIKELY INTENTIONAL, not flagged as a bug — a printed
+              invoice conventionally reflects the original sale terms
+              at time of billing; a later internal bad-debt write-off
+              is an accounting adjustment, not something that should
+              retroactively change what the invoice document shows.
+              Flagging only because this intent isn't documented
+              anywhere in the code — worth a one-line comment to make
+              it explicit and prevent a future "fix" from adding
+              bad_debt here by mistake.
+
+12. Lines 13151, 13176, 13336 — functions calcHistRemaining(),
+    addHistoricalInvoice(), saveHistAsDraft()
+    Formula:  var rem = bill - recv - recv1 - disc - bd;
+    Fields:   bill, received, received1, discount, bad_debt — all 5.
+    Context:  Historical/Manual Invoice entry form (feeds `excel_invoices`
+              via received_entries on submit).
+    Verdict:  CORRECT — full formula, and consistently duplicated
+              identically across all three sites (live calculator,
+              submit handler, save-as-draft handler).
+
+13. Line 15773 — function rpGetCustomerSummary()
+    Formula:  result.remaining = result.totalBilled - result.totalDiscount
+                - result.totalPaid - result.totalBadDebt;
+              (totals summed from `invoices` + `excel_invoices` for
+              totalBilled/discount, and from the `customer_payments`
+              ledger for totalPaid/totalBadDebt)
+    Fields:   totalBilled, totalDiscount, totalPaid, totalBadDebt — the
+              full ledger-based aggregate formula. Explicitly labeled
+              in source as "// Final formula: Remaining = TotalBilled -
+              TotalDiscount - TotalPaid - TotalBadDebt".
+    Context:  Receive Payment tab, per-customer summary panel.
+    Verdict:  CORRECT — this is the most complete and explicitly
+              documented formula in the whole file; a good reference
+              implementation.
+
+14. Line 16025 — function buildAllCustomerSummaries()
+    Formula:  c.remaining = c.totalBilled - c.totalDiscount - c.totalPaid
+                - c.totalBadDebt;
+    Fields:   same four ledger totals as #13.
+    Context:  A second, separate customer-aggregation pass (used
+              elsewhere, e.g. Search tab), built independently from
+              rpGetCustomerSummary.
+    Verdict:  CORRECT (identical formula to #13), but it is a fully
+              DUPLICATED implementation — two different functions
+              independently re-derive the same one-line formula from
+              the same `customer_payments` ledger pattern instead of
+              sharing code.
+
+15. Line 16650 — function rpEditExcelTotal() ("Edit Total Bill" modal,
+    Receive Payment tab)
+    Formula:  row.remaining = newTotal - (row.received||0) - (row.received1||0)
+                - (row.discount||0) - (row.bad_debt||0);
+    Fields:   total_bill, received, received1, discount, bad_debt — all 5,
+              formula itself is CORRECT.
+    Context:  `excel_invoices` table.
+    Verdict:  BUG, but not in the formula — in what happens next. Line
+              16652 persists the change with
+                await sb.from('excel_invoices').update({ total_bill: newTotal })
+              which updates ONLY total_bill in Supabase. The correctly
+              recalculated `row.remaining` is updated in the in-memory
+              cache only and is NEVER sent to the database. After this
+              edit, Supabase's stored `remaining` column is stale/wrong
+              until something else happens to touch and resave that row.
+
+16. Line 16948 — function _renderSearchByInv(), initial local match
+    Formula:  var rem = Math.max(0, bill - (inv.received||0));
+    Fields:   total/afterDiscount, received. Missing: bad_debt.
+    Context:  `database[]`, Search-by-invoice-number tab — the FIRST,
+              fast, locally-computed result shown to the user.
+    Verdict:  INCONSISTENT — same table as #2/#3, same missing-bad_debt
+              pattern. Partially mitigated by #17 (see next), but there
+              is a visible window where an incorrect number is shown.
+
+17. Line 17026 — same function _renderSearchByInv(), "live" refresh
+    Formula:  matchedInvoices[_mi].remaining =
+                Math.max(0, _inv.bill - matchedInvoices[_mi].disc - _liveRecv - _liveBD);
+              (_liveRecv/_liveDisc/_liveBD summed fresh from the
+              `customer_payments` ledger for this specific invoice)
+    Fields:   bill, discount, received, bad_debt — full ledger-based
+              formula, same style as #13/#14.
+    Context:  `database[]`, same search tab — runs asynchronously right
+              after the initial render to correct/refresh the number.
+    Verdict:  CORRECT on its own, but note the sequence: the SAME
+              function shows an incomplete number first (#16) and then
+              silently replaces it with the correct one a moment later.
+              If the async ledger fetch fails or is slow, the user may
+              see the wrong (too-high) number and not notice it never
+              got corrected.
+
+18. Line 24003 — function pbBuildUnifiedMap() ("Pending Bills" unified
+    report, `database[]` side)
+    Formula:  var rem = Math.max(0, afterDisc - paid);
+    Fields:   total/afterDiscount, received. Missing: bad_debt.
+    Context:  `database[]` (new invoices) side of a report that also
+              merges in `_pbData` (a separate "Pending Bills" imported
+              data source).
+    Verdict:  INCONSISTENT, two ways:
+              (a) same missing-bad_debt pattern as #2/#16/#18.
+              (b) the OTHER half of this same function (line 23987,
+              the `_pbData`/Excel side) doesn't compute anything at
+              all — it just reads a pre-existing `r.pending_balance`
+              field straight from the data source. So this one report
+              mixes a manually-recomputed (and incomplete) formula for
+              one data source with a trust-the-stored-value approach
+              for the other. A customer with a bad-debt write-off on a
+              NEW invoice will still show up as "pending" here even
+              though that amount should no longer be collectible.
+
+════════════════════════════════════════════════════════════════════════
+SUMMARY OF INCONSISTENCIES
+════════════════════════════════════════════════════════════════════════
+
+Missing bad_debt term (display/report sites, table supports it):
+  #2  (L8697,  renderDB submitted-tab render)
+  #16 (L16948, _renderSearchByInv initial result)
+  #18 (L24003, pbBuildUnifiedMap database[] side)
+  #11 (L12027, viewInvoice) — likely intentional, flagged only for
+       documentation, not a real bug.
+
+Confirmed formula bug (persisted, not just display):
+  #4  (L8877, saveExcelField 'total_bill' branch) — the one branch out
+      of three in the same function that drops bad_debt from a value
+      that gets written straight to Supabase.
+
+Confirmed persistence bug (formula correct, write incomplete):
+  #15 (L16650/16652, rpEditExcelTotal) — recalculates `remaining`
+      correctly but never saves it to Supabase, only `total_bill`.
+
+Duplicated logic (correct in both places, but copy-pasted twice):
+  #13 (L15773, rpGetCustomerSummary) and #14 (L16025,
+      buildAllCustomerSummaries) implement the identical ledger-based
+      formula independently.
+
+Different calculation strategies coexisting for the same table
+(no single source of truth):
+  - Full recompute from raw fields (majority of sites).
+  - Incremental delta adjustment (#8, deleteExcelReceivedEntry /
+    removeHistoricalReceivedEntries).
+  - Ledger-aggregate from customer_payments (#13, #14, #17).
+  - Trust-the-stored-value, no recompute at all (`_pbData`/Excel side
+    of #18, via `pending_balance`).
+  Four different philosophies for deriving the "same" number, spread
+  across ~18 call sites, is the root cause of every inconsistency above.
+
+════════════════════════════════════════════════════════════════════════
+IDEAL SHARED FUNCTION SIGNATURE
+════════════════════════════════════════════════════════════════════════
+
+Two distinct calculation SHAPES actually exist in this codebase and
+both are legitimate — they should each have exactly one implementation.
+
+1) Per-row/per-invoice calculation (covers sites #1-12, #15-18):
+
+     function calcRemaining({
+       total       = 0,   // total_bill (excel_invoices) or total (invoices)
+       extraCharges = 0,  // only used pre-submit, on the invoices side
+       discount    = 0,
+       received    = 0,
+       received1   = 0,   // 0 for the `invoices` table, which has none
+       badDebt     = 0
+     }) {
+       return (total + extraCharges) - discount - received - received1 - badDebt;
+     }
+
+   Callers that need a floor for display (never show a negative number
+   to the user) apply it explicitly at the call site:
+     Math.max(0, calcRemaining({...}))
+   Callers that need to detect an OVERPAYMENT / advance credit (as
+   rpGetCustomerSummary already does via `advanceCredit`) read the raw
+   (possibly negative) result instead of flooring it. Keeping the
+   floor out of the shared function itself is what lets both use cases
+   share one implementation.
+
+2) Per-customer ledger aggregation (covers #13, #14, #17):
+
+     function calcCustomerRemaining({
+       totalBilled   = 0,  // sum of total/total_bill across all invoices
+       totalDiscount = 0,  // sum of per-invoice discount + manual discount entries
+       totalPaid     = 0,  // sum of 'payment' rows in customer_payments
+       totalBadDebt  = 0   // sum of 'bad_debt' rows in customer_payments
+     }) {
+       return totalBilled - totalDiscount - totalPaid - totalBadDebt;
+     }
+
+   rpGetCustomerSummary() and buildAllCustomerSummaries() should both
+   call this instead of each re-deriving the same one-line subtraction
+   independently (#13/#14 above).
+
+Adopting both would let every site in this report call one of two
+functions instead of one of four different ad-hoc calculation styles,
+and would make the #4 and #15 bugs (a dropped term, a value computed
+but never saved) structurally much harder to reintroduce — a
+one-line-formula bug in a shared function is caught everywhere at
+once instead of needing to be independently found and fixed in up to
+18 separate places.
+
+NO CODE CHANGES WERE MADE — this is a read-only audit.
