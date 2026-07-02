@@ -13688,18 +13688,47 @@ function exportCSV() {
   const headers = ['Serial No','Date','Customer','Phone','Invoice#','Total Bill','Received','Discount','Bad Debt','Remaining'];
   const rows = database.map((inv, i) => [
     i + 1, inv.date, inv.custName, inv.phone, inv.invNum,
-    inv.total.toFixed(2), inv.received.toFixed(2),
-    (inv.discount||0).toFixed(2),
-    inv.badDebt || '',
-    Math.max(0, inv.remaining||0).toFixed(2)
+    (parseFloat(inv.total)||0).toFixed(2),
+    (parseFloat(inv.received)||0).toFixed(2),
+    (parseFloat(inv.discount)||0).toFixed(2),
+    (parseFloat(inv.badDebt)||0).toFixed(2),
+    Math.max(0, calcRemaining({
+      total: parseFloat(inv.total)||0,
+      received: parseFloat(inv.received)||0,
+      discount: parseFloat(inv.discount)||0,
+      badDebt: parseFloat(inv.badDebt)||0
+    })).toFixed(2)
   ]);
-  const csv = [headers, ...rows].map(r => r.map(v => `"${(v||'').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
+  // Also include Excel/imported invoices
+  var excelRows = [];
+  if (Array.isArray(_excelDBCache)) {
+    _excelDBCache.forEach(function(inv, i) {
+      excelRows.push([
+        rows.length + i + 1,
+        inv.date || '',
+        inv.customer_name || '',
+        inv.phone || '',
+        inv.order_num || '',
+        (parseFloat(inv.total_bill)||0).toFixed(2),
+        (parseFloat(inv.received)||0).toFixed(2),
+        (parseFloat(inv.discount)||0).toFixed(2),
+        (parseFloat(inv.bad_debt)||0).toFixed(2),
+        Math.max(0, calcRemaining({
+          total: parseFloat(inv.total_bill)||0,
+          received: parseFloat(inv.received)||0,
+          discount: parseFloat(inv.discount)||0,
+          badDebt: parseFloat(inv.bad_debt)||0
+        })).toFixed(2)
+      ]);
+    });
+  }
+  const csv = [headers, ...rows, ...excelRows].map(r => r.map(v => `"${(v||'').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], {type:'text/csv'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'invoices_' + new Date().toISOString().slice(0,10) + '.csv';
   a.click();
-  toast('CSV exported!');
+  toast('CSV exported — ' + (rows.length + excelRows.length) + ' invoices');
 }
 
 // ══════════════════════════════════════════════
