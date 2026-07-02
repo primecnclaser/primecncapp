@@ -2982,12 +2982,6 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
           <button class="btn btn-outline" onclick="clearDbSearch()" style="padding:7px 12px;font-size:0.78rem;">✕ Clear</button>
           <button class="btn btn-outline" onclick="diagnoseMissingRows()" style="padding:7px 12px;font-size:0.78rem;" title="Find missing invoice rows">🔍 Find Missing</button>
           <button class="btn btn-outline" onclick="exportCSV()">📥 Export CSV</button>
-
-          <div style="display:flex;align-items:center;gap:6px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:5px 10px;" title="Date used when recording a received payment">
-            <label for="paymentDatePicker" style="font-family:Montserrat,sans-serif;font-size:0.72rem;font-weight:700;color:#059669;white-space:nowrap;">📅 Payment Date:</label>
-            <input type="date" id="paymentDatePicker"
-              style="padding:3px 6px;border:1px solid #86efac;border-radius:6px;font-family:Montserrat,sans-serif;font-size:0.78rem;color:#1e293b;outline:none;background:#fff;">
-          </div>
         </div>
       </div>
 
@@ -8884,48 +8878,6 @@ async function saveExcelField(orderNum, field, value) {
       toast('✅ Total Bill updated to Rs.' + fmt(amt) + ' for ' + orderNum);
     } catch(e) { toast('❌ Save failed: ' + e.message); return; }
 
-  } else if (field === 'received1') {
-    // Build date string from payment date picker (same as new invoices)
-    const _dpEl2 = document.getElementById('paymentDatePicker');
-    const _dpVal2 = _dpEl2 && _dpEl2.value ? _dpEl2.value : new Date().toISOString().split('T')[0];
-    const [_yr2, _mo2, _dy2] = _dpVal2.split('-');
-    const _mons2 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const entryDate = `${_dy2}-${_mons2[parseInt(_mo2)-1]}-${_yr2}`;
-
-    if (!Array.isArray(row.received_entries)) row.received_entries = [];
-    row.received_entries.push({ amount: amt, date: entryDate });
-    row.received1 = row.received_entries.reduce(function(s,e){ return s+(parseFloat(e.amount)||0); }, 0);
-    // Delta: subtract only this new payment from current remaining (avoids wrong formula with received=0)
-    row.remaining = row.remaining - amt;
-
-    if (typeof sb !== 'undefined' && sb) {
-      // Always save remaining — use .select() so we can verify rows were actually updated
-      const { data: _rd, error: _re } = await sb.from('excel_invoices')
-        .update({ remaining: row.remaining })
-        .eq('order_num', _rawOrderNum)
-        .select('order_num');
-      if (_re) {
-        // Revert in-memory change so cache stays consistent with DB
-        row.received_entries.pop();
-        row.received1 = row.received_entries.reduce(function(s,e){ return s+(parseFloat(e.amount)||0); }, 0);
-        row.remaining = row.remaining + amt;
-        toast('❌ Save failed: ' + _re.message); return;
-      }
-      if (!_rd || _rd.length === 0) {
-        row.received_entries.pop();
-        row.received1 = row.received_entries.reduce(function(s,e){ return s+(parseFloat(e.amount)||0); }, 0);
-        row.remaining = row.remaining + amt;
-        toast('❌ Order ' + orderNum + ' not found in database — reload the DB tab and try again.'); return;
-      }
-      // Also save received_entries (best effort — column may not exist in all installs)
-      try { await sb.from('excel_invoices').update({ received_entries: JSON.stringify(row.received_entries) }).eq('order_num', _rawOrderNum); } catch(e) {}
-    }
-    toast('✅ Rs.' + fmt(amt) + ' added on ' + entryDate + ' for order ' + orderNum);
-    const _finDate2 = (document.getElementById('dailyDate')||{}).value||'';
-    const _finType2 = (document.getElementById('dailyType')||{}).value||'';
-    const _finCat2  = (document.getElementById('dailyCat') ||{}).value||'';
-    if (_finDate2 === _dpVal2 && _finType2 === 'income' && _finCat2 === 'Sheets Cutting') { fetchAutoAmount(); }
-
   } else if (field === 'discount') {
     row.discount = amt;
     row.remaining = (parseFloat(row.total_bill)||0) - (parseFloat(row.received)||0) - (parseFloat(row.received1)||0) - amt - (parseFloat(row.bad_debt)||0);
@@ -12726,18 +12678,6 @@ function hideTbEdit(orderNum) {
   if (span) span.style.display = '';
   if (inp)  inp.style.display  = 'none';
 }
-// ── Received 1 inline edit helpers ──
-function showR1Edit(orderNum, spanEl) {
-  spanEl.style.display = 'none';
-  var inp = document.getElementById('r1Inp_' + orderNum);
-  if (inp) { inp.style.display = 'inline-block'; inp.focus(); inp.select(); }
-}
-function hideR1Edit(orderNum) {
-  var span = document.getElementById('r1Disp_' + orderNum);
-  var inp  = document.getElementById('r1Inp_' + orderNum);
-  if (span) span.style.display = '';
-  if (inp)  inp.style.display  = 'none';
-}
 // ── Discount inline edit helpers ──
 function showDiscEdit(orderNum, spanEl) {
   spanEl.style.display = 'none';
@@ -15754,8 +15694,6 @@ function switchTab(tab, el) {
   if (tab === 'database') {
     _excelDBCache = null; _searchNameList = null;
     loadExcelDBCache().then(() => { renderDB(); setInvoiceNumber(); updateDBCount(); });
-    const _dp = document.getElementById('paymentDatePicker');
-    if (_dp && !_dp.value) _dp.value = new Date().toISOString().split('T')[0];
     switchDbTab('submitted');
   }
   if (tab === 'invoice')  { switchInvTab('full'); }
