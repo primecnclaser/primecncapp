@@ -2391,7 +2391,7 @@ function _ubCloseModal() {
   if (ov) { ov.classList.remove('open'); document.body.style.overflow=''; }
 }
 function _pmFmtDate(s) {
-  try { return new Date(s).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); } catch(e){ return s; }
+  try { return new Date(s).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); } catch(e){ console.error('[_pmFmtDate]', e); return s; }
 }
 
 /* ── Inline editing ── */
@@ -4802,20 +4802,20 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
       try {
         iwin.addEventListener('afterprint', function () {
           setTimeout(function () {
-            try { document.body.removeChild(iframe); } catch (e) {}
+            try { document.body.removeChild(iframe); } catch (e) { console.warn('[window.open override (print popup cleanup)]', e); }
           }, 400);
         });
-      } catch (e) {}
+      } catch (e) { console.warn('[window.open override (print popup cleanup)]', e); }
 
       // Redirect iwin.close() → remove the iframe from the DOM
       try {
         Object.defineProperty(iwin, 'close', {
           configurable: true, writable: true,
           value: function () {
-            try { document.body.removeChild(iframe); } catch (e) {}
+            try { document.body.removeChild(iframe); } catch (e) { console.warn('[window.open override (print popup cleanup)]', e); }
           }
         });
-      } catch (e) {}
+      } catch (e) { console.warn('[window.open override (print popup cleanup)]', e); }
 
       return iwin;
     }
@@ -4836,7 +4836,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
 })();
 
 // Force-correct any stale urdu font in localStorage before _hdrElStyles loads
-try { var _s=JSON.parse(localStorage.getItem('inv_hdr_el_styles')||'{}'); if(_s.urdu && !_s.urdu.font) _s.urdu.font='JameelNooriNastaliq'; localStorage.setItem('inv_hdr_el_styles',JSON.stringify(_s)); } catch(e){}
+try { var _s=JSON.parse(localStorage.getItem('inv_hdr_el_styles')||'{}'); if(_s.urdu && !_s.urdu.font) _s.urdu.font='JameelNooriNastaliq'; localStorage.setItem('inv_hdr_el_styles',JSON.stringify(_s)); } catch(e){ console.error('[urdu font fix (startup)]', e); }
 
 // ══════════════════════════════════════════════
 // OFFLINE PENDING QUEUE — AUTO SYNC ENGINE
@@ -5279,7 +5279,7 @@ async function _syncToHO() {
         error_message: err.message || 'Unknown error',
         synced_at:     new Date().toISOString()
       });
-    } catch(_) {}
+    } catch(_) { console.error('[_syncToHO:branch_sync_log insert]', _); }
     setSyncStatus('offline', '● Sync error');
     toast('⚠ HO sync failed — ' + (err.message || 'check console'));
   }
@@ -5593,6 +5593,7 @@ window._checkSupabaseConnection = async function() {
       if (typeof flushFinLedgerPending === 'function') flushFinLedgerPending();
     }
   } catch(e) {
+    console.error('[_checkSupabaseConnection:app_users select]', e);
     if (window._sbConnectionOk) {
       window._sbConnectionOk = false;
       if (typeof toast === 'function') toast('⚠️ Cloud connection lost — working offline');
@@ -5710,7 +5711,7 @@ document.addEventListener('keydown', function(e) {
 
     // Get current role
     var _sess = null;
-    try { _sess = JSON.parse(sessionStorage.getItem('_authSession') || 'null'); } catch(e) {}
+    try { _sess = JSON.parse(sessionStorage.getItem('_authSession') || 'null'); } catch(e) { console.error('[_checkSession]', e); }
     var _isAdmin = _sess && _sess.role === 'admin';
 
     var _timeout = _isAdmin ? _ADMIN_TIMEOUT_MS : _USER_TIMEOUT_MS;
@@ -6429,7 +6430,7 @@ function doLogout() {
       localStorage.removeItem('userPhone_'         + _logoutUKey);
       localStorage.removeItem('userEmail_'         + _logoutUKey);
     }
-  } catch(e) {}
+  } catch(e) { console.error('[doLogout]', e); }
   // Reset UI — clear photo, reset initial to '?', clear name
   var ubImg = document.getElementById('_ubAvatarImg');
   var ubIni = document.getElementById('_ubInitial');
@@ -6490,6 +6491,7 @@ async function doRecoveryLookup() {
     btn.textContent = '🔍 Find Account';
     return;
   } catch(e) {
+    console.error('[doRecoveryLookup]', e);
     err.textContent = '⚠️ Connection error. Check internet and try again.';
     err.style.display = 'block';
     btn.disabled = false;
@@ -6548,6 +6550,7 @@ async function doSetNewPassword() {
     suc.textContent = '❌ Password recovery is not available. Please contact admin.';
     return;
   } catch(e) {
+    console.error('[doSetNewPassword]', e);
     err.textContent = '⚠️ Error saving password. Check connection and try again.';
     err.style.display = 'block';
     btn.disabled = false;
@@ -7130,7 +7133,7 @@ function setInvoiceNumber() {
             var _dm2 = (d.invNum || "").match(/(\d+)$/);
             if (_dm2 && parseInt(_dm2[1]) >= _base) _base = parseInt(_dm2[1]) + 1;
           });
-        } catch(_e2) {}
+        } catch(_e2) { console.error('[setInvoiceNumber]', _e2); }
         if (_base !== invoiceCounter) {
           invoiceCounter = _base;
           localStorage.setItem("inv_counter", invoiceCounter);
@@ -7953,7 +7956,7 @@ async function doSubmit(data) {
             var _cpP = JSON.parse(localStorage.getItem('cp_pending_sync') || '[]');
             _cpP = _cpP.filter(function(e) { return e.invoice_ref !== data.invNum; });
             localStorage.setItem('cp_pending_sync', JSON.stringify(_cpP));
-          } catch(_cpE2) {}
+          } catch(_cpE2) { console.error('[doSubmit]', _cpE2); }
           if (typeof _rpAutoRefreshFinanceTab === 'function') {
             var _epDate = parseDateStr ? parseDateStr(data.date) : data.date;
             if (_epDate) _rpAutoRefreshFinanceTab(_epDate);
@@ -8252,7 +8255,7 @@ function _savePDFBlob(blob, filename) {
 
 async function _savePDFEl(el, filename) {
   if (!el) { alert('PDF library not loaded. Try again.'); return; }
-  try { await _loadHtml2Pdf(); } catch(e) { alert('PDF library failed to load. Check your connection and try again.'); return; }
+  try { await _loadHtml2Pdf(); } catch(e) { console.error('[_savePDFEl]', e); alert('PDF library failed to load. Check your connection and try again.'); return; }
   var _orient = _getPageOrientation(el);
   var _fname  = filename || 'Prime-CNC.pdf';
   html2pdf().set({
@@ -8290,7 +8293,7 @@ async function _savePDFMainInvoice() {
   const tabs = document.querySelector('.tabs');
   const sidebar = document.querySelector('.tabs-sidebar');
   if (!el) { window.print(); return; }
-  try { await _loadHtml2Pdf(); } catch(e) { window.print(); return; }
+  try { await _loadHtml2Pdf(); } catch(e) { console.error('[_savePDFMainInvoice]', e); window.print(); return; }
   if (actionBar) actionBar.style.display = 'none';
   if (topnav) topnav.style.display = 'none';
   if (tabs) tabs.style.display = 'none';
@@ -8390,7 +8393,7 @@ function _injectPDFToPopup(pw, filename) {
 // The popup opens beyond the right edge of the display so the user doesn't see it;
 // it auto-closes after the PDF downloads.
 async function _silentPDFFromHtml(htmlStr, filename) {
-  try { await _loadHtml2Pdf(); } catch(e) { toast('⚠ PDF library failed to load'); return; }
+  try { await _loadHtml2Pdf(); } catch(e) { console.error('[_silentPDFFromHtml]', e); toast('⚠ PDF library failed to load'); return; }
   var _fname  = filename || 'Prime-CNC.pdf';
   var _orient = _getPageOrientation(htmlStr);
   htmlStr = htmlStr.replace(/@page\s*\{[^}]*\}/g, '@page{size:A4 ' + _orient + ';margin:10mm;}');
@@ -8432,9 +8435,9 @@ async function _silentPDFFromHtml(htmlStr, filename) {
     var _fitSt = pw.document.createElement('style');
     _fitSt.textContent = 'html,body{width:100% !important;max-width:100% !important;margin:0 !important;padding:0 !important;}table{width:100% !important;}';
     (pw.document.head || pw.document.documentElement).appendChild(_fitSt);
-  } catch(e) {}
+  } catch(e) { console.error('[_silentPDFFromHtml]', e); }
   var _logo2 = (typeof _ctrlLogo !== 'undefined' && _ctrlLogo) || localStorage.getItem('inv_logo') || '';
-  try { var logoEl = pw.document.getElementById('printLogo'); if (logoEl && _logo2) { logoEl.src = _logo2; logoEl.style.display = 'block'; } } catch(e) {}
+  try { var logoEl = pw.document.getElementById('printLogo'); if (logoEl && _logo2) { logoEl.src = _logo2; logoEl.style.display = 'block'; } } catch(e) { console.error('[_silentPDFFromHtml]', e); }
   // Inject auto-PDF script directly into popup — runs inside popup context
   var _autoScript = pw.document.createElement('script');
   _autoScript.textContent = '(function(){'
@@ -8504,8 +8507,8 @@ function _electronPrintHtml(htmlStr) {
   _printDiv.querySelectorAll('button,.no-print,.print-btn,.pdf-action-bar').forEach(function(el){ el.style.display='none'; });
 
   function _cleanupPrint() {
-    try { document.body.removeChild(_printDiv); } catch(e) {}
-    try { document.head.removeChild(_styleTag); } catch(e) {}
+    try { document.body.removeChild(_printDiv); } catch(e) { console.error('[_electronPrintHtml]', e); }
+    try { document.head.removeChild(_styleTag); } catch(e) { console.error('[_electronPrintHtml]', e); }
   }
 
   window.addEventListener('afterprint', function _onAfterPrint() {
@@ -8876,7 +8879,7 @@ async function saveExcelField(orderNum, field, value) {
       if (typeof sb !== 'undefined' && sb)
         await sb.from('excel_invoices').update({ total_bill: amt, remaining: row.remaining }).eq('order_num', _rawOrderNum);
       toast('✅ Total Bill updated to Rs.' + fmt(amt) + ' for ' + orderNum);
-    } catch(e) { toast('❌ Save failed: ' + e.message); return; }
+    } catch(e) { console.error('[saveExcelField:excel_invoices update]', e); toast('❌ Save failed: ' + e.message); return; }
 
   } else if (field === 'discount') {
     row.discount = amt;
@@ -8910,7 +8913,7 @@ async function saveExcelField(orderNum, field, value) {
         if (typeof _searchNameList !== 'undefined') _searchNameList = null;
       }
       toast('✅ Discount updated to Rs.' + fmt(amt) + ' for ' + orderNum);
-    } catch(e) { toast('❌ Save failed: ' + e.message); return; }
+    } catch(e) { console.error('[saveExcelField:excel_invoices insert]', e); toast('❌ Save failed: ' + e.message); return; }
 
   } else if (field === 'bad_debt') {
     row.bad_debt = amt;
@@ -8944,7 +8947,7 @@ async function saveExcelField(orderNum, field, value) {
         if (typeof _searchNameList !== 'undefined') _searchNameList = null;
       }
       toast('✅ Bad debt set to Rs.' + fmt(amt) + ' for order ' + orderNum);
-    } catch(e) { toast('❌ Save failed: ' + e.message); return; }
+    } catch(e) { console.error('[saveExcelField:excel_invoices insert]', e); toast('❌ Save failed: ' + e.message); return; }
   }
 
   renderDB();
@@ -9041,7 +9044,7 @@ function editExcelInvoice(oNum) {
                 }
                 if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
                 if (typeof _searchNameList !== 'undefined') _searchNameList = null;
-              } catch(e) { toast('❌ Received save failed: ' + e.message); }
+              } catch(e) { console.error('[editExcelInvoice:excel_invoices insert]', e); toast('❌ Received save failed: ' + e.message); }
             }
           }
         }
@@ -9084,7 +9087,7 @@ async function deleteExcelReceivedEntry(orderNum, entryIdx) {
             toast('❌ Delete failed: ' + (_de ? _de.message : 'order not found'));
             return;
           }
-          try { await sb.from('excel_invoices').update({ received_entries: JSON.stringify(row.received_entries) }).eq('order_num', _oNum2); } catch(e) {}
+          try { await sb.from('excel_invoices').update({ received_entries: JSON.stringify(row.received_entries) }).eq('order_num', _oNum2); } catch(e) { console.error('[deleteExcelReceivedEntry:excel_invoices update]', e); }
         }
         toast('✅ Entry Rs.' + Math.round(removed.amount||0).toLocaleString('en-PK') + ' deleted');
         renderDB();
@@ -9374,7 +9377,7 @@ async function _fetchExcelOrderCount(mode, dateV, monV, yearV) {
     }
     var res = await q;
     return res.count || 0;
-  } catch(e) { return 0; }
+  } catch(e) { console.error('[_fetchExcelOrderCount:excel_invoices select]', e); return 0; }
 }
 
 async function renderSummary() {
@@ -9823,10 +9826,10 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
         try {
           var cached = JSON.parse(localStorage.getItem('cash_holders_cache') || 'null');
           if (cached) { names = cached.names || names; entries2 = cached.entries2 || []; entries3 = cached.entries3 || []; }
-        } catch(_ce) {}
+        } catch(_ce) { console.error('[_renderGeneralSummary]', _ce); }
       }
       // Cache for offline use
-      try { localStorage.setItem('cash_holders_cache', JSON.stringify({names: names, entries2: entries2, entries3: entries3})); } catch(_se) {}
+      try { localStorage.setItem('cash_holders_cache', JSON.stringify({names: names, entries2: entries2, entries3: entries3})); } catch(_se) { console.error('[_renderGeneralSummary]', _se); }
 
       var total2 = entries2.reduce(function(s,e){ return s + (parseFloat(e.amount)||0); }, 0);
       var total3 = entries3.reduce(function(s,e){ return s + (parseFloat(e.amount)||0); }, 0);
@@ -10074,7 +10077,7 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
       cashInHand: cashInHand, remaining: displayRemaining,
       custCount: _allCustKeys.size, badDebt: displayBadDebt, timestamp: Date.now()
     }));
-  } catch(e) {}
+  } catch(e) { console.error('[_renderGeneralSummary]', e); }
 }
 
 // ── Summary skeleton & offline helpers (Fix 1, Fix 4) ─────────────────────
@@ -10114,13 +10117,13 @@ function _sumRenderOffline(container) {
   }
   // Read cache
   var c = null;
-  try { c = JSON.parse(localStorage.getItem('summary_cache') || 'null'); } catch(e) {}
+  try { c = JSON.parse(localStorage.getItem('summary_cache') || 'null'); } catch(e) { console.error('[_sumRenderOffline]', e); }
   if (!c) {
     container.innerHTML = '<div style="padding:20px;font-family:Montserrat,sans-serif;font-size:0.85rem;color:rgba(255,255,255,0.6);text-align:center;">No cached data — connect to internet to load Summary</div>';
     return;
   }
   var synced = '';
-  try { synced = new Date(c.timestamp).toLocaleString('en-PK', {dateStyle:'short',timeStyle:'short'}); } catch(e) { synced = '—'; }
+  try { synced = new Date(c.timestamp).toLocaleString('en-PK', {dateStyle:'short',timeStyle:'short'}); } catch(e) { console.error('[_sumRenderOffline]', e); synced = '—'; }
   var cashCol  = c.cashInHand == null ? '#fff' : c.cashInHand >= 0 ? '#a7f3d0' : '#fca5a5';
   var cashDisp = c.cashInHand != null ? 'Rs. ' + fmt(c.cashInHand) : '—';
   var remDisp  = c.remaining  != null ? 'Rs. ' + fmt(c.remaining)  : '—';
@@ -10168,7 +10171,7 @@ function getPartners() {
   try {
     const s = localStorage.getItem('inv_partners');
     if (s) return JSON.parse(s);
-  } catch(e) {}
+  } catch(e) { console.error('[getPartners]', e); }
   return [
     { id:'anwar',  name:'Anwar Khan',   share:0.375, startDate:'2025-01-01' },
     { id:'kamran', name:'Kamran Ahmad', share:0.375, startDate:'2025-01-01' },
@@ -10226,7 +10229,7 @@ async function renderInvestSavings() {
   wrap.innerHTML = '<div style="color:#94a3b8;font-size:0.82rem;padding:8px 0;">Loading...</div>';
 
   // Fetch ledger for any manual entries added after constants
-  try { _invAllEntries = await fetchEntriesWithCorrectInvoiceAmounts({}); } catch(e) { _invAllEntries = []; }
+  try { _invAllEntries = await fetchEntriesWithCorrectInvoiceAmounts({}); } catch(e) { console.error('[renderInvestSavings]', e); _invAllEntries = []; }
 
   // Primary source: MONTHLY_2025 + MONTHLY_2026 constants (always available)
   const ct = _getInvTotalsFromConstants();
@@ -10700,7 +10703,7 @@ function _applyPrintLogo(pw, logo) {
   try {
     var img = pw.document.getElementById('printLogo');
     if (img) { img.src = logo; img.style.display = 'block'; }
-  } catch(e) {}
+  } catch(e) { console.error('[_applyPrintLogo]', e); }
 }
 function _printFonts() {
   var faceRule = '@font-face{font-family:"JameelNooriNastaliq";font-display:block;src:url("JameelNooriNastaleeq.ttf") format("truetype")}@font-face{font-family:"Jameel Noori Nastaleeq";font-display:block;src:url("JameelNooriNastaleeq.ttf") format("truetype")}';
@@ -10762,7 +10765,7 @@ function printInvBreakdown(partnerId, mode) {
   pw.document.write(_ibDocHtml);
   pw.document.close();
   _applyPrintLogo(pw, _ibS.logo);
-  var _doPrintIB = function(){ try{pw.print();}catch(e){} };
+  var _doPrintIB = function(){ try{pw.print();}catch(e){ console.warn('[printInvBreakdown]', e); } };
   if (pw.document.fonts) { pw.document.fonts.ready.then(_doPrintIB); }
   else { setTimeout(_doPrintIB, 1500); }
 }
@@ -11087,7 +11090,7 @@ function printRemainingList(mode) {
   w.document.write(_rHtml);
   w.document.close();
   _applyPrintLogo(w, _rS.logo);
-  var _doPrintRem = function(){ try{ w.print(); }catch(e){} };
+  var _doPrintRem = function(){ try{ w.print(); }catch(e){ console.warn('[printRemainingList]', e); } };
   if (w.document.fonts) { w.document.fonts.ready.then(_doPrintRem); }
   else { setTimeout(_doPrintRem, 1500); }
 }
@@ -11096,7 +11099,7 @@ async function exportRemainingExcel() {
   var d = window._remainingPrintData;
   if (!d || !d.rows || d.rows.length === 0) { alert('No data to export. Please open Remaining in Market first.'); return; }
   var XLSX;
-  try { XLSX = await pbLoadXLSX(); } catch(e) { alert('Failed to load Excel library. Check internet connection.'); return; }
+  try { XLSX = await pbLoadXLSX(); } catch(e) { console.error('[exportRemainingExcel]', e); alert('Failed to load Excel library. Check internet connection.'); return; }
 
   var today = new Date().toLocaleDateString('en-PK', { day:'2-digit', month:'short', year:'numeric' });
   var wb = XLSX.utils.book_new();
@@ -11240,7 +11243,7 @@ async function fetchCustomerInvoices(name, phone, nameQuery) {
     r._src = 'excel';
     // Parse received_entries JSONB if returned as string
     if (typeof r.received_entries === 'string') {
-      try { r.received_entries = JSON.parse(r.received_entries); } catch(e) { r.received_entries = []; }
+      try { r.received_entries = JSON.parse(r.received_entries); } catch(e) { console.error('[fetchCustomerInvoices]', e); r.received_entries = []; }
     } else if (!Array.isArray(r.received_entries)) {
       r.received_entries = [];
     }
@@ -11423,6 +11426,7 @@ async function renderCustomerDetail(targetEl, name, phone, showBackBtn, nameQuer
   try {
     allInvs = await fetchCustomerInvoices(name, phone, nameQuery);
   } catch(e) {
+    console.error('[renderCustomerDetail]', e);
     targetEl.innerHTML = '<div style="padding:24px;text-align:center;color:#dc2626;font-family:Montserrat,sans-serif;">Error loading invoices: '+e.message+'</div>';
     return;
   }
@@ -11703,7 +11707,7 @@ function showExcelCustDetail(encodedKey) {
   var listEl = document.getElementById('summaryList');
   if (!listEl) return;
   var info;
-  try { info = JSON.parse(decodeURIComponent(encodedKey)); } catch(e) { return; }
+  try { info = JSON.parse(decodeURIComponent(encodedKey)); } catch(e) { console.error('[showExcelCustDetail]', e); return; }
   var name  = info.name  || '';
   var phone = info.phone || '';
   renderCustomerDetail(listEl, name, phone, true);
@@ -12098,7 +12102,7 @@ ${_buildPrintFooterHtml(_ps)}
       if (!pw) { alert('Allow popups to print'); return; }
       pw.document.write(_viHtml);
       pw.document.close();
-      var _doPrintVI = function() { try { pw.print(); } catch(e) {} };
+      var _doPrintVI = function() { try { pw.print(); } catch(e) { console.warn('[_doPrintVI]', e); } };
       if (pw.document.fonts) { pw.document.fonts.ready.then(_doPrintVI); }
       else { setTimeout(_doPrintVI, 1500); }
     };
@@ -12207,7 +12211,7 @@ async function _buildSearchNameList() {
         else from += batch;
       }
       allRecs.forEach(function(r) { addRaw(r.customer_name, r.phone); });
-    } catch(e) {}
+    } catch(e) { console.error('[_buildSearchNameList:excel_invoices select]', e); }
   }
 
   // Build name → best phone map (first non-empty phone wins per name)
@@ -13314,9 +13318,7 @@ async function addHistoricalInvoice() {
     updateDBCount();
     if (document.getElementById('summaryTab') && document.getElementById('summaryTab').style.display !== 'none') renderSummary();
 
-  } catch(e) {
-    toast('❌ Save failed: ' + (e.message || e));
-  } finally {
+  } catch(e) { console.error('[addHistoricalInvoice:excel_invoices insert]', e); toast('❌ Save failed: ' + (e.message || e)); } finally {
     if (btn) { btn.disabled = false; btn.textContent = '✅ Submit & Save Invoice'; }
   }
 }
@@ -13727,11 +13729,11 @@ function _shrinkLogoDataURI(src, cb) {
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
         var isPng = /^data:image\/png/i.test(src);
         cb(isPng ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.85));
-      } catch(e) { cb(src); }
+      } catch(e) { console.error('[_shrinkLogoDataURI]', e); cb(src); }
     };
     img.onerror = function() { cb(src); };
     img.src = src;
-  } catch(e) { cb(src); }
+  } catch(e) { console.error('[_shrinkLogoDataURI]', e); cb(src); }
 }
 
 function applyLogo(src) {
@@ -13755,7 +13757,7 @@ function loadLogo() {
           localStorage.setItem('inv_logo', small);
           if (typeof _ctrlLogo !== 'undefined' && _ctrlLogo === logo) _ctrlLogo = small;
           applyLogo(small);
-        } catch(e) {}
+        } catch(e) { console.error('[loadLogo]', e); }
       }
     });
   }
@@ -13823,15 +13825,15 @@ const CAT_SPECIAL = {
 
 // Refresh all live dropdowns and views after any category change
 function sCatRefreshApp() {
-  if (typeof updateDailyCategories === 'function') try { updateDailyCategories(); } catch(e) {}
-  if (typeof updateLedgerCategories === 'function') try { updateLedgerCategories(); } catch(e) {}
+  if (typeof updateDailyCategories === 'function') try { updateDailyCategories(); } catch(e) { console.error('[sCatRefreshApp]', e); }
+  if (typeof updateLedgerCategories === 'function') try { updateLedgerCategories(); } catch(e) { console.error('[sCatRefreshApp]', e); }
   if (typeof renderDashboard === 'function') {
     const dash = document.getElementById('finDashboard');
-    if (dash && dash.style.display !== 'none') try { renderDashboard(); } catch(e) {}
+    if (dash && dash.style.display !== 'none') try { renderDashboard(); } catch(e) { console.error('[sCatRefreshApp]', e); }
   }
   if (typeof renderLedger === 'function') {
     const led = document.getElementById('finLedger');
-    if (led && led.style.display !== 'none') try { renderLedger(); } catch(e) {}
+    if (led && led.style.display !== 'none') try { renderLedger(); } catch(e) { console.error('[sCatRefreshApp]', e); }
   }
 }
 
@@ -14141,7 +14143,7 @@ function _partnerHasLinkedEntries(p) {
           })) return true;
         }
       }
-    } catch(e2) {}
+    } catch(e2) { console.error('[_partnerHasLinkedEntries]', e2); }
   }
   return false;
 }
@@ -14234,7 +14236,7 @@ function deletePartner(idx) {
           });
         }
       }
-    } catch(e2) {}
+    } catch(e2) { console.error('[deletePartner]', e2); }
   }
 
   if (hasLinked) {
@@ -14311,9 +14313,7 @@ async function saveShopName() {
       var res = await sb.from('shop_settings').upsert(rows, { onConflict: 'key' });
       if (res.error) throw res.error;
       toast('✅ Shop name saved to cloud');
-    } catch(e) {
-      toast('💾 Shop name saved locally (cloud sync failed)');
-    }
+    } catch(e) { console.error('[saveShopName:shop_settings upsert]', e); toast('💾 Shop name saved locally (cloud sync failed)'); }
   } else {
     toast('✅ Shop name saved');
   }
@@ -14595,7 +14595,7 @@ let _hdrElStyles = (function(){
       });
       return merged;
     }
-  } catch(e){}
+  } catch(e){ console.error('[_hdrElStyles init]', e); }
   return JSON.parse(JSON.stringify(HDR_EL_DEFAULTS));
 })();
 
@@ -14603,18 +14603,18 @@ let _selHdrEl = 'urdu';
 
 // Column widths in px
 let _hdrCols = (function(){
-  try { var c=localStorage.getItem('inv_hdr_cols'); if(c) return JSON.parse(c); } catch(e){}
+  try { var c=localStorage.getItem('inv_hdr_cols'); if(c) return JSON.parse(c); } catch(e){ console.error('[_hdrCols init]', e); }
   return {left:130, right:150};
 })();
 
 // Middle content order + hidden set
 let _hdrOrder = (function(){
-  try { var o=localStorage.getItem('inv_hdr_order'); if(o){ var p=JSON.parse(o); if(p && p.length>0) return p; } } catch(e){}
+  try { var o=localStorage.getItem('inv_hdr_order'); if(o){ var p=JSON.parse(o); if(p && p.length>0) return p; } } catch(e){ console.error('[_hdrOrder init]', e); }
   return ['urdu','en','tagline','contacts','address'];
 })();
 
 let _hdrHidden = (function(){
-  try { var h=localStorage.getItem('inv_hdr_hidden'); if(h) return JSON.parse(h); } catch(e){}
+  try { var h=localStorage.getItem('inv_hdr_hidden'); if(h) return JSON.parse(h); } catch(e){ console.error('[_hdrHidden init]', e); }
   return [];
 })();
 
@@ -14911,10 +14911,10 @@ function ctrlLoad(skipCloudSync) {
       });
       _hdrElStyles=_em;
     }
-  } catch(e){}
-  try { var _ec=localStorage.getItem('inv_hdr_cols');       if(_ec) _hdrCols=JSON.parse(_ec);     } catch(e){}
-  try { var _eo=localStorage.getItem('inv_hdr_order'); if(_eo){ var _eop=JSON.parse(_eo); if(_eop && _eop.length>0) _hdrOrder=_eop; } } catch(e){}
-  try { var _eh=localStorage.getItem('inv_hdr_hidden');     if(_eh) _hdrHidden=JSON.parse(_eh);   } catch(e){}
+  } catch(e){ console.error('[ctrlLoad]', e); }
+  try { var _ec=localStorage.getItem('inv_hdr_cols');       if(_ec) _hdrCols=JSON.parse(_ec);     } catch(e){ console.error('[ctrlLoad]', e); }
+  try { var _eo=localStorage.getItem('inv_hdr_order'); if(_eo){ var _eop=JSON.parse(_eo); if(_eop && _eop.length>0) _hdrOrder=_eop; } } catch(e){ console.error('[ctrlLoad]', e); }
+  try { var _eh=localStorage.getItem('inv_hdr_hidden');     if(_eh) _hdrHidden=JSON.parse(_eh);   } catch(e){ console.error('[ctrlLoad]', e); }
   // Load logo
   _ctrlLogo = '';
   var li = document.getElementById('logoImg');
@@ -14975,7 +14975,7 @@ function ctrlLoad(skipCloudSync) {
       Object.keys(ls).forEach(function(k) { if (ls[k] != null) localStorage.setItem(k, ls[k]); });
       if (map['inv_hdr_el_styles'] != null) localStorage.setItem('inv_hdr_el_styles', map['inv_hdr_el_styles']);
       if (map['inv_hdr_cols']      != null) localStorage.setItem('inv_hdr_cols',      map['inv_hdr_cols']);
-      (function(){ var _v=map['inv_hdr_order']; try{ var _p=JSON.parse(_v); if(_p && _p.length>0) localStorage.setItem('inv_hdr_order',_v); } catch(e){} })();
+      (function(){ var _v=map['inv_hdr_order']; try{ var _p=JSON.parse(_v); if(_p && _p.length>0) localStorage.setItem('inv_hdr_order',_v); } catch(e){ console.error('[ctrlLoad]', e); } })();
       if (map['inv_hdr_hidden']    != null) localStorage.setItem('inv_hdr_hidden',    map['inv_hdr_hidden']);
       // ── load synced profile / partner / category / invoice-settings keys ──
       var _pSess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
@@ -14996,11 +14996,11 @@ function ctrlLoad(skipCloudSync) {
         if (map['userPhone_'+_pKey]       != null) localStorage.setItem('userPhone_'+_pKey,       map['userPhone_'+_pKey]);
         if (map['userEmail_'+_pKey]       != null) localStorage.setItem('userEmail_'+_pKey,       map['userEmail_'+_pKey]);
       }
-      if (map['inv_partners'] != null) { try { var _pp=JSON.parse(map['inv_partners']); if(Array.isArray(_pp)){localStorage.setItem('inv_partners',JSON.stringify(_pp));if(typeof renderPartnersUI==='function')renderPartnersUI();} } catch(e){} }
-      if (map['pcnc_fin_categories'] != null) { try { var _fc=JSON.parse(map['pcnc_fin_categories']); if(_fc&&typeof _fc==='object'){FIN_CATEGORIES=_fc;localStorage.setItem('pcnc_fin_categories',JSON.stringify(_fc));if(typeof sCatRefreshApp==='function')sCatRefreshApp();} } catch(e){} }
+      if (map['inv_partners'] != null) { try { var _pp=JSON.parse(map['inv_partners']); if(Array.isArray(_pp)){localStorage.setItem('inv_partners',JSON.stringify(_pp));if(typeof renderPartnersUI==='function')renderPartnersUI();} } catch(e){ console.error('[ctrlLoad]', e); } }
+      if (map['pcnc_fin_categories'] != null) { try { var _fc=JSON.parse(map['pcnc_fin_categories']); if(_fc&&typeof _fc==='object'){FIN_CATEGORIES=_fc;localStorage.setItem('pcnc_fin_categories',JSON.stringify(_fc));if(typeof sCatRefreshApp==='function')sCatRefreshApp();} } catch(e){ console.error('[ctrlLoad]', e); } }
       if (map['inv_num_prefix']         != null) localStorage.setItem('inv_num_prefix',         map['inv_num_prefix']);
       for (var _ts = 1; _ts <= 5; _ts++) { var _tk = 'inv_tmpl_' + _ts; if (map[_tk] != null) { localStorage.setItem(_tk, map[_tk]); } }
-      if (map['inv_drafts'] != null) { try { var _dr=JSON.parse(map['inv_drafts']); if(Array.isArray(_dr)){ draftsDB=_dr; localStorage.setItem('inv_drafts',JSON.stringify(_dr)); } } catch(e){} }
+      if (map['inv_drafts'] != null) { try { var _dr=JSON.parse(map['inv_drafts']); if(Array.isArray(_dr)){ draftsDB=_dr; localStorage.setItem('inv_drafts',JSON.stringify(_dr)); } } catch(e){ console.error('[ctrlLoad]', e); } }
       if (map['pcnc_emp_v4'] != null) { localStorage.setItem('pcnc_emp_v4', map['pcnc_emp_v4']); }
       if (map['pcnc_mon_v4'] != null) { localStorage.setItem('pcnc_mon_v4', map['pcnc_mon_v4']); }
       if (map['pcnc_day_v4'] != null) { localStorage.setItem('pcnc_day_v4', map['pcnc_day_v4']); }
@@ -15025,11 +15025,11 @@ function ctrlLoad(skipCloudSync) {
           });
           _hdrElStyles = _merged;
         }
-      } catch(e){}
-      try { if(map.hdr_cols)      _hdrCols     = JSON.parse(map.hdr_cols);      } catch(e){}
-      try { if(map.hdr_order)     _hdrOrder    = JSON.parse(map.hdr_order);     } catch(e){}
-      try { if(map.hdr_hidden)    _hdrHidden   = JSON.parse(map.hdr_hidden);    } catch(e){}
-      try { if(map.drag_free_pos && !_dragElStylesTemp) _dragFreePos = JSON.parse(map.drag_free_pos); } catch(e){}
+      } catch(e){ console.error('[ctrlLoad]', e); }
+      try { if(map.hdr_cols)      _hdrCols     = JSON.parse(map.hdr_cols);      } catch(e){ console.error('[ctrlLoad]', e); }
+      try { if(map.hdr_order)     _hdrOrder    = JSON.parse(map.hdr_order);     } catch(e){ console.error('[ctrlLoad]', e); }
+      try { if(map.hdr_hidden)    _hdrHidden   = JSON.parse(map.hdr_hidden);    } catch(e){ console.error('[ctrlLoad]', e); }
+      try { if(map.drag_free_pos && !_dragElStylesTemp) _dragFreePos = JSON.parse(map.drag_free_pos); } catch(e){ console.error('[ctrlLoad]', e); }
       // Reset staging so next initDragEditor() re-inits from fresh cloud values
       // (only safe if the editor is not currently open — staging not yet loaded)
       if (!_dragElStylesTemp) {
@@ -15286,6 +15286,7 @@ async function ctrlSave() {
       status.style.background = '#f0fdf4'; status.style.color = '#059669';
       status.textContent = '✅ Saved to cloud successfully';
     } catch(e) {
+      console.error('[ctrlSave:shop_settings upsert]', e);
       status.style.display = '';
       status.style.background = '#fef2f2'; status.style.color = '#dc2626';
       status.textContent = '⚠️ Saved locally. Cloud sync failed: ' + (e.message || e);
@@ -15549,7 +15550,7 @@ async function ctrlBootSync() {
     window._ctrlBootSyncDone = true;
     if (map['inv_hdr_el_styles'] != null) localStorage.setItem('inv_hdr_el_styles', map['inv_hdr_el_styles']);
     if (map['inv_hdr_cols']      != null) localStorage.setItem('inv_hdr_cols',      map['inv_hdr_cols']);
-    (function(){ var _v=map['inv_hdr_order']; try{ var _p=JSON.parse(_v); if(_p && _p.length>0) localStorage.setItem('inv_hdr_order',_v); } catch(e){} })();
+    (function(){ var _v=map['inv_hdr_order']; try{ var _p=JSON.parse(_v); if(_p && _p.length>0) localStorage.setItem('inv_hdr_order',_v); } catch(e){ console.error('[ctrlBootSync]', e); } })();
     if (map['inv_hdr_hidden']    != null) localStorage.setItem('inv_hdr_hidden',    map['inv_hdr_hidden']);
     // ── load synced profile / partner / category / invoice-settings keys ──
     var _pSess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
@@ -15570,11 +15571,11 @@ async function ctrlBootSync() {
       if (map['userPhone_'+_pKey]       != null) localStorage.setItem('userPhone_'+_pKey,       map['userPhone_'+_pKey]);
       if (map['userEmail_'+_pKey]       != null) localStorage.setItem('userEmail_'+_pKey,       map['userEmail_'+_pKey]);
     }
-    if (map['inv_partners'] != null) { try { var _pp2=JSON.parse(map['inv_partners']); if(Array.isArray(_pp2)){localStorage.setItem('inv_partners',JSON.stringify(_pp2));if(typeof renderPartnersUI==='function')renderPartnersUI();} } catch(e){} }
-    if (map['pcnc_fin_categories'] != null) { try { var _fc2=JSON.parse(map['pcnc_fin_categories']); if(_fc2&&typeof _fc2==='object'){FIN_CATEGORIES=_fc2;localStorage.setItem('pcnc_fin_categories',JSON.stringify(_fc2));if(typeof sCatRefreshApp==='function')sCatRefreshApp();} } catch(e){} }
+    if (map['inv_partners'] != null) { try { var _pp2=JSON.parse(map['inv_partners']); if(Array.isArray(_pp2)){localStorage.setItem('inv_partners',JSON.stringify(_pp2));if(typeof renderPartnersUI==='function')renderPartnersUI();} } catch(e){ console.error('[ctrlBootSync]', e); } }
+    if (map['pcnc_fin_categories'] != null) { try { var _fc2=JSON.parse(map['pcnc_fin_categories']); if(_fc2&&typeof _fc2==='object'){FIN_CATEGORIES=_fc2;localStorage.setItem('pcnc_fin_categories',JSON.stringify(_fc2));if(typeof sCatRefreshApp==='function')sCatRefreshApp();} } catch(e){ console.error('[ctrlBootSync]', e); } }
     if (map['inv_num_prefix']         != null) localStorage.setItem('inv_num_prefix',         map['inv_num_prefix']);
     for (var _ts2 = 1; _ts2 <= 5; _ts2++) { var _tk2 = 'inv_tmpl_' + _ts2; if (map[_tk2] != null) { localStorage.setItem(_tk2, map[_tk2]); } }
-    if (map['inv_drafts'] != null) { try { var _dr2=JSON.parse(map['inv_drafts']); if(Array.isArray(_dr2)){ draftsDB=_dr2; localStorage.setItem('inv_drafts',JSON.stringify(_dr2)); } } catch(e){} }
+    if (map['inv_drafts'] != null) { try { var _dr2=JSON.parse(map['inv_drafts']); if(Array.isArray(_dr2)){ draftsDB=_dr2; localStorage.setItem('inv_drafts',JSON.stringify(_dr2)); } } catch(e){ console.error('[ctrlBootSync]', e); } }
     if (map['pcnc_emp_v4'] != null) { localStorage.setItem('pcnc_emp_v4', map['pcnc_emp_v4']); }
     if (map['pcnc_mon_v4'] != null) { localStorage.setItem('pcnc_mon_v4', map['pcnc_mon_v4']); }
     if (map['pcnc_day_v4'] != null) { localStorage.setItem('pcnc_day_v4', map['pcnc_day_v4']); }
@@ -15644,7 +15645,7 @@ async function loadExcelDBCache() {
       r.date = normalizeDate(r.date);
       if (r.order_num && !String(r.order_num).startsWith('INV-')) r.order_num = 'INV-' + r.order_num;
       if (typeof r.received_entries === 'string') {
-        try { r.received_entries = JSON.parse(r.received_entries); } catch(e) { r.received_entries = []; }
+        try { r.received_entries = JSON.parse(r.received_entries); } catch(e) { console.error('[loadExcelDBCache]', e); r.received_entries = []; }
       } else if (!Array.isArray(r.received_entries)) {
         r.received_entries = [];
       }
@@ -15834,9 +15835,7 @@ async function renderProductionTab() {
       return _buildProdCard(o);
     }).join('');
 
-  } catch(e) {
-    listEl.innerHTML = '<div style="text-align:center;padding:30px;color:#dc2626;font-family:Montserrat,sans-serif;">❌ Failed to load orders: ' + (e.message||e) + '</div>';
-  }
+  } catch(e) { console.error('[renderProductionTab:rpc]', e); listEl.innerHTML = '<div style="text-align:center;padding:30px;color:#dc2626;font-family:Montserrat,sans-serif;">❌ Failed to load orders: ' + (e.message||e) + '</div>'; }
 }
 
 function _buildProdCard(o) {
@@ -15945,9 +15944,7 @@ async function _prodAdvance(type, id, stage, invNum, encodedName, phone, total) 
     // Refresh production tab
     renderProductionTab();
 
-  } catch(e) {
-    alert('Failed to update status: ' + (e.message||e));
-  }
+  } catch(e) { console.error('[_prodAdvance:invoices update]', e); alert('Failed to update status: ' + (e.message||e)); }
 }
 
 async function buildAllCustomerSummaries() {
@@ -16496,7 +16493,7 @@ function rpEditPayment(paymentId, currentAmount, encodedName, entryType, noDelet
                     var name = decodeURIComponent(encodedName);
                     await rpRenderCustomerPanel(name, _rpCurrentCustomer ? _rpCurrentCustomer.phone : '');
                     toast && toast('✅ Entry deleted.');
-                  } catch(e) { alert('Failed: ' + (e.message||e)); }
+                  } catch(e) { console.error('[rpEditPayment:customer_payments delete]', e); alert('Failed: ' + (e.message||e)); }
                 }
               }
             ]
@@ -16514,7 +16511,7 @@ function rpEditPayment(paymentId, currentAmount, encodedName, entryType, noDelet
             var name = decodeURIComponent(encodedName);
             await rpRenderCustomerPanel(name, _rpCurrentCustomer ? _rpCurrentCustomer.phone : '');
             toast && toast('✅ Entry updated.');
-          } catch(e) { alert('Failed: ' + (e.message||e)); }
+          } catch(e) { console.error('[rpEditPayment:customer_payments update]', e); alert('Failed: ' + (e.message||e)); }
         }
       }
     ]
@@ -16562,7 +16559,7 @@ function rpEditExcelDisc(orderNum, currentAmount, encodedDate) {
             if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
             await rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
             toast && toast('✅ Discount updated.');
-          } catch(e) { alert('Failed: ' + (e.message||e)); }
+          } catch(e) { console.error('[rpEditExcelDisc:excel_invoices insert]', e); alert('Failed: ' + (e.message||e)); }
         }
       }
     ]
@@ -16582,7 +16579,7 @@ async function rpDeleteExcelDisc(orderNum, encodedName) {
     var name = decodeURIComponent(encodedName);
     await rpRenderCustomerPanel(name, _rpCurrentCustomer ? _rpCurrentCustomer.phone : '');
     toast && toast('✅ Discount deleted.');
-  } catch(e) { alert('Failed: ' + (e.message||e)); }
+  } catch(e) { console.error('[rpDeleteExcelDisc:excel_invoices update]', e); alert('Failed: ' + (e.message||e)); }
 }
 
 function rpEditExcelBd(orderNum, currentAmount, encodedDate) {
@@ -16626,7 +16623,7 @@ function rpEditExcelBd(orderNum, currentAmount, encodedDate) {
             if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
             await rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
             toast && toast('✅ Bad debt updated.');
-          } catch(e) { alert('Failed: ' + (e.message||e)); }
+          } catch(e) { console.error('[rpEditExcelBd:excel_invoices insert]', e); alert('Failed: ' + (e.message||e)); }
         }
       }
     ]
@@ -16656,7 +16653,7 @@ function rpEditExcelTotal(orderNum, currentTotal) {
             if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
             await rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
             toast && toast('✅ Invoice total updated.');
-          } catch(e) { alert('Failed: ' + (e.message||e)); }
+          } catch(e) { console.error('[rpEditExcelTotal:excel_invoices update]', e); alert('Failed: ' + (e.message||e)); }
         }
       }
     ]
@@ -16676,7 +16673,7 @@ async function rpDeleteExcelBd(orderNum, encodedName) {
     var name = decodeURIComponent(encodedName);
     await rpRenderCustomerPanel(name, _rpCurrentCustomer ? _rpCurrentCustomer.phone : '');
     toast && toast('✅ Bad debt deleted.');
-  } catch(e) { alert('Failed: ' + (e.message||e)); }
+  } catch(e) { console.error('[rpDeleteExcelBd:excel_invoices update]', e); alert('Failed: ' + (e.message||e)); }
 }
 
 async function _rpAutoRefreshFinanceTab(paymentDate) {
@@ -16976,7 +16973,7 @@ async function _renderSearchByInv(invNum) {
           });
         }
       });
-    } catch(e) {}
+    } catch(e) { console.error('[_renderSearchByInv:invoices select]', e); }
 
     // 3. Search excel_invoices table (exact match on order_num)
     try {
@@ -16995,7 +16992,7 @@ async function _renderSearchByInv(invNum) {
           });
         }
       });
-    } catch(e) {}
+    } catch(e) { console.error('[_renderSearchByInv:excel_invoices select]', e); }
   }
 
   if (matchedInvoices.length === 0) {
@@ -17269,7 +17266,7 @@ function _printSearchPanel(mode) {
     var _spStyle = pw.document.createElement('style');
     _spStyle.textContent = '@page{size:A4 ' + _spOrient + ';margin:15mm 10mm;}body{width:190mm;}';
     pw.document.head.appendChild(_spStyle);
-    var _doPrintSP = function(){ try{pw.print();}catch(e){} };
+    var _doPrintSP = function(){ try{pw.print();}catch(e){ console.warn('[_printSearchPanel]', e); } };
     if (pw.document.fonts) { pw.document.fonts.ready.then(_doPrintSP); }
     else { setTimeout(_doPrintSP, 1500); }
   }
@@ -17513,7 +17510,7 @@ function generateCustomerStatement() {
   win.document.write(html);
   win.document.close();
   _applyPrintLogo(win, _s.logo);
-  setTimeout(function(){ try{win.print();}catch(e){} }, 800);
+  setTimeout(function(){ try{win.print();}catch(e){ console.warn('[generateCustomerStatement]', e); } }, 800);
 }
 
 
@@ -17993,7 +17990,7 @@ ${(function(){
   _inlineInvHtml = _inlineInvHtml.replace(/@page\s*\{[^}]*\}/g, '@page{size:A4 '+_iiOrient+';margin:10mm;}');
   printWin.document.write(_inlineInvHtml);
   printWin.document.close();
-  var _doPrintInline = function() { try { printWin.print(); } catch(e) {} };
+  var _doPrintInline = function() { try { printWin.print(); } catch(e) { console.warn('[printInlineInvoice]', e); } };
   if (printWin.document.fonts) { printWin.document.fonts.ready.then(_doPrintInline); }
   else { setTimeout(_doPrintInline, 1500); }
 }
@@ -18086,7 +18083,7 @@ let FIN_CATEGORIES = (function(){
   try {
     const saved = localStorage.getItem('pcnc_fin_categories');
     if (saved) return JSON.parse(saved);
-  } catch(e) {}
+  } catch(e) { console.error('[FIN_CATEGORIES init]', e); }
   return JSON.parse(JSON.stringify(FIN_CATEGORIES_DEFAULT));
 })();
 
@@ -18649,7 +18646,7 @@ function _apply2025LookupValue(date, type, cat, amtInput, badge, info, refreshBt
           info.style.color = '#94a3b8';
         }
       }
-    } catch(e) { if (amtInput) amtInput.value=0; }
+    } catch(e) { console.error('[_apply2025LookupValue]', e); if (amtInput) amtInput.value=0; }
     return;
   }
 
@@ -18793,7 +18790,7 @@ function _apply2026LookupValue(date, type, cat, amtInput, badge, info, refreshBt
           info.style.color = '#94a3b8';
         }
       }
-    } catch(e) { if (amtInput) amtInput.value=0; }
+    } catch(e) { console.error('[_apply2026LookupValue]', e); if (amtInput) amtInput.value=0; }
     return;
   }
 
@@ -18964,6 +18961,7 @@ async function fetchAutoAmount() {
         info.style.display = '';
       }
     } catch(e) {
+      console.error('[fetchAutoAmount]', e);
       if (_isStale()) return;
       if (amtInput) { amtInput.value = '0'; amtInput.dataset.rawvalue = '0'; }
       if (info) { info.style.display=''; info.textContent='❌ Error: '+(e.message||e); info.style.color='#dc2626'; }
@@ -19051,7 +19049,7 @@ async function _loadLedgerValueForDateCat(date, type, cat, amtInput, info, badge
         if (info) { info.style.display=''; info.textContent=`📂 Exact entry for ${date}: Rs. ${Math.round(r.amount||0).toLocaleString('en-PK')}${r.note?' — "'+r.note+'"':''}. Locked.`; info.style.color='#475569'; }
         return;
       }
-    } catch(e) {}
+    } catch(e) { console.error('[_loadLedgerValueForDateCat:finance_ledger select]', e); }
 
     // 3. For 2025/2026-locked data: fall back to month-level entry
     if (is2025 || is2026locked) {
@@ -19079,7 +19077,7 @@ async function _loadLedgerValueForDateCat(date, type, cat, amtInput, info, badge
           }
           return;
         }
-      } catch(e) {}
+      } catch(e) { console.error('[_loadLedgerValueForDateCat:finance_ledger select]', e); }
     }
   }
 
@@ -19459,6 +19457,7 @@ async function cleanSupaDuplicates() {
     toast('✅ Supabase cleaned. Offline cache refreshed.');
 
   } catch(e) {
+    console.error('[cleanSupaDuplicates:finance_ledger select]', e);
     statusEl.textContent = '❌ Error: ' + e.message;
     logEl.innerHTML += `<div style="color:#dc2626;">Error: ${e.message}</div>`;
   }
@@ -19488,7 +19487,7 @@ function getOfflineCache() {
   try {
     const raw = localStorage.getItem(FIN_CACHE_KEY);
     return raw ? JSON.parse(raw) : [];
-  } catch(e) { return []; }
+  } catch(e) { console.error('[getOfflineCache]', e); return []; }
 }
 
 function shouldRefreshCache() {
@@ -19633,6 +19632,7 @@ async function runMigration() {
       done += batch.length;
       logEl.innerHTML += `<div>✅ Uploaded ${batch.length} entries (${monthLabel})</div>`;
     } catch(e) {
+      console.error('[runMigration:finance_ledger insert]', e);
       failed += batch.length;
       logEl.innerHTML += `<div style="color:#dc2626;">❌ Failed batch at ${monthLabel}: ${e.message}</div>`;
     }
@@ -19802,7 +19802,7 @@ async function _saveDailyEntryInner() {
     // Queue Supabase delete for old entry
     if (navigator.onLine && sb) {
       try { await sb.from('finance_ledger').delete().eq('ref_id', editLocalId).eq('source','manual'); }
-      catch(e) { _finDeleteQueue.push(editLocalId); _saveFinDelete(); }
+      catch(e) { console.error('[_saveDailyEntryInner:finance_ledger delete]', e); _finDeleteQueue.push(editLocalId); _saveFinDelete(); }
     } else { _finDeleteQueue.push(editLocalId); _saveFinDelete(); }
   } else {
     // Check if same date+type+cat already exists — if so, replace it
@@ -19816,7 +19816,7 @@ async function _saveDailyEntryInner() {
       _saveFinPending();
       if (navigator.onLine && sb) {
         try { await sb.from('finance_ledger').delete().eq('ref_id', oldId).eq('source','manual'); }
-        catch(e) { _finDeleteQueue.push(oldId); _saveFinDelete(); }
+        catch(e) { console.error('[_saveDailyEntryInner:finance_ledger delete]', e); _finDeleteQueue.push(oldId); _saveFinDelete(); }
       } else { _finDeleteQueue.push(oldId); _saveFinDelete(); }
     }
     // Also purge ALL duplicate manual entries in Supabase for this date+type+cat
@@ -19970,6 +19970,7 @@ async function deleteLocalFinEntry(localId) {
     try {
       await sb.from('finance_ledger').delete().eq('ref_id', localId).eq('source', 'manual');
     } catch(e) {
+      console.error('[deleteLocalFinEntry:finance_ledger delete]', e);
       // Queue for later
       _finDeleteQueue.push(localId);
       _saveFinDelete();
@@ -20069,7 +20070,7 @@ async function initRecentYearDropdown() {
     try {
       const { data } = await sb.from('finance_ledger').select('entry_date').order('entry_date', { ascending: false });
       supaYears = (data || []).map(r => (r.entry_date || '').slice(0,4)).filter(Boolean);
-    } catch(e) {}
+    } catch(e) { console.error('[initRecentYearDropdown:finance_ledger select]', e); }
   }
 
   const years = [...new Set([...localYears, ...supaYears])].filter(Boolean).sort((a,b) => b-a);
@@ -20450,14 +20451,14 @@ async function deleteFinEntryFromModal(id, date, isLocal) {
     _saveFinPending();
     if (navigator.onLine && sb) {
       try { await sb.from('finance_ledger').delete().eq('ref_id', id).eq('source','manual'); }
-      catch(e) { _finDeleteQueue.push(id); _saveFinDelete(); }
+      catch(e) { console.error('[deleteFinEntryFromModal:finance_ledger delete]', e); _finDeleteQueue.push(id); _saveFinDelete(); }
     } else { _finDeleteQueue.push(id); _saveFinDelete(); }
     toast('🗑️ Entry deleted');
   } else {
     // Supabase-only entry (historical etc.)
     if (!sb) { toast('❌ Not connected'); return; }
     try { await sb.from('finance_ledger').delete().eq('id', id); toast('🗑️ Entry deleted'); }
-    catch(e) { toast('❌ Error: ' + e.message); return; }
+    catch(e) { console.error('[deleteFinEntryFromModal:finance_ledger delete]', e); toast('❌ Error: ' + e.message); return; }
   }
 
   await renderRecentEntries();
@@ -20477,12 +20478,12 @@ async function deleteFinEntry(id, isLocal) {
     _saveFinPending();
     if (navigator.onLine && sb) {
       try { await sb.from('finance_ledger').delete().eq('ref_id', id).eq('source','manual'); }
-      catch(e) { _finDeleteQueue.push(id); _saveFinDelete(); }
+      catch(e) { console.error('[deleteFinEntry:finance_ledger delete]', e); _finDeleteQueue.push(id); _saveFinDelete(); }
     } else { _finDeleteQueue.push(id); _saveFinDelete(); }
   } else {
     if (!sb) { toast('❌ Not connected'); return; }
     try { await sb.from('finance_ledger').delete().eq('id', id); }
-    catch(e) { toast('❌ Error: ' + e.message); return; }
+    catch(e) { console.error('[deleteFinEntry:finance_ledger delete]', e); toast('❌ Error: ' + e.message); return; }
   }
   toast('🗑️ Entry deleted');
   refreshAllFinanceViews();
@@ -20604,7 +20605,7 @@ function printLedger(mode) {
   pw.document.write(_ledHtml);
   pw.document.close();
   _applyPrintLogo(pw, _ls.logo);
-  var _doPrintLed = function(){ try{pw.print();}catch(e){} };
+  var _doPrintLed = function(){ try{pw.print();}catch(e){ console.warn('[printLedger]', e); } };
   if (pw.document.fonts) { pw.document.fonts.ready.then(_doPrintLed); }
   else { setTimeout(_doPrintLed, 1500); }
 }
@@ -21015,6 +21016,7 @@ async function renderPLReport(filterYear) {
   try {
     entries = await fetchEntriesWithCorrectInvoiceAmounts({});
   } catch(e) {
+    console.error('[renderPLReport]', e);
     if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:#ef4444;">❌ Failed to load data</td></tr>';
     return;
   }
@@ -23320,7 +23322,7 @@ function salPdfExport(mode){
   w.document.close();
   _applyPrintLogo(w, _salS.logo);
   w.focus();
-  var _doPrintSal = function(){ try{w.print();}catch(e){} };
+  var _doPrintSal = function(){ try{w.print();}catch(e){ console.warn('[salPdfExport]', e); } };
   if (w.document.fonts) { w.document.fonts.ready.then(_doPrintSal); }
   else { setTimeout(_doPrintSal, 1500); }
 }
@@ -24957,9 +24959,9 @@ async function printCustStatement(mode) {
   pw.document.write(_csHtml);
   pw.document.close();
   var _stmtLogo = _ctrlLogo || localStorage.getItem('inv_logo') || d.logo || '';
-  if (_stmtLogo) { try { var pLogo=pw.document.getElementById('printLogo'); if(pLogo){pLogo.src=_stmtLogo;pLogo.style.display='block';} } catch(e){} }
+  if (_stmtLogo) { try { var pLogo=pw.document.getElementById('printLogo'); if(pLogo){pLogo.src=_stmtLogo;pLogo.style.display='block';} } catch(e){ console.error('[printCustStatement]', e); } }
   pw.focus();
-  var _doPrintStmt = function(){ try{ pw.print(); }catch(e){} };
+  var _doPrintStmt = function(){ try{ pw.print(); }catch(e){ console.warn('[printCustStatement]', e); } };
   if (pw.document.fonts) { pw.document.fonts.ready.then(_doPrintStmt); }
   else { setTimeout(_doPrintStmt, 1500); }
 }
@@ -25427,7 +25429,7 @@ var _dragFreePos = (function(){
       });
       return parsed;
     }
-  } catch(e){}
+  } catch(e){ console.error('[_dragFreePos init]', e); }
   return {};
 })();
 var _dragFreeModeOn = localStorage.getItem('inv_drag_free_mode') === 'true';
@@ -25690,6 +25692,7 @@ async function dragEditorApply() {
       if (btn) { btn.textContent = '▶ Apply Layout'; btn.disabled = false; }
       _showStatus(null, '&#10003; Layout applied everywhere and saved to cloud.', '#f0fdf4', '#059669');
     } catch(err) {
+      console.error('[dragEditorApply:shop_settings upsert]', err);
       if (btn) { btn.textContent = '▶ Apply Layout'; btn.disabled = false; }
       _showStatus(null, '&#10003; Layout applied (cloud error: ' + (err.message||err) + ')', '#fff7ed', '#ea580c');
     }
@@ -26116,7 +26119,7 @@ async function tmplSave(slot) {
 }
 function tmplLoad(slot) {
   var raw=localStorage.getItem('inv_tmpl_'+slot); if(!raw) return;
-  var tmpl; try{tmpl=JSON.parse(raw);}catch(e){return;}
+  var tmpl; try{tmpl=JSON.parse(raw);}catch(e){ console.error('[tmplLoad]', e); return; }
   if(!confirm('Load template "'+tmpl.name+'"? This replaces all current settings.')) return;
   _settingsSnapshot();
   var allInvKeys=[];
@@ -26129,7 +26132,7 @@ function tmplLoad(slot) {
 async function tmplDelete(slot) {
   var raw=localStorage.getItem('inv_tmpl_'+slot);
   var name='Template '+slot;
-  if(raw){try{name=JSON.parse(raw).name||name;}catch(e){}}
+  if(raw){try{name=JSON.parse(raw).name||name;}catch(e){ console.error('[tmplDelete]', e); }}
   if(!confirm('Delete template "'+name+'"?')) return;
   localStorage.removeItem('inv_tmpl_'+slot);
   if (typeof sb !== 'undefined' && sb) {
@@ -26144,7 +26147,7 @@ function tmplRenderAll() {
   var html='';
   for(var i=1;i<=5;i++){
     var slot=i, raw=localStorage.getItem('inv_tmpl_'+slot), tmpl=null;
-    try{if(raw)tmpl=JSON.parse(raw);}catch(e){}
+    try{if(raw)tmpl=JSON.parse(raw);}catch(e){ console.error('[tmplRenderAll]', e); }
     var ts=tmpl?new Date(tmpl.ts).toLocaleDateString('en-PK'):'';
     var c1=tmpl?(tmpl.data.inv_header_c1||'#1e293b'):'#e2e8f0';
     var c2=tmpl?(tmpl.data.inv_header_c2||'#334155'):'#f1f5f9';
@@ -26190,7 +26193,7 @@ function importSettingsJSON(input) {
       Object.keys(data).forEach(function(k){localStorage.setItem(k,data[k]);});
       ctrlLoad(); colorsLoad(); wmLoad(); tmplRenderAll();
       alert('✓ Settings imported from "'+file.name+'".');
-    } catch(ex) { alert('⚠ Invalid JSON: '+ex.message); }
+    } catch(ex) { console.error('[importSettingsJSON]', ex); alert('⚠ Invalid JSON: '+ex.message); }
     input.value='';
   };
   reader.readAsText(file);
@@ -26378,7 +26381,7 @@ function printFromPreview() {
     +'<style>@page{size:A4 '+_pfpOrient+';margin:10mm;}body{margin:0;padding:0;width:210mm;}</style>'
     +'</head><body>'+cont.innerHTML+'</body></html>');
   pw.document.close();
-  if(_ctrlLogo){try{var pi=pw.document.getElementById('printLogo');if(pi)pi.src=_ctrlLogo;}catch(ex){}}
+  if(_ctrlLogo){try{var pi=pw.document.getElementById('printLogo');if(pi)pi.src=_ctrlLogo;}catch(ex){ console.error('[printFromPreview]', ex); }}
   setTimeout(function(){pw.print();},800);
 }
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closePrintPreview();});
@@ -26496,9 +26499,7 @@ async function _dragSaveToCloud() {
     var res = await sb.from('shop_settings').upsert(rows, {onConflict:'key'});
     if (res.error) throw res.error;
     _showStatus(null, '&#10003; Layout saved to cloud — persists after refresh.', '#f0fdf4', '#059669');
-  } catch(err) {
-    _showStatus(null, '&#10003; Layout saved locally. Cloud error: '+(err.message||err), '#fff7ed', '#ea580c');
-  }
+  } catch(err) { console.error('[_dragSaveToCloud:shop_settings upsert]', err); _showStatus(null, '&#10003; Layout saved locally. Cloud error: '+(err.message||err), '#fff7ed', '#ea580c'); }
 }
 
 // Toggle the full-invoice inline preview
@@ -26716,7 +26717,7 @@ function _finCCRestoreStatus() {
     } else if (r.status === 'failed') {
       _finCCSetStatus('⚠️ ' + r.failed + ' entries not synced · Check connection · ' + t, '#991b1b', '#fee2e2', false);
     }
-  } catch(e) {}
+  } catch(e) { console.error('[_finCCRestoreStatus]', e); }
 }
 
 // Feature 1 & 4 — main cross-check function (also triggered manually via "Check Now")
@@ -26729,7 +26730,7 @@ async function _finCrossCheck(manual) {
   if (_finCCRunning) return;
   if (!sb || !navigator.onLine) {
     if (manual) {
-      var _offT; try { var _offR=JSON.parse(localStorage.getItem(FIN_CROSSCHECK_KEY)||'{}'); _offT=_offR.time?new Date(_offR.time).toLocaleTimeString('en-PK',{hour:'2-digit',minute:'2-digit'}):'—'; } catch(_e){_offT='—';}
+      var _offT; try { var _offR=JSON.parse(localStorage.getItem(FIN_CROSSCHECK_KEY)||'{}'); _offT=_offR.time?new Date(_offR.time).toLocaleTimeString('en-PK',{hour:'2-digit',minute:'2-digit'}):'—'; } catch(_e){ console.error('[_finCrossCheck]', _e); _offT='—'; }
       _finCCSetStatus('📵 Offline · Showing local data · Last synced: ' + _offT, '#475569', '#f1f5f9', false);
     }
     return;
@@ -26923,7 +26924,7 @@ function _mobHideMore() {
     var invTab = document.getElementById('invoiceTab');
     var el = invTab ? invTab.querySelector('.panel') : null;
     if (!el || (invTab && invTab.style.display === 'none')) { _mobPrintNative(); return; }
-    try { await _loadHtml2Pdf(); } catch(e) { _mobPrintNative(); return; }
+    try { await _loadHtml2Pdf(); } catch(e) { console.warn('[window.print override (mobile)]', e); _mobPrintNative(); return; }
     var invNum = (document.getElementById('invNum') || {}).value || 'Invoice';
     var phone  = (document.getElementById('shopPhone') || {}).value || '';
     var email  = (document.getElementById('shopEmail') || {}).value || '';
@@ -27021,7 +27022,7 @@ window._forceAppRefresh = async function() {
 // ─── SESSION helpers (needed before anything else) ────────────
 var AUTH_KEY = 'auth_user';
 function _authGetSession() {
-  try { return JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); } catch(e) { return null; }
+  try { return JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); } catch(e) { console.error('[_authGetSession]', e); return null; }
 }
 function _authSetSession(data) { localStorage.setItem(AUTH_KEY, JSON.stringify(data)); }
 function _authClearSession()   { localStorage.removeItem(AUTH_KEY); }
@@ -27077,7 +27078,7 @@ function _authLog(action, detail) {
       username: sess ? sess.username : '—',
       action: action, detail: detail || ''
     });
-  } catch(e) {}
+  } catch(e) { console.error('[_authLog:auth_log insert]', e); }
 }
 window._authLog = _authLog;
 
@@ -27169,6 +27170,7 @@ async function _authFpLookup() {
     var s2a = document.getElementById('authFpStep2Admin');
     if (s2a) s2a.style.display = '';
   } catch(e) {
+    console.error('[_authFpLookup:app_users select]', e);
     if(err){err.textContent='⚠️ '+(e.message||'Connection error');err.style.display='';}
     if(btn){btn.disabled=false;btn.textContent='Find My Account';}
   }
@@ -27206,6 +27208,7 @@ async function _authFpResetAdmin() {
     var ae = document.getElementById('authError');
     if (ae) { ae.textContent = '✅ Password reset! Please log in with your new password.'; ae.style.display = ''; ae.style.background='#d1fae5'; ae.style.color='#065f46'; ae.style.border='1px solid #6ee7b7'; }
   } catch(e) {
+    console.error('[_authFpResetAdmin:app_users update]', e);
     if(err){err.textContent='⚠️ '+(e.message||'');err.style.display='';}
     if(btn){btn.disabled=false;btn.textContent='Set New Password';}
   }
@@ -27293,6 +27296,7 @@ async function _authInit() {
       _authShowPanel('authSetupCard');
     }
   } catch(ignore) {
+    console.error('[_authInit:app_users select]', ignore);
     _authShowPanel('authSetupCard'); // table may not exist yet — show setup
   }
 }
@@ -27399,7 +27403,7 @@ async function _authDoLogin() {
     if (_isNetErr) {
       try {
         var _offAuth = null;
-        try { _offAuth = JSON.parse(localStorage.getItem('_offlineAuth') || 'null'); } catch(_) {}
+        try { _offAuth = JSON.parse(localStorage.getItem('_offlineAuth') || 'null'); } catch(_) { console.error('[_authDoLogin]', _); }
         // 30-day expiry
         if (_offAuth && _offAuth.savedAt && (Date.now() - _offAuth.savedAt) > 30 * 24 * 60 * 60 * 1000) {
           localStorage.removeItem('_offlineAuth'); _offAuth = null;
@@ -27599,6 +27603,7 @@ async function _authSaveProfile() {
     window._authPendingLoginSess = null;
     await _authDoFinishLogin(sess);
   } catch(e) {
+    console.error('[_authSaveProfile:app_users update]', e);
     if (err) { err.textContent = '⚠️ Could not save. Try again.'; err.style.display = ''; }
     if (btn) { btn.disabled = false; btn.textContent = 'Save & Continue'; }
   }
@@ -27675,6 +27680,7 @@ async function _authDoSetup() {
     await _authCompleteLogin(sess);
 
   } catch(e) {
+    console.error('[_authDoSetup:app_users insert]', e);
     if(err){err.textContent='⚠️ '+(e.message||'Error');err.style.display='';}
     if(btn){btn.disabled=false;btn.textContent='Create Admin Account';}
   }
@@ -27731,6 +27737,7 @@ async function _authDoForceChange() {
     await _authCompleteLogin(sess);
 
   } catch(e) {
+    console.error('[_authDoForceChange:app_users update]', e);
     if(err){err.textContent='⚠️ '+(e.message||'');err.style.display='';}
     if(btn){btn.disabled=false;btn.textContent='Set Password & Continue';}
   }
@@ -27960,6 +27967,7 @@ function _authCanAccess(sess, tab) {
       if(cur) cur.value=''; if(nw) nw.value=''; if(conf) conf.value='';
       if(btn){btn.disabled=false;btn.textContent='🔑 Update Password';}
     } catch(e) {
+      console.error('[doChangePassword:app_users update]', e);
       if(typeof window.showPwError==='function') window.showPwError('⚠️ Error: '+(e.message||'Check connection'));
       if(btn){btn.disabled=false;btn.textContent='🔑 Update Password';}
     }
@@ -28053,6 +28061,7 @@ async function _authSaveMyProfile() {
     _showMsg('✅ Profile saved successfully!', true);
     setTimeout(function(){ document.getElementById('authProfileModal').classList.remove('open'); }, 1500);
   } catch(e) {
+    console.error('[_authSaveMyProfile:app_users update]', e);
     _showMsg('⚠️ '+(e.message||'Error. Try again.'), false);
     if(btn){ btn.disabled=false; btn.textContent='Save'; }
   }
@@ -28084,13 +28093,13 @@ window._renderCashCustodyPanel = async function() {
       try {
         var cached = JSON.parse(localStorage.getItem('cash_holders_cache') || 'null');
         if (cached) { names = cached.names || names; entries2 = cached.entries2 || []; entries3 = cached.entries3 || []; }
-      } catch(_ce) {}
+      } catch(_ce) { console.error('[_renderCashCustodyPanel]', _ce); }
     }
     // Get the live Cash in Hand total computed by Summary (cached for offline use)
     try {
       var ciCache = JSON.parse(localStorage.getItem('summary_cache') || 'null');
       if (ciCache && typeof ciCache.cashInHand === 'number') totalCash = ciCache.cashInHand;
-    } catch(_te) {}
+    } catch(_te) { console.error('[_renderCashCustodyPanel]', _te); }
 
     var total2 = entries2.reduce(function(s,e){ return s + (parseFloat(e.amount)||0); }, 0);
     var total3 = entries3.reduce(function(s,e){ return s + (parseFloat(e.amount)||0); }, 0);
@@ -28155,7 +28164,7 @@ window._saveCashHolderName = async function(slot, value) {
       cached.names = cached.names || {};
       cached.names[slot] = value;
       localStorage.setItem('cash_holders_cache', JSON.stringify(cached));
-    } catch(_e) {}
+    } catch(_e) { console.error('[_saveCashHolderName]', _e); }
     toast('✅ Name updated');
   } catch(err) { console.warn('[saveCashHolderName]', err); toast('❌ Failed to save name'); }
 };
@@ -28410,7 +28419,7 @@ async function _authDoChangePw() {
     _authLog('pw_change','User changed own password');
     _msg('✅ Password updated successfully.',true);
     if(cur)cur.value=''; if(nw)nw.value=''; if(conf)conf.value='';
-  } catch(e){ _msg('⚠️ Error: '+(e.message||'Check connection'),false); }
+  } catch(e){ console.error('[_authDoChangePw:app_users update]', e); _msg('⚠️ Error: '+(e.message||'Check connection'),false); }
 }
 window._authDoChangePw = _authDoChangePw;
 
@@ -28512,7 +28521,7 @@ async function _authCreateUser() {
       var el=document.getElementById(id); if(el) el.value='';
     });
     _authRenderUsersList();
-  } catch(e){ if(err){err.textContent='⚠️ '+(e.message||'Error');err.style.display='';} }
+  } catch(e){ console.error('[_authCreateUser:app_users insert]', e); if(err){err.textContent='⚠️ '+(e.message||'Error');err.style.display='';} }
 }
 window._authCreateUser = _authCreateUser;
 
@@ -28551,7 +28560,7 @@ async function _authRenderUsersList() {
       '<th>Name</th><th>Username</th><th>Role</th><th>Last Login</th><th>Actions</th>'+
       '</tr></thead><tbody>'+rows+'</tbody></table>';
     _authRenderAuditLog();
-  } catch(e){container.innerHTML='<div style="color:#dc2626;">Error: '+_e(e.message||'')+'</div>';}
+  } catch(e){ console.error('[_authRenderUsersList:app_users select]', e); container.innerHTML='<div style="color:#dc2626;">Error: '+_e(e.message||'')+'</div>'; }
 }
 window._authRenderUsersList = _authRenderUsersList;
 
@@ -28624,7 +28633,7 @@ async function _authSaveEdit() {
       document.getElementById('authEditModal').classList.remove('open');
       _authRenderUsersList();
     }
-  } catch(e){}
+  } catch(e){ console.error('[_authSaveEdit:app_users update]', e); }
   if(btn){btn.disabled=false;btn.textContent='Save';}
 }
 window._authSaveEdit = _authSaveEdit;
@@ -28669,7 +28678,7 @@ async function _authDoResetPw() {
       document.getElementById('authEditModal').classList.remove('open');
       if(btn){btn.textContent='Save';btn.onclick=_authSaveEdit;}
     }
-  }catch(e){if(err){err.textContent='⚠️ Error';err.style.display='';}}
+  }catch(e){ console.error('[_authDoResetPw:app_users update]', e); if(err){err.textContent='⚠️ Error';err.style.display='';} }
   if(btn){btn.disabled=false;}
 }
 window._authDoResetPw = _authDoResetPw;
@@ -28689,7 +28698,7 @@ async function _authDeleteUser(userId, username, role) {
     _authLog('user_deleted','Deleted user: '+username);
     if(typeof window.toast==='function')window.toast('🗑 User deleted.');
     _authRenderUsersList();
-  }catch(e){if(typeof window.toast==='function')window.toast('❌ Delete failed.');}
+  }catch(e){ console.error('[_authDeleteUser:app_users delete]', e); if(typeof window.toast==='function')window.toast('❌ Delete failed.'); }
 }
 window._authDeleteUser = _authDeleteUser;
 
@@ -28725,7 +28734,7 @@ async function _authRenderAuditLog(append) {
     else{container.innerHTML=table;}
     _authAuditOffset+=res.data.length;
     if(moreBtn)moreBtn.style.display=(res.data.length<50)?'none':'';
-  }catch(e){if(!append)container.innerHTML='<div style="color:#dc2626;font-size:0.78rem;">Error loading audit log.</div>';}
+  }catch(e){ console.error('[_authRenderAuditLog:auth_log select]', e); if(!append)container.innerHTML='<div style="color:#dc2626;font-size:0.78rem;">Error loading audit log.</div>'; }
 }
 function _authLoadMoreAudit(){_authRenderAuditLog(true);}
 window._authLoadMoreAudit=_authLoadMoreAudit;
@@ -28915,7 +28924,7 @@ function _hideOfflineBanner() {
   try {
     var el = document.getElementById('offlineBanner');
     if (el) el.style.display = 'none';
-  } catch(e) {}
+  } catch(e) { console.error('[_hideOfflineBanner]', e); }
 }
 window._hideOfflineBanner = _hideOfflineBanner;
 
@@ -28949,7 +28958,7 @@ function _readSummaryCache() {
       var c2 = JSON.parse(raw2);
       if (c2 && (c2.timestamp || c2.savedAt)) return { savedAt: c2.timestamp || c2.savedAt, data: c2 };
     }
-  } catch(e) {}
+  } catch(e) { console.error('[_readSummaryCache]', e); }
   return null;
 }
 window._readSummaryCache = _readSummaryCache;
@@ -28964,7 +28973,7 @@ window._readSummaryCache = _readSummaryCache;
         try {
           var c = JSON.parse(value);
           if (c) _saveSummaryCache(c);
-        } catch(_) {}
+        } catch(_) { console.error('[localStorage.setItem override:summary_cache sync]', _); }
       }
     };
   } catch(e) { console.warn('[Offline] localStorage patch failed:', e); }
@@ -29034,7 +29043,7 @@ window._updatePendingNotice = _updatePendingNotice;
         var c = _readSummaryCache();
         _showOfflineBanner(c ? c.savedAt : Date.now());
       }
-    } catch(e) {}
+    } catch(e) { console.error('[switchTab patch (offline banner)]', e); }
   };
 })();
 
@@ -29044,8 +29053,8 @@ window._updatePendingNotice = _updatePendingNotice;
   if (typeof _orig !== 'function') return;
   window.flushPendingQueue = async function() {
     var r;
-    try { r = await _orig.apply(this, arguments); } catch(e) { throw e; }
-    try { _updatePendingNotice(); } catch(_) {}
+    try { r = await _orig.apply(this, arguments); } catch(e) { console.error('[flushPendingQueue wrapper (rethrow)]', e); throw e; }
+    try { _updatePendingNotice(); } catch(_) { console.error('[flushPendingQueue wrapper: _updatePendingNotice call]', _); }
     return r;
   };
 })();
@@ -29075,14 +29084,14 @@ window.addEventListener('online', async function() {
       await renderSummary();
     }
   } catch(e) { console.warn('[Offline] online sync error:', e); }
-  try { _updatePendingNotice(); } catch(_) {}
+  try { _updatePendingNotice(); } catch(_) { console.error('[online-sync handler: _updatePendingNotice call]', _); }
   try {
     if (el) {
       el.style.background = '#065f46';
       el.style.borderBottomColor = '#059669';
       el.innerHTML = '✅ Back online — All data synced successfully';
     }
-  } catch(_) {}
+  } catch(_) { console.error('[online-sync handler: back-online banner]', _); }
   setTimeout(function() {
     try {
       _hideOfflineBanner();
@@ -29093,7 +29102,7 @@ window.addEventListener('online', async function() {
         el2.style.borderBottomColor = '#b45309';
         el2.innerHTML = '📵 Offline Mode — Data shown as of <span id="offlineBannerTime"></span> &nbsp;·&nbsp; Connect internet to sync latest data';
       }
-    } catch(_) {}
+    } catch(_) { console.error('[online-sync handler: hide-offline-banner (delayed)]', _); }
   }, 3000);
 });
 
