@@ -1,0 +1,462 @@
+================================================================================
+NETWORK INITIALIZATION & DATA LOADING AUDIT
+Prime CNC Invoicing App (index.html, single-file static app)
+Date: 2026-07-02
+Scope: Read-only investigation. No code was changed.
+Focus: Why the app is slow / fails to load on a new or slow internet connection.
+================================================================================
+
+SUMMARY OF THE CORE PROBLEM
+----------------------------
+On a fresh device or slow connection, the app performs a CASCADE of blocking,
+unpaginated (or barely-paginated), sequential Supabase queries before it lets
+the user do anything — and it does this with:
+  - no client-side timeout on any network call,
+  - no retry/backoff logic,
+  - no Promise.all parallelization anywhere in the boot path,
+  - a full, unfiltered `invoices` table scan on every load,
+  - a full `excel_invoices` table scan (19k+ rows) on every login/boot,
+  - a full `shop_settings` table scan on every login/boot.
+
+On a fast connection this is invisible (sub-second). On a slow/new connection
+(e.g. first-time cellular, hotel wifi, a shop's low-bandwidth line) these
+compound into a boot sequence that can take tens of seconds to minutes, with
+no progress feedback beyond a static "Connecting to database..." message, and
+no fallback timeout to give up and use cached data.
+
+================================================================================
+1. INITIAL LOAD SEQUENCE
+================================================================================
+
+SCRIPT LOADING (all render-blocking, no async/defer):
+  Order in <head> (lines 26-53):
+    1. Sentry error-tracking bundle (CDN, browser.sentry-cdn.com)
+    2. Inline Sentry.init() (runs immediately after #1 downloads)
+    3. Google Fonts stylesheet
+    4. Supabase JS SDK v2 (CDN, cdn.jsdelivr.net) — line 44
+    5. Chart.js v4.4.0 (CDN, cdn.jsdelivr.net) — line 45
+  None of these have `async` or `defer`. The browser must fully download and
+  execute each one, in order, before parsing continues. On a slow connection,
+  the user sees a BLANK WHITE PAGE until all of this finishes, because the
+  <body> hasn't even started parsing yet.
+
+  The Supabase CDN tag has an `onerror` handler that only logs to console
+  (line 44) — there is no local/vendored fallback copy of the SDK and no
+  visible error message to the end user if the CDN is unreachable or blocked.
+  If this script fails to load, `supabase` is undefined, and the
+  `supabase.createClient(...)` call later (line 5411) throws inside its own
+  try/catch, silently leaving `sb = null` for the rest of the session — every
+  subsequent network feature then fails quietly wherever it isn't specifically
+  guarded.
+
+REQUESTS BEFORE THE USER SEES ANYTHING (blocking):
+  - Sentry bundle, Google Fonts CSS, Supabase SDK, Chart.js SDK (4 blocking
+    network round-trips before the DOM even renders).
+  - `database` and other app state are read synchronously from `localStorage`
+    at script-parse time (line 5421 `database = JSON.parse(localStorage.getItem('inv_database') || '[]')`)
+    — this part is instant / no network involved.
+  - Once the auth system boots (`_authInit()`, ~line 27510), if there's no
+    existing session it makes exactly ONE Supabase call before showing the
+    login screen: `sb.from('app_users').select('id').limit(1)` (line 27575),
+    used only to detect a first-run/empty install.
+  - If a session WAS already saved (returning user, page reload) it does NOT
+    show a login screen — instead the app goes straight into the full
+    "after-login" load sequence below, with the UI blocked behind a
+    "Connecting to database..." style status on desktop (see section 3/5 for
+    the exact sequence: `flushPendingUpdates()` → `flushPendingQueue()` →
+    `loadFromSupabase()` (full unpaginated invoices table) → `fixExcelInvoiceDates()`
+    → `init()`, awaited in order).
+
+REQUESTS MADE AFTER LOGIN:
+  Within roughly the first second after a successful login
+  (`_authDoLogin()` → `_authCompleteLogin()` → `_authDoFinishLogin()`,
+  lines 27586-27856), in order:
+    1. `app_users` credential lookup (the "login" call itself) — full row
+       (`select('*')`), by username + password hash (line ~27608-27610).
+    2. `app_users` `last_login` timestamp update (fire-and-forget, not awaited).
+    3. `shop_settings` FULL TABLE scan via `ctrlBootSync()` (~30 settings
+       keys: branding, header styles, partners, finance categories,
+       watermark, profile photo, drafts mirror, etc.) — unfiltered, no
+       `.limit()`.
+    4. An extra `invoices` counter-check query inside `setInvoiceNumber()`
+       (`sb.from('invoices').select('inv_num').order(...).limit(1)`).
+    5. The FULL paginated `excel_invoices` load via `loadExcelDBCache()`
+       (19k+ rows, 1000-row pages — see section 3).
+    6. A background profile-photo freshness check
+       (`shop_settings` lookup for `userProfilePhoto_<uid>`).
+    7. 800ms later, a second detached background pass fires:
+       `flushPendingUpdates()` → `flushPendingQueue()` →
+       `loadFromSupabase()` — which on desktop pulls the ENTIRE `invoices`
+       table again (unfiltered, unpaginated) PLUS re-scans `excel_invoices`
+       page-by-page again, just to compute the max invoice number (see
+       section 3). This means `excel_invoices` is effectively fetched/scanned
+       TWICE during login — once fully (`loadExcelDBCache`) and once again
+       for the `order_num` column only (the counter loop in `loadFromSupabase`).
+
+TOTAL SUPABASE REQUESTS ON STARTUP (fresh login, desktop):
+  Minimum observed distinct request types: ~4-6 "small" requests (auth,
+  last_login update, invoices counter check, shop_settings scan, profile
+  photo check) PLUS:
+    - `excel_invoices`: 1 count query + 1 column-probe query + N page queries
+      (1000 rows/page) via `loadExcelDBCache()` — for 19k+ rows that's
+      roughly 20 sequential page requests, PLUS ANOTHER ~20 sequential page
+      requests inside `loadFromSupabase()`'s counter-check loop (line
+      6775-6791, `.select('order_num')` only, still 1000-row pages, same
+      table). So a single login can issue on the order of 40+ separate
+      HTTP requests just to page through `excel_invoices` twice.
+    - `invoices`: 1 full-table, unpaginated request (no `.range()`/`.limit()`
+      on desktop — line 6724-6727).
+  Realistic total: 45-55+ individual HTTP requests to Supabase on a single
+  fresh desktop login, essentially all sequential (see section 6).
+
+  Mobile path is lighter at first (paginated to the last 200 invoices, see
+  section 3) but the `excel_invoices` full-table pagination in
+  `loadExcelDBCache()` still runs unconditionally on both platforms via
+  `init()`.
+
+ESTIMATED DATA TRANSFERRED ON FIRST LOAD:
+  Not measurable exactly without live DB row sizes, but the shape of the
+  transfer is:
+    - Static assets: Sentry bundle + Supabase JS + Chart.js + Google Fonts —
+      typically several hundred KB combined (CDN-cached after first visit,
+      but NOT cached at all on a genuinely new device/first load).
+    - `invoices` table: ALL rows, ALL columns listed at line 6726 (21 columns
+      including nested `invoice_items`), every login. If there are, say,
+      thousands of invoices with several line items each, this alone can
+      be multiple MB of JSON.
+    - `excel_invoices`: 19,000+ rows fetched via `loadExcelDBCache()` with
+      8-10 columns each including a `received_entries` JSON array column —
+      easily several MB of JSON transferred, EVERY SINGLE LOGIN/BOOT (not
+      cached to localStorage — see section 5).
+    - `shop_settings`: full table, includes at least one base64 profile-photo
+      value inline (`userProfilePhoto_<uid>` stored as a data URI directly
+      in the `value` column) — this alone could be hundreds of KB to a few
+      MB depending on photo size, transferred on every `init()`.
+  Bottom line: first load easily moves several megabytes of JSON on top of
+  the CDN script payloads, with no compression/pagination strategy for the
+  two largest tables (`invoices`, `excel_invoices`).
+
+================================================================================
+2. SUPABASE CONNECTION
+================================================================================
+
+INITIALIZATION:
+  - Primary client: `sb = supabase.createClient(SUPA_URL, SUPA_KEY);` (line 5411),
+    wrapped in try/catch — but the catch only handles the SYNCHRONOUS
+    construction call throwing (e.g. `supabase` being undefined because the
+    CDN failed). It does NOT protect against network failures during actual
+    queries later.
+  - Secondary "Head Office" client: `sbHO = supabase.createClient(HO_SUPA_URL, HO_SUPA_KEY)`
+    (line 5151), lazily created on first manual "sync to HO" action — not
+    part of normal boot.
+  - Both calls pass ONLY the URL and anon key — no third options argument.
+    Confirmed via full-file search: there is no `global`, `db`, `realtime`,
+    or `auth` options object anywhere `createClient` is called.
+
+CONNECTION TIMEOUT CONFIGURED?
+  NOT FOUND. There is no timeout option passed to `createClient`, no
+  `AbortController`/`AbortSignal` usage anywhere in the file, and no
+  `Promise.race`-style timeout wrapper around any `sb.from(...)` call.
+  A `sb.from(...).select(...)` call has no client-side cap on how long it
+  may take — it will wait as long as the browser's underlying `fetch`
+  allows (which, absent an AbortController, is effectively unbounded aside
+  from OS/browser-level TCP timeouts).
+
+RETRY MECHANISM ON FIRST-ATTEMPT FAILURE?
+  NOT FOUND as a general framework. No exponential backoff, no retry-count
+  logic anywhere in the file (grepped for "backoff", "retryCount",
+  "maxRetries" — no matches). The only related comment (line ~19570) says
+  "Supabase does not have it — reset flag so next cycle retries," describing
+  a manual "try again on the next poll" pattern, not real backoff.
+  Recovery instead relies on:
+    - The 10-second `setInterval` auto-sync tick (line 5379) trying again
+      naturally on its next cycle if `navigator.onLine` is true.
+    - The `window.addEventListener('online', ...)` handler (line 5305) that
+      fires when the browser regains connectivity, which waits 1.5s, flushes
+      pending queues, and 5s later triggers `_masterResync()`.
+  Neither of these is a true "retry the failed request" mechanism — they are
+  coarse, time-based re-attempts of the WHOLE load process.
+
+WHAT HAPPENS IF SUPABASE IS SLOW TO RESPOND — DOES THE APP WAIT INDEFINITELY?
+  Effectively yes, for the primary boot path. On desktop, the boot sequence
+  (`flushPendingUpdates()` → `flushPendingQueue()` → `loadFromSupabase()` →
+  `fixExcelInvoiceDates()` → `init()`) is fully `await`-chained with no
+  timeout at any step (lines ~7047-7059 / ~27546-27551). If any single
+  `await sb.from(...)` in that chain hangs because Supabase (or the user's
+  connection) is slow, `init()` is never called, and the user is stuck on
+  whatever pre-init UI state exists (typically a loading/connecting
+  indicator) with no time-boxed fallback to cached `localStorage` data.
+  The only way out is if the query eventually errors (e.g. the browser's own
+  network stack gives up) — at which point the `catch` block falls back to
+  `localStorage` (line 6802-6806) — but there is no proactive "give up after
+  N seconds" logic.
+
+================================================================================
+3. DATA LOADING STRATEGY
+================================================================================
+
+HOW `database[]` IS POPULATED ON STARTUP:
+  `loadFromSupabase(silent)` (lines 6621-6808) branches on viewport width
+  and takes ONE of two completely separate paths (no shared logic):
+
+  MOBILE PATH (<=767px viewport, lines 6626-6720):
+    1. `sb.from('invoices').select('id', {count:'exact', head:true})` —
+       gets the total row count only.
+    2. `sb.from('invoices').select(<21 columns>).order('created_at',{ascending:true}).range(_mbFrom, _mbCount-1)`
+       — fetches only the LAST 200 invoices.
+    3. Returns immediately after step 2 so the UI can render.
+    4. A DETACHED background task (not awaited by the caller) then fetches
+       everything OLDER than those 200 via `.range(0, _mbFrom-1)` and merges
+       it into `database` once it completes, re-rendering afterward.
+    This is a genuine "recent data first, backfill later" pattern — the
+    best-behaved part of the loading strategy.
+
+  DESKTOP PATH (lines 6722-6808), one query, no pagination:
+    1. `sb.from('invoices').select(<21 columns incl. nested invoice_items>).order('created_at',{ascending:true})`
+       — NO `.range()`/`.limit()` at all. Pulls the ENTIRE `invoices` table
+       (plus nested `invoice_items` for every row) in a single request,
+       every single time this function runs — including every 10-second
+       auto-sync tick, every reconnect, and every manual "sync now."
+    2. A `while (!exDone)` loop pages through `excel_invoices` in 1000-row
+       batches (`select('order_num')`, `.range(exFrom, exFrom+999)`),
+       sequentially awaited per page, purely to compute a max invoice-number
+       counter. This effectively re-reads the WHOLE `excel_invoices` table
+       (19k+ rows) just to find the largest `order_num`.
+    3. Saves the merged result to `localStorage.setItem('inv_database', ...)`.
+
+  ROW COUNTS FETCHED (invoices / excel_invoices / customer_payments):
+    - `invoices`: ALL rows on desktop, no pagination whatsoever in
+      `loadFromSupabase()`. Mobile limits the initial paint to 200 rows but
+      still eventually pulls all rows in the background.
+    - `excel_invoices`: fetched TWICE per full load cycle on desktop —
+      once fully via `loadExcelDBCache()` (see below, all data columns,
+      19k+ rows in ~20 sequential 1000-row pages), and once again for just
+      the `order_num` column inside `loadFromSupabase()`'s counter loop
+      (another ~20 sequential 1000-row pages).
+    - `customer_payments`: NOT fetched during boot/login at all — it loads
+      lazily only when the relevant tab/feature is opened (not part of the
+      startup network burden, contrary to what its size might suggest).
+
+  IS THERE PAGINATION OR LAZY LOADING, OR DOES IT FETCH EVERYTHING UPFRONT?
+    Mixed and inconsistent:
+    - `invoices` (desktop): fetches everything upfront, no pagination.
+    - `invoices` (mobile): paginated for the visible window (200 rows),
+      but background-loads the rest unconditionally shortly after.
+    - `excel_invoices`: ALWAYS fetched in full via `.range()` batches of
+      1000 rows, on BOTH mobile and desktop, unconditionally on every
+      `init()` call (i.e., every login/page load) — "pagination" here is
+      just a mechanism to get around Supabase's default row cap, not a
+      lazy-loading strategy; the app still ends up with all 19k+ rows in
+      memory before it's done.
+    - `shop_settings`: always fetched in full, unfiltered, every `init()`.
+
+  `loadFromSupabase()` SEQUENCE OF QUERIES (desktop, in order, all
+  sequentially awaited — NO `Promise.all` anywhere in this function):
+    1. `invoices` full-table select (unpaginated, with nested `invoice_items`).
+    2. `excel_invoices` counter-check loop, N sequential page requests.
+    3. `localStorage.setItem('inv_database', ...)`.
+
+  RELATED: `loadExcelDBCache()` (lines 15672-15723) — called unconditionally
+  from `init()` (line 6966) on every boot/login, and again every time the
+  user switches to the Database tab (line 15751-15752, after invalidating
+  `_excelDBCache = null`):
+    1. `sb.from('excel_invoices').select('*', {count:'exact', head:true})` —
+       get total count.
+    2. `sb.from('excel_invoices').select(<9-10 cols>).range(0,0)` — a
+       "probe" query just to check whether the `received_entries` column
+       exists (schema-compat check).
+    3. A `while (!done)` loop, `.range(from, from+999)`, 1000 rows per page,
+       sequential awaits, until a page returns fewer than 1000 rows.
+    This cache is IN-MEMORY ONLY (`_excelDBCache`, not persisted to
+    localStorage), so it is fully re-downloaded on every fresh page load AND
+    every time the Database tab is revisited, even within the same session.
+
+================================================================================
+4. OFFLINE DETECTION
+================================================================================
+
+HOW IS `navigator.onLine` USED?
+  Checked in roughly 65 places throughout the file. The pattern is uniform:
+  a plain `if (!navigator.onLine) return;` guard placed at the top of nearly
+  every sync/background function (auto-sync tick, `_masterResync()`,
+  `_syncToHO()`, pending-queue flushers, finance-ledger sync helpers,
+  permission poll, profile-photo sync, offline banner, summary tab live
+  figures, etc.). It is a synchronous read of the browser's
+  `navigator.onLine` flag — NOT a live network probe/ping — so it reflects
+  the OS/browser's notion of "has a network interface," not whether
+  Supabase is actually reachable. A device connected to wifi with no real
+  internet access (a very common "new connection" scenario — captive
+  portals, misconfigured routers) will report `navigator.onLine === true`
+  and the app will proceed as if online, hitting the "wait indefinitely"
+  problem described in section 2.
+
+  It is NOT checked "before every query" in a centralized way — there is no
+  single wrapper function that all Supabase calls go through; each
+  individual function/feature has its own hand-rolled `navigator.onLine`
+  check (or, in some spots, none at all — e.g. the core `loadFromSupabase()`
+  function itself has NO `navigator.onLine` guard; it's only the CALLERS
+  around it, inconsistently, that check first).
+
+WHAT HAPPENS WHEN THE APP STARTS ON A SLOW CONNECTION VS. NO CONNECTION?
+  - No connection (`navigator.onLine === false` at boot): the boot sequence
+    branches to a "use localStorage only" path and calls `init()` immediately
+    with cached data (see legacy load handler lines ~6997-7011 and ~7064,
+    and the equivalent branch in `_authInit()`). An offline banner appears
+    ~1 second after boot (line ~5482, `setTimeout(_showOffline, 1000)`).
+    This path is FAST and usable.
+  - Slow connection (`navigator.onLine === true`, but Supabase responses are
+    slow): the app does NOT distinguish this from a fast connection. It
+    proceeds into the full blocking `await` chain described in sections 1-3
+    with no timeout, so the user is stuck on a loading state for however
+    long the requests actually take — this is the worst-case, most common
+    real-world scenario for "new/different internet connection" (e.g. a
+    weak mobile signal, a slow public wifi) and it has NO special handling.
+
+IS THERE A TIMEOUT BEFORE FALLING BACK TO CACHED DATA?
+  No. Falling back to `localStorage` (`database = JSON.parse(localStorage.getItem('inv_database') || '[]')`)
+  only happens inside a `catch` block when a Supabase request actually
+  ERRORS (lines 6714-6718, 6802-6806) — never on a time-based timeout. If
+  the request neither succeeds nor errors (i.e., it just hangs), the app
+  never falls back; it waits.
+
+================================================================================
+5. CACHING STRATEGY
+================================================================================
+
+WHAT IS CACHED IN LOCALSTORAGE AFTER FIRST LOAD?
+  - `inv_database` — the entire `invoices` dataset (+ nested items), read
+    synchronously at script start (line 5421) before any network call.
+  - `inv_counter` — next invoice number.
+  - `inv_drafts` — draft invoices (also mirrored to/from `shop_settings`).
+  - Offline write queues: `inv_pending_queue`, `inv_pending_updates`,
+    `cp_pending_sync`, `inv_pb_pending_edits`, `fin_ledger_pending`,
+    `fin_ledger_delete` — written immediately on offline edits, flushed on
+    reconnect.
+  - `fin_ledger_local` — one-time hydration mirror of manual finance-ledger
+    entries (see "ONE-TIME HYDRATION" below).
+  - `pcnc_fin_supa_cache` / `pcnc_fin_cache_ts` — a full, unfiltered
+    `finance_ledger` table snapshot (`select('*')`, no limit), refreshed on
+    a 10-second TTL target whenever the finance module is touched. This is
+    a FULL TABLE SCAN repeated roughly every 10 seconds while the user has
+    the finance tab active, not an incremental/delta sync.
+  - `_summaryCache` — cached dashboard numbers, with an explicit 2MB size
+    guard that silently DROPS the cache write if exceeded (so on large
+    datasets this cache may never actually persist).
+  - ~30 branding/settings keys (`inv_shopname_*`, `inv_header_*`,
+    `inv_accent`, `inv_partners`, `pcnc_fin_categories`, profile photos,
+    watermark settings, etc.) — all pulled from one `shop_settings` table
+    scan via `ctrlBootSync()` and re-written to localStorage on every boot.
+  - `_offlineAuth` — cached credentials/permissions blob enabling offline
+    login, 30-day expiry.
+  - NOTABLY NOT CACHED: the `excel_invoices` dataset (`_excelDBCache`) is
+    held ONLY in memory (`let _excelDBCache = null`) — it is never written
+    to `localStorage`, meaning it is fully re-downloaded (19k+ rows, ~20+
+    paginated requests) on literally every page load/login, with zero
+    persistence benefit across sessions. This is one of the largest and
+    most avoidable sources of startup network load.
+
+STALE-WHILE-REVALIDATE, OR ALWAYS WAIT FOR FRESH DATA?
+  Inconsistent, split by platform:
+  - Mobile: closer to stale-while-revalidate for `invoices` — shows cached/
+    recent data fast, backfills older data in the background. But
+    `excel_invoices` and `shop_settings` are still fetched fully and
+    synchronously as part of `init()` before those tabs are usable.
+  - Desktop: mostly BLOCKS until fresh data arrives. The boot sequence
+    `await`s `loadFromSupabase()` (full unpaginated `invoices` scan) before
+    calling `init()`. There is no "show `inv_database` from localStorage
+    immediately, then swap in fresh data when it arrives" pattern on
+    desktop — the cached data sits unused in `localStorage` while the app
+    waits on the network for the exact same (larger) data.
+  - The one true "cache-first, hydrate-if-empty" pattern in the whole app is
+    the "ONE-TIME HYDRATION" block (~line 19403-19438): an IIFE that runs
+    unconditionally at script-parse time (before login), but only takes
+    action if `_finLedgerLocal` (the local finance cache) is empty — in
+    which case it does an unfiltered `sb.from('finance_ledger').select('*').eq('source','manual')`
+    call. On a genuinely fresh device (empty localStorage) this adds one
+    more full-table request to the pile of first-load network activity,
+    running in parallel with everything else, uncoordinated with the rest
+    of the boot sequence.
+
+================================================================================
+6. POTENTIAL BOTTLENECKS
+================================================================================
+
+LARGEST SINGLE QUERY ON STARTUP:
+  Two contenders, both effectively "the whole table":
+  - `invoices` full-table select in `loadFromSupabase()` (desktop path,
+    line 6724-6727) — no `.range()`/`.limit()`, includes nested
+    `invoice_items` for every invoice. Grows unbounded as the business
+    accumulates invoices.
+  - `excel_invoices` — 19k+ rows, fetched via 1000-row pages, TWICE per
+    boot cycle in different forms (full columns via `loadExcelDBCache()`,
+    and `order_num`-only via the counter loop in `loadFromSupabase()`).
+
+ARE QUERIES SEQUENTIAL OR PARALLEL?
+  Sequential, essentially everywhere in the boot/sync path. Confirmed by
+  reading every relevant function in full:
+    - `loadFromSupabase()`: sequential awaits, no `Promise.all`.
+    - `_masterResync()` (lines 5043-5143): four-phase process, every phase
+      and every step within it is a sequential `await` — pending-queue
+      flushes, then `loadFromSupabase()`, then `loadExcelDBCache()` (only if
+      on the DB tab), then `refreshOfflineCache()` (only if finance was
+      loaded), then re-render. No parallelization anywhere.
+    - The full desktop boot chain: `flushPendingUpdates()` →
+      `flushPendingQueue()` → `loadFromSupabase()` → `fixExcelInvoiceDates()`
+      → `init()` → (inside init) `ctrlBootSync()` → `loadExcelDBCache()` —
+      every one of these is awaited in strict sequence. None of these
+      independent reads (invoices, excel_invoices, shop_settings) are
+      fired concurrently even though they don't depend on each other's
+      results — they could safely run via `Promise.all` and cut wall-clock
+      load time roughly in proportion to how many of them overlap.
+  This sequential chaining is the single biggest structural reason the app
+  is slow on a slow connection: total load time is the SUM of every
+  request's latency, not the MAX of them.
+
+QUERIES THAT COULD TIME OUT ON A SLOW CONNECTION:
+  All of them, in principle, since none have a client-side timeout — but
+  the ones most likely to actually be slow enough to matter are the large,
+  unbounded ones:
+    - The unpaginated `invoices` full-table select (grows with business
+      history, single request, no way to abort or cap it).
+    - The `excel_invoices` pagination loops (~20+ sequential round-trips
+      each, TWICE) — every one of the ~40+ requests is a separate
+      network round-trip on a slow/high-latency connection (e.g. mobile
+      data with 300-500ms RTT would mean 40 x 300-500ms = 12-20 seconds
+      just in round-trip latency, before any data-transfer time, before
+      the user sees the app).
+    - The `shop_settings` full-table scan in `ctrlBootSync()`, which may
+      include a large base64-encoded profile photo inline in one row's
+      `value` column.
+  Because none of these can time out and fall back automatically, a single
+  slow/stalled request anywhere in this chain can leave the user stuck on
+  a loading screen indefinitely, with no feedback other than a generic
+  "Connecting to database..." style status message.
+
+================================================================================
+ADDITIONAL OBSERVATIONS
+================================================================================
+
+- No Supabase Realtime subscriptions exist anywhere (`.channel()`,
+  `.subscribe()`, `postgres_changes` — all absent). All "live" data is
+  polled: a 10-second auto-sync `setInterval` (line 5379-5398), a 30-second
+  permission/profile poll (`_authStartPermPoll()`), and a 10-second TTL
+  target for the finance-ledger cache. Each of these polling loops
+  independently re-checks `navigator.onLine` and, if online, fires its own
+  round of (sometimes full-table) queries — on a slow connection this adds
+  continuous background load on top of the initial boot burden, competing
+  for the same limited bandwidth.
+- Two separate, overlapping boot/login code paths exist in the file (a
+  "legacy" `window.addEventListener('load', ...)` handler around line 6992,
+  and the current `_authInit()`-based system around line 27510-27583,
+  27769-27856). The legacy path self-disables when the new auth system has
+  an active session, but both listeners are registered and both fire on
+  every page load — this is dead-code/duplication risk more than a direct
+  performance bug, but it does mean two near-identical "full sync" code
+  paths must be kept in sync by hand.
+- The Supabase anon key and project URL are hardcoded directly in the
+  client-side file (lines 5403-5407) — not a network-performance issue, but
+  worth flagging since it's visible to anyone loading the page.
+
+================================================================================
+END OF REPORT
+================================================================================

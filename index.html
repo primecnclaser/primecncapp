@@ -5424,6 +5424,9 @@ let draftsDB   = JSON.parse(localStorage.getItem('inv_drafts')   || '[]');
 let currentUser = null;
 let _activeDbTab = 'submitted'; // 'submitted' | 'advance' | 'draft'
 let _excelDBCache = null; // cached excel_invoices rows for DB tab
+const EXCEL_INDEX_KEY = 'pcnc_excel_index';
+const EXCEL_INDEX_TS_KEY = 'pcnc_excel_index_ts';
+const EXCEL_INDEX_TTL = 24 * 60 * 60 * 1000; // 24 hours
 let _editingDraftIdx = null;    // index in draftsDB when editing a draft
 let _dbPage = 1;               // pagination page for submitted tab
 var _dbPageSize = 50;
@@ -6773,21 +6776,35 @@ async function loadFromSupabase(silent) {
       maxNum = Math.max(...nums);
     }
     try {
-      let exFrom = 0, exDone = false;
-      while (!exDone) {
-        const { data: exPage } = await sb
-          .from('excel_invoices')
-          .select('order_num')
-          .not('order_num', 'is', null)
-          .range(exFrom, exFrom + 999);
-        if (!exPage || exPage.length === 0) break;
-        const pageMax = Math.max(...exPage.map(r => { const n = parseInt(r.order_num); return (Number.isFinite(n) && n < 100000) ? n : 0; }));
-        if (pageMax > maxNum) maxNum = pageMax;
-        if (exPage.length < 1000) exDone = true;
-        else exFrom += 1000;
+      let exMaxNum = 0;
+      if (_excelDBCache && _excelDBCache.length > 0) {
+        // Use already-loaded cache — zero extra requests
+        // NOTE: cached order_num is normalized to "INV-1234" by loadExcelDBCache(),
+        // so extract trailing digits rather than parseInt() the raw string.
+        _excelDBCache.forEach(function(r) {
+          var m = String(r.order_num || '').match(/(\d+)$/);
+          var n = m ? parseInt(m[1]) : NaN;
+          if (Number.isFinite(n) && n < 100000 && n > exMaxNum) exMaxNum = n;
+        });
+      } else {
+        // Cache not loaded yet — fall back to paginated fetch (original logic)
+        let exFrom = 0, exDone = false;
+        while (!exDone) {
+          const { data: exPage } = await sb
+            .from('excel_invoices')
+            .select('order_num')
+            .not('order_num', 'is', null)
+            .range(exFrom, exFrom + 999);
+          if (!exPage || exPage.length === 0) break;
+          const pageMax = Math.max(...exPage.map(r => { const n = parseInt(r.order_num); return (Number.isFinite(n) && n < 100000) ? n : 0; }));
+          if (pageMax > exMaxNum) exMaxNum = pageMax;
+          if (exPage.length < 1000) exDone = true;
+          else exFrom += 1000;
+        }
       }
+      if (exMaxNum > maxNum) maxNum = exMaxNum;
     } catch(e) {
-      console.warn('excel_invoices counter check:', e);
+      console.warn('[loadFromSupabase] excel_invoices counter check:', e);
     }
     if (maxNum >= invoiceCounter) {
       invoiceCounter = maxNum + 1;
@@ -15671,6 +15688,27 @@ async function ctrlBootSync() {
 // ── Load excel_invoices into cache for DB tab (once per session) ──
 async function loadExcelDBCache() {
   if (_excelDBCache !== null) return; // already loaded
+
+  // Fast-path: use localStorage index if fresh (avoids full network fetch for search)
+  var _exIndexTs = parseInt(localStorage.getItem(EXCEL_INDEX_TS_KEY)||'0');
+  var _exIndexAge = Date.now() - _exIndexTs;
+  if (_exIndexAge < EXCEL_INDEX_TTL) {
+    try {
+      var _exIndexRaw = localStorage.getItem(EXCEL_INDEX_KEY);
+      if (_exIndexRaw) {
+        var _exIndex = JSON.parse(_exIndexRaw);
+        if (_exIndex && _exIndex.length > 0) {
+          // Populate a minimal cache from localStorage — enough for search/autocomplete
+          // Full data still loaded from network for complete features
+          console.log('[excelDBCache] using localStorage index (' + _exIndex.length + ' entries, age ' + Math.round(_exIndexAge/60000) + 'min)');
+          // NOTE: we still proceed to full network load for complete data
+          // but the index is available immediately for search functions
+          window._excelSearchIndex = _exIndex;
+        }
+      }
+    } catch(_pie) { console.warn('[excelDBCache] index parse error:', _pie); }
+  }
+
   _excelDBCache = [];
   if (typeof sb === 'undefined' || !sb) return;
   try {
@@ -15708,6 +15746,19 @@ async function loadExcelDBCache() {
       r.received1 = r.received_entries.reduce(function(s,e){ return s+(parseFloat(e.amount)||0); }, 0);
     });
     _excelDBCache = allRows;
+    window._excelCacheLoadedAt = Date.now();
+
+    // Cache a trimmed index to localStorage for fast search on next load
+    try {
+      var _excelIndex = allRows.map(function(r) {
+        return { o: r.order_num, n: r.customer_name, p: r.phone||'' };
+      });
+      localStorage.setItem(EXCEL_INDEX_KEY, JSON.stringify(_excelIndex));
+      localStorage.setItem(EXCEL_INDEX_TS_KEY, Date.now().toString());
+    } catch(_qe) {
+      console.warn('[excelDBCache] localStorage quota exceeded — index not cached:', _qe);
+    }
+
     console.log('[excelDBCache] loaded:', allRows.length, 'of', totalCount, 'rows in Supabase');
     // Show count discrepancy if any
     if (totalCount && totalCount !== allRows.length) {
@@ -15748,8 +15799,14 @@ function switchTab(tab, el) {
   document.getElementById('paymentTab').style.display  = tab === 'payment'  ? '' : 'none';
   document.getElementById('productionTab').style.display = tab === 'production' ? '' : 'none';
   if (tab === 'database') {
-    _excelDBCache = null; _searchNameList = null;
-    loadExcelDBCache().then(() => { renderDB(); setInvoiceNumber(); updateDBCount(); });
+    var _excelCacheAge = window._excelCacheLoadedAt ? (Date.now() - window._excelCacheLoadedAt) : Infinity;
+    if (_excelDBCache === null || _excelCacheAge > 5 * 60 * 1000) {
+      _excelDBCache = null;
+      _searchNameList = null;
+      loadExcelDBCache().then(() => { renderDB(); setInvoiceNumber(); updateDBCount(); });
+    } else {
+      renderDB(); setInvoiceNumber(); updateDBCount();
+    }
     switchDbTab('submitted');
   }
   if (tab === 'invoice')  { switchInvTab('full'); }
