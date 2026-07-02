@@ -42,7 +42,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" onerror="console.error('Supabase CDN failed to load')"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="/logo.png">
 <link rel="shortcut icon" href="/favicon.ico">
@@ -5622,7 +5622,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.0.4';
+const APP_VERSION = '1.0.6';
 
 // ── KEYBOARD SHORTCUTS ──────────────────────────────────────────
 document.addEventListener('keydown', function(e) {
@@ -15689,7 +15689,28 @@ async function ctrlBootSync() {
 async function loadExcelDBCache() {
   if (_excelDBCache !== null) return; // already loaded
 
-  // Fast-path: use localStorage index if fresh (avoids full network fetch for search)
+  // Full cache short-circuit — check for a full cached dataset first
+  var _exFullCacheTs = parseInt(localStorage.getItem('pcnc_excel_full_ts')||'0');
+  var _exFullCacheAge = Date.now() - _exFullCacheTs;
+  if (_exFullCacheAge < EXCEL_INDEX_TTL) {
+    try {
+      var _exFullRaw = localStorage.getItem('pcnc_excel_full');
+      if (_exFullRaw) {
+        var _exFullData = JSON.parse(_exFullRaw);
+        if (_exFullData && _exFullData.length > 0) {
+          _excelDBCache = _exFullData;
+          window._excelCacheLoadedAt = _exFullCacheTs;
+          console.log('[excelDBCache] loaded ' + _exFullData.length + ' rows from localStorage cache (age ' + Math.round(_exFullCacheAge/60000) + 'min)');
+          // Update UI
+          const subEl = document.getElementById('dbSubCount');
+          if (subEl) subEl.textContent = _exFullData.length + ' imported';
+          return; // SKIP network fetch entirely
+        }
+      }
+    } catch(_pie) { console.warn('[excelDBCache] full cache parse error:', _pie); }
+  }
+
+  // Slim index for search (used while full data loads in background or offline)
   var _exIndexTs = parseInt(localStorage.getItem(EXCEL_INDEX_TS_KEY)||'0');
   var _exIndexAge = Date.now() - _exIndexTs;
   if (_exIndexAge < EXCEL_INDEX_TTL) {
@@ -15698,12 +15719,8 @@ async function loadExcelDBCache() {
       if (_exIndexRaw) {
         var _exIndex = JSON.parse(_exIndexRaw);
         if (_exIndex && _exIndex.length > 0) {
-          // Populate a minimal cache from localStorage — enough for search/autocomplete
-          // Full data still loaded from network for complete features
-          console.log('[excelDBCache] using localStorage index (' + _exIndex.length + ' entries, age ' + Math.round(_exIndexAge/60000) + 'min)');
-          // NOTE: we still proceed to full network load for complete data
-          // but the index is available immediately for search functions
           window._excelSearchIndex = _exIndex;
+          console.log('[excelDBCache] search index preloaded (' + _exIndex.length + ' entries)');
         }
       }
     } catch(_pie) { console.warn('[excelDBCache] index parse error:', _pie); }
@@ -15757,6 +15774,19 @@ async function loadExcelDBCache() {
       localStorage.setItem(EXCEL_INDEX_TS_KEY, Date.now().toString());
     } catch(_qe) {
       console.warn('[excelDBCache] localStorage quota exceeded — index not cached:', _qe);
+    }
+
+    // Write full cache to localStorage (with size guard)
+    try {
+      var _exFullJson = JSON.stringify(allRows);
+      if (_exFullJson.length < 6 * 1024 * 1024) { // 6MB guard
+        localStorage.setItem('pcnc_excel_full', _exFullJson);
+        localStorage.setItem('pcnc_excel_full_ts', Date.now().toString());
+      } else {
+        console.warn('[excelDBCache] full cache too large for localStorage (' + Math.round(_exFullJson.length/1024) + 'KB) — skipping write');
+      }
+    } catch(_qe2) {
+      console.warn('[excelDBCache] localStorage quota exceeded on full cache write:', _qe2);
     }
 
     console.log('[excelDBCache] loaded:', allRows.length, 'of', totalCount, 'rows in Supabase');
@@ -27360,7 +27390,18 @@ window._forceAppRefresh = async function() {
 // ─── SESSION helpers (needed before anything else) ────────────
 var AUTH_KEY = 'auth_user';
 function _authGetSession() {
-  try { return JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); } catch(e) { console.error('[_authGetSession]', e); return null; }
+  var sess;
+  try { sess = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); } catch(e) { console.error('[_authGetSession]', e); return null; }
+  if (sess && sess.loginTime) {
+    var _sessionAge = Date.now() - sess.loginTime;
+    var _30days = 30 * 24 * 60 * 60 * 1000;
+    if (_sessionAge > _30days) {
+      console.log('[auth] Session expired after 30 days — clearing');
+      localStorage.removeItem(AUTH_KEY);
+      return null;
+    }
+  }
+  return sess;
 }
 function _authSetSession(data) { localStorage.setItem(AUTH_KEY, JSON.stringify(data)); }
 function _authClearSession()   { localStorage.removeItem(AUTH_KEY); }
@@ -27712,7 +27753,8 @@ async function _authDoLogin() {
         payment:      data.tab_payment !== false,
         production:   data.tab_production !== false
       },
-      force_pw_change: !!data.force_pw_change
+      force_pw_change: !!data.force_pw_change,
+      loginTime: Date.now()
     };
 
     if (data.force_pw_change) {
@@ -27784,7 +27826,8 @@ async function _authDoLogin() {
           id: _offAuth.id, username: _offAuth.username,
           display_name: _offAuth.display_name, role: _offAuth.role,
           permissions: _offAuth.permissions,
-          email: '', phone: '', profile_setup: true, force_pw_change: false
+          email: '', phone: '', profile_setup: true, force_pw_change: false,
+          loginTime: Date.now()
         };
         window._isOfflineSession = true;
         _authSetSession(_offSess);
@@ -28010,7 +28053,8 @@ async function _authDoSetup() {
       display_name:res.data.display_name, role:'admin',
       email:'', phone:'', profile_setup:false,
       permissions:{invoice:true,database:true,search:true,summary:true,finance:true,finance_edit:true,settings:true,payment:true,production:true},
-      force_pw_change:false
+      force_pw_change:false,
+      loginTime: Date.now()
     };
     _authSetSession(sess);
     _authLog('user_created','Initial admin account created');
