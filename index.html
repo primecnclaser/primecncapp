@@ -168,6 +168,24 @@ body {
 .btn-danger { background: #c0392b; color: #fff; }
 .btn-danger:hover { background: #a93226; }
 
+/* ─── OCC conflict UI ─── */
+.occ-diff-old { color:#94a3b8; text-decoration:line-through; }
+.occ-diff-new { color:#1e293b; font-weight:800; }
+.occ-changed-badge { background:#fef3c7; color:#92400e; font-size:0.62rem; font-weight:700; padding:1px 6px; border-radius:8px; margin-left:4px; }
+.occ-field-changed { border:1.5px solid #f59e0b !important; background:#fffbeb !important; }
+.bg-conflict-banner {
+  position: fixed; bottom: 20px; right: 20px; z-index: 99999;
+  background: #c0392b; color: #fff; font-family: Montserrat, sans-serif;
+  font-size: 0.85rem; font-weight: 700; padding: 12px 18px; border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(192,57,43,0.4); cursor: pointer;
+  animation: bgConflictPulse 1.6s ease-in-out infinite;
+}
+.bg-conflict-banner:hover { background: #a93226; }
+@keyframes bgConflictPulse {
+  0%, 100% { box-shadow: 0 6px 20px rgba(192,57,43,0.4); }
+  50% { box-shadow: 0 6px 28px rgba(192,57,43,0.75); }
+}
+
 /* ─── MAIN LAYOUT (sidebar + content) ─── */
 .main-layout {
   display: flex;
@@ -3000,16 +3018,20 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
       </style>
       <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:0;background:#f1f5f9;border-radius:10px 10px 0 0;padding:4px 4px 0 4px;border:1px solid #e2e8f0;border-bottom:none;">
         <button id="dbTabSubmitted" onclick="switchDbTab('submitted')"
-          style="flex:0 0 calc(33.33% - 3px);width:calc(33.33% - 3px);white-space:normal;text-align:center;padding:9px 16px;border:none;border-radius:7px 7px 0 0;cursor:pointer;font-family:'Montserrat', sans-serif;font-weight:700;font-size:0.85rem;letter-spacing:0.3px;transition:all .2s;background:#1e293b;color:#f59e0b;box-shadow:0 2px 8px rgba(30,41,59,0.2);">
+          style="flex:0 0 calc(25% - 3px);width:calc(25% - 3px);white-space:normal;text-align:center;padding:9px 16px;border:none;border-radius:7px 7px 0 0;cursor:pointer;font-family:'Montserrat', sans-serif;font-weight:700;font-size:0.85rem;letter-spacing:0.3px;transition:all .2s;background:#1e293b;color:#f59e0b;box-shadow:0 2px 8px rgba(30,41,59,0.2);">
           ✅ Submitted Invoices (<span id="submittedCount">0</span>)
         </button>
         <button id="dbTabAdvance" onclick="switchDbTab('advance')"
-          style="flex:0 0 calc(33.33% - 3px);width:calc(33.33% - 3px);white-space:normal;text-align:center;padding:9px 16px;border:none;border-radius:7px 7px 0 0;cursor:pointer;font-family:'Montserrat', sans-serif;font-weight:700;font-size:0.85rem;letter-spacing:0.3px;transition:all .2s;background:transparent;color:#64748b;">
+          style="flex:0 0 calc(25% - 3px);width:calc(25% - 3px);white-space:normal;text-align:center;padding:9px 16px;border:none;border-radius:7px 7px 0 0;cursor:pointer;font-family:'Montserrat', sans-serif;font-weight:700;font-size:0.85rem;letter-spacing:0.3px;transition:all .2s;background:transparent;color:#64748b;">
           💰 Advance Payments (<span id="advanceCount">0</span>)
         </button>
         <button id="dbTabDraft" onclick="switchDbTab('draft')"
-          style="flex:0 0 calc(33.33% - 3px);width:calc(33.33% - 3px);white-space:normal;text-align:center;padding:9px 16px;border:none;border-radius:7px 7px 0 0;cursor:pointer;font-family:'Montserrat', sans-serif;font-weight:700;font-size:0.85rem;letter-spacing:0.3px;transition:all .2s;background:transparent;color:#64748b;">
+          style="flex:0 0 calc(25% - 3px);width:calc(25% - 3px);white-space:normal;text-align:center;padding:9px 16px;border:none;border-radius:7px 7px 0 0;cursor:pointer;font-family:'Montserrat', sans-serif;font-weight:700;font-size:0.85rem;letter-spacing:0.3px;transition:all .2s;background:transparent;color:#64748b;">
           📋 Draft Invoices (<span id="draftCount">0</span>)
+        </button>
+        <button id="dbTabNull" onclick="switchDbTab('null')"
+          style="flex:0 0 calc(25% - 3px);width:calc(25% - 3px);white-space:normal;text-align:center;padding:9px 16px;border:none;border-radius:7px 7px 0 0;cursor:pointer;font-family:'Montserrat', sans-serif;font-weight:700;font-size:0.85rem;letter-spacing:0.3px;transition:all .2s;background:transparent;color:#64748b;">
+          ⛔ Null (<span id="nullCount">0</span>)
         </button>
       </div>
 
@@ -4874,11 +4896,11 @@ let _pendingUpdates = JSON.parse(localStorage.getItem('inv_pending_updates') || 
 function _savePendingUpdates() {
   localStorage.setItem('inv_pending_updates', JSON.stringify(_pendingUpdates));
 }
-function _addToPendingUpdates(supaId, updates) {
+function _addToPendingUpdates(supaId, updates, baselineUpdatedAt) {
   // Merge into existing entry for same row so we always push the latest state
   const ex = _pendingUpdates.find(p => p.supaId === supaId);
-  if (ex) { Object.assign(ex.updates, updates); ex.queuedAt = new Date().toISOString(); }
-  else _pendingUpdates.push({ supaId, updates, queuedAt: new Date().toISOString() });
+  if (ex) { Object.assign(ex.updates, updates); ex.queuedAt = new Date().toISOString(); if (baselineUpdatedAt) ex.baselineUpdatedAt = baselineUpdatedAt; }
+  else _pendingUpdates.push({ supaId, updates, queuedAt: new Date().toISOString(), baselineUpdatedAt: baselineUpdatedAt || null });
   _savePendingUpdates();
 }
 async function flushPendingUpdates() {
@@ -4886,12 +4908,94 @@ async function flushPendingUpdates() {
   const toTry = [..._pendingUpdates];
   for (const item of toTry) {
     try {
+      if (item.baselineUpdatedAt) {
+        const _fields = Object.keys(item.updates).filter(k => k !== 'updated_at').map(k => ({key:k, label:k, localValue: item.updates[k]}));
+        const occ = await _checkOCC('invoices', 'id', item.supaId, item.baselineUpdatedAt, _fields);
+        if (!occ.ok) {
+          const _idx = database.findIndex(d => d._supaId === item.supaId);
+          const _label = 'Invoice ' + (_idx !== -1 ? database[_idx].invNum : item.supaId);
+          const _recordKey = _idx !== -1 ? database[_idx].invNum : item.supaId;
+          _queueBgConflict({
+            entityLabel: _label, table: 'invoices', recordKey: _recordKey, changedFields: occ.changedFields,
+            onKeepLocal: async function() {
+              try {
+                const { error } = await sb.from('invoices').update(item.updates).eq('id', item.supaId);
+                if (!error) {
+                  _pendingUpdates = _pendingUpdates.filter(p => p.supaId !== item.supaId);
+                  _savePendingUpdates();
+                  toast('✅ Queued update saved — kept your version');
+                }
+              } catch(e2) { console.warn('[pendingUpdates] keepLocal retry failed:', e2); }
+            },
+            onUseRemote: function() {
+              _pendingUpdates = _pendingUpdates.filter(p => p.supaId !== item.supaId);
+              _savePendingUpdates();
+              if (_idx !== -1) {
+                if ('bad_debt' in occ.remoteRow) database[_idx].badDebt = occ.remoteRow.bad_debt;
+                if ('remaining' in occ.remoteRow) database[_idx].remaining = occ.remoteRow.remaining;
+                database[_idx].updatedAt = occ.remoteRow.updated_at;
+                localStorage.setItem('inv_database', JSON.stringify(database));
+                renderDB(); renderSummary();
+              }
+              toast('☁ Loaded the current value from the server instead');
+            }
+          });
+          continue; // leave in queue, don't silently overwrite
+        }
+      }
       const { error } = await sb.from('invoices').update(item.updates).eq('id', item.supaId);
       if (!error) {
         _pendingUpdates = _pendingUpdates.filter(p => p.supaId !== item.supaId);
         _savePendingUpdates();
       }
     } catch(e) { console.warn('[pendingUpdates] retry failed:', item.supaId, e); }
+  }
+}
+
+// ─── PENDING EXCEL_INVOICES FIELD-UPDATE QUEUE (total_bill, discount, bad_debt, received) ───
+let _excelPendingQueue = JSON.parse(localStorage.getItem('excel_pending_queue') || '[]');
+function _saveExcelPendingQueue() {
+  localStorage.setItem('excel_pending_queue', JSON.stringify(_excelPendingQueue));
+}
+function _addToExcelPendingQueue(rawOrderNum, field, value, baselineUpdatedAt) {
+  const ex = _excelPendingQueue.find(p => p.orderNum === rawOrderNum && p.field === field);
+  if (ex) { ex.value = value; ex.queuedAt = new Date().toISOString(); }
+  else _excelPendingQueue.push({ orderNum: rawOrderNum, field, value, baselineUpdatedAt: baselineUpdatedAt || null, queuedAt: new Date().toISOString() });
+  _saveExcelPendingQueue();
+}
+async function flushExcelPendingQueue() {
+  if (!navigator.onLine || !sb || _excelPendingQueue.length === 0) return;
+  const toTry = [..._excelPendingQueue];
+  for (const item of toTry) {
+    const r = await _writeExcelFieldWithOCC(item.orderNum, item.field, item.value, item.baselineUpdatedAt);
+    if (r.ok && !r.queued) {
+      _excelPendingQueue = _excelPendingQueue.filter(p => !(p.orderNum === item.orderNum && p.field === item.field));
+      _saveExcelPendingQueue();
+    } else if (r.conflict) {
+      _queueBgConflict({
+        entityLabel: 'Invoice INV-' + item.orderNum, table: 'excel_invoices', recordKey: item.orderNum,
+        changedFields: r.changedFields,
+        onKeepLocal: async function() {
+          const r2 = await _writeExcelFieldWithOCC(item.orderNum, item.field, item.value, null);
+          if (r2.ok) {
+            _excelPendingQueue = _excelPendingQueue.filter(p => !(p.orderNum === item.orderNum && p.field === item.field));
+            _saveExcelPendingQueue();
+            const row = (_excelDBCache||[]).find(function(rr){ return String(rr.order_num).replace(/^INV-/i,'') === item.orderNum; });
+            if (row) { row[item.field] = item.value; row._baselineUpdatedAt = r2.updatedAt || row._baselineUpdatedAt; }
+            if (typeof renderDB === 'function') renderDB();
+            toast('✅ ' + item.field + ' saved for ' + item.orderNum + ' — kept your version');
+          }
+        },
+        onUseRemote: function() {
+          _excelPendingQueue = _excelPendingQueue.filter(p => !(p.orderNum === item.orderNum && p.field === item.field));
+          _saveExcelPendingQueue();
+          const row = (_excelDBCache||[]).find(function(rr){ return String(rr.order_num).replace(/^INV-/i,'') === item.orderNum; });
+          if (row) { row[item.field] = r.remoteRow[item.field]; row._baselineUpdatedAt = r.remoteRow.updated_at; }
+          if (typeof renderDB === 'function') renderDB();
+          toast('☁ Loaded the current ' + item.field + ' from the server instead');
+        }
+      });
+    }
   }
 }
 
@@ -4925,7 +5029,34 @@ async function flushPendingQueue() {
 
   for (const entry of toProcess) {
     try {
-      const supaId = await saveToSupabase(entry.data);
+      const result = await saveToSupabase(entry.data);
+      if (result && result.conflict) {
+        _queueBgConflict({
+          entityLabel: 'Invoice ' + entry.data.invNum, table: 'invoices', recordKey: entry.data.invNum,
+          changedFields: result.changedFields,
+          onKeepLocal: async function() {
+            const retryData = Object.assign({}, entry.data);
+            delete retryData._baselineUpdatedAt;
+            const supaId2 = await saveToSupabase(retryData);
+            if (supaId2 !== null && !(supaId2 && supaId2.conflict)) {
+              const idx2 = database.findIndex(d => d.invNum === entry.data.invNum);
+              if (idx2 !== -1) { database[idx2]._supaId = supaId2; database[idx2].updatedAt = new Date().toISOString(); localStorage.setItem('inv_database', JSON.stringify(database)); }
+              pendingQueue = pendingQueue.filter(q => q.data.invNum !== entry.data.invNum);
+              savePendingQueue();
+              toast('✅ Invoice ' + entry.data.invNum + ' synced — kept your version');
+            }
+          },
+          onUseRemote: async function() {
+            pendingQueue = pendingQueue.filter(q => q.data.invNum !== entry.data.invNum);
+            savePendingQueue();
+            await loadFromSupabase(true);
+            renderDB(); updateDBCount();
+            toast('☁ Loaded the current version of ' + entry.data.invNum + ' from the server instead');
+          }
+        });
+        continue; // leave queued, don't silently overwrite
+      }
+      const supaId = result;
       if (supaId !== null) {
         const localIdx = database.findIndex(d => d.invNum === entry.data.invNum);
         if (localIdx !== -1) {
@@ -4936,32 +5067,15 @@ async function flushPendingQueue() {
         pendingQueue = pendingQueue.filter(q => q.data.invNum !== entry.data.invNum);
         savePendingQueue();
 
-        // ── Sync customer_payments for this invoice ──
+        // ── Sync customer_payments for this invoice (background flush — fail-open, no OCC block) ──
         if (typeof sb !== 'undefined' && sb && entry.data.invNum) {
           try {
             const _cpAmt = parseFloat(entry.data.received) || 0;
             const _cpDate = parseDateStr ? parseDateStr(entry.data.date) : entry.data.date;
-            const _cpChk = await sb.from('customer_payments')
-              .select('id,amount').eq('invoice_ref', entry.data.invNum).eq('type','payment').limit(1);
-            if (_cpChk.data && _cpChk.data.length > 0) {
-              if (_cpAmt > 0) {
-                await sb.from('customer_payments').update({ amount: _cpAmt }).eq('id', _cpChk.data[0].id);
-              } else {
-                await sb.from('customer_payments').delete().eq('id', _cpChk.data[0].id);
-              }
-            } else if (_cpAmt > 0) {
-              await sb.from('customer_payments').insert({
-                customer_name: entry.data.custName || 'Unknown',
-                phone: entry.data.phone || null,
-                amount: _cpAmt,
-                payment_date: _cpDate,
-                type: 'payment',
-                source: 'non_imported',
-                note: 'Invoice payment — ' + entry.data.invNum,
-                invoice_ref: entry.data.invNum,
-                created_by: entry.data.createdBy || currentUser || 'unknown'
-              });
-            }
+            await _upsertCustomerPaymentWithOCC(entry.data.invNum, 'payment', _cpAmt, {
+              customer_name: entry.data.custName, phone: entry.data.phone,
+              payment_date: _cpDate, created_by: entry.data.createdBy
+            }, undefined);
             if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
           } catch(_cpE) { console.warn('customer_payments sync failed for', entry.data.invNum, _cpE); }
         }
@@ -4988,6 +5102,51 @@ async function flushPendingQueue() {
 }
 
 // ── PENDING QUEUE FLUSH HELPERS ──────────────────────────────
+
+// Shared customer_payments writer with OCC — consolidates the ~7 previously-duplicated
+// select-then-update/delete/insert blocks scattered across the file.
+// invoiceRef: e.g. 'INV-1042'   type: 'payment' | 'discount' | 'bad_debt'
+// meta: { customer_name, phone, payment_date, note, created_by }
+// baselineSnapshot: { updatedAt, amount } — what the caller believes is currently on the row.
+//   Pass undefined to skip the OCC check (used for fail-open background flushes).
+async function _upsertCustomerPaymentWithOCC(invoiceRef, type, newAmount, meta, baselineSnapshot) {
+  if (typeof sb === 'undefined' || !sb) return { ok:false, error:'no sb client' };
+  const { data: existing } = await sb.from('customer_payments')
+    .select('id,amount,updated_at').eq('invoice_ref', invoiceRef).eq('type', type).limit(1);
+  const row = existing && existing[0];
+
+  if (row && baselineSnapshot && baselineSnapshot.updatedAt) {
+    const same = Math.abs(new Date(row.updated_at||0).getTime() - new Date(baselineSnapshot.updatedAt).getTime()) < 1000;
+    if (!same) {
+      return { ok:false, conflict:true, remoteRow: row,
+        changedFields: [{key:'amount', label:'Amount', localValue: baselineSnapshot.amount, remoteValue: row.amount}] };
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+  try {
+    if (row) {
+      if (newAmount > 0) {
+        await sb.from('customer_payments').update({ amount: newAmount, updated_at: nowIso }).eq('id', row.id);
+      } else {
+        await sb.from('customer_payments').delete().eq('id', row.id);
+      }
+    } else if (newAmount > 0) {
+      await sb.from('customer_payments').insert({
+        customer_name: meta.customer_name || 'Unknown', phone: meta.phone || null,
+        amount: newAmount, payment_date: meta.payment_date, type: type, source: 'non_imported',
+        note: meta.note || (type + ' — ' + invoiceRef), invoice_ref: invoiceRef,
+        created_by: meta.created_by || (typeof currentUser !== 'undefined' ? currentUser : 'unknown'),
+        updated_at: nowIso
+      });
+    }
+    return { ok:true, updatedAt: nowIso };
+  } catch(e) {
+    console.warn('[_upsertCustomerPaymentWithOCC]', invoiceRef, type, e);
+    return { ok:false, error:e };
+  }
+}
+
 async function _flushCpPending() {
   var _cpPending = JSON.parse(localStorage.getItem('cp_pending_sync') || '[]');
   if (!_cpPending.length || !sb) return;
@@ -5034,7 +5193,8 @@ function _hasPendingWork() {
     (typeof _finDeleteQueue !== 'undefined' && _finDeleteQueue.length > 0) ||
     (typeof _pbPendingEdits !== 'undefined' && _pbPendingEdits.length > 0) ||
     (JSON.parse(localStorage.getItem('cp_pending_sync') || '[]')).length > 0 ||
-    (JSON.parse(localStorage.getItem('manual_inv_pending') || '[]')).length > 0
+    (JSON.parse(localStorage.getItem('manual_inv_pending') || '[]')).length > 0 ||
+    (typeof _excelPendingQueue !== 'undefined' && _excelPendingQueue.length > 0)
   );
 }
 
@@ -5071,6 +5231,7 @@ async function _masterResync() {
     await _flushCpPending();              // standalone customer_payments
     await _flushManualInvPending();       // manually typed offline invoices
     await flushFinLedgerPending();        // finance ledger inserts + deletes
+    await flushExcelPendingQueue();       // excel_invoices field edits
 
     // flush _pbPendingEdits if function exists
     if (typeof _flushPbPending === 'function') {
@@ -5311,6 +5472,8 @@ window.addEventListener('online', async () => {
   await _flushCpPending();
   // Flush manual invoice pending queue
   await _flushManualInvPending();
+  // Flush excel_invoices field edits queued while offline
+  await flushExcelPendingQueue();
   if (_pbPendingEdits.length > 0 && sb) {
     var _toRetry = [..._pbPendingEdits];
     _pbPendingEdits = [];
@@ -5390,6 +5553,9 @@ setInterval(async () => {
       await flushPendingQueue();          // already calls loadFromSupabase on success
     } else if (typeof sb !== 'undefined' && sb && currentUser) {
       await loadFromSupabase(true);        // silent background pull — no status flicker
+    }
+    if (typeof _excelPendingQueue !== 'undefined' && _excelPendingQueue.length > 0) {
+      await flushExcelPendingQueue();
     }
     // NOTE: excel_invoices (19k+ rows) is NOT auto-refreshed on every tick —
     // it reloads when the user switches to the Database tab.
@@ -5622,7 +5788,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.0.6';
+const APP_VERSION = '1.0.7';
 
 // ── KEYBOARD SHORTCUTS ──────────────────────────────────────────
 document.addEventListener('keydown', function(e) {
@@ -6638,7 +6804,7 @@ async function loadFromSupabase(silent) {
       // Step 2: fetch the last 200 (most recent) invoices
       const { data: _mbRecent, error: _mbErr } = await sb
         .from('invoices')
-        .select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,remaining,bad_debt,created_at,edited_at,is_advance,extra_charges,extra_charges_label,order_status,status_updated_at,total_sqft,total_kg')
+        .select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,remaining,bad_debt,created_at,edited_at,is_advance,extra_charges,extra_charges_label,order_status,status_updated_at,total_sqft,total_kg,updated_at,invoice_items(row_num,sizes,foot,inch,sooter,foot2,inch2,sooter2,kg,qty,gauge,rate,sqft,amount,mode)')
         .order('created_at', { ascending: true })
         .range(_mbFrom, _mbCount - 1);
       if (_mbErr) throw _mbErr;
@@ -6662,6 +6828,7 @@ async function loadFromSupabase(silent) {
         isNull:        inv.cust_name === null && inv.phone === null,
         savedAt:       inv.created_at,
         editedAt:      inv.edited_at || null,
+        updatedAt:     inv.updated_at || null,
         isAdvance: inv.is_advance != null ? !!inv.is_advance : classifyAdvance({ items: (inv.invoice_items||[]).map(it=>({ sizes:it.sizes, amt:it.amount })), received: parseFloat(inv.received)||0 }),
         _supaId:       inv.id,
         totalSqft:     parseFloat(inv.total_sqft) || 0,
@@ -6702,7 +6869,7 @@ async function loadFromSupabase(silent) {
             if (typeof toast === 'function') toast('⏳ Loading older records in background...');
             const { data: _mbOlder } = await sb
               .from('invoices')
-              .select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,remaining,bad_debt,created_at,edited_at,is_advance,extra_charges,extra_charges_label,order_status,status_updated_at,total_sqft,total_kg')
+              .select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,remaining,bad_debt,created_at,edited_at,is_advance,extra_charges,extra_charges_label,order_status,status_updated_at,total_sqft,total_kg,updated_at,invoice_items(row_num,sizes,foot,inch,sooter,foot2,inch2,sooter2,kg,qty,gauge,rate,sqft,amount,mode)')
               .order('created_at', { ascending: true })
               .range(0, _mbFrom - 1);
             if (_mbOlder && _mbOlder.length) {
@@ -6726,7 +6893,7 @@ async function loadFromSupabase(silent) {
   try {
     const { data: invs, error } = await sb
       .from('invoices')
-      .select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,remaining,bad_debt,created_at,edited_at,is_advance,extra_charges,extra_charges_label,order_status,status_updated_at,total_sqft,total_kg')
+      .select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,remaining,bad_debt,created_at,edited_at,is_advance,extra_charges,extra_charges_label,order_status,status_updated_at,total_sqft,total_kg,updated_at,invoice_items(row_num,sizes,foot,inch,sooter,foot2,inch2,sooter2,kg,qty,gauge,rate,sqft,amount,mode)')
       .order('created_at', { ascending: true });
 
     if (error) throw error;
@@ -6750,6 +6917,7 @@ async function loadFromSupabase(silent) {
       isNull:       inv.cust_name === null && inv.phone === null,
       savedAt:      inv.created_at,
       editedAt:     inv.edited_at || null,
+      updatedAt:    inv.updated_at || null,
       isAdvance: inv.is_advance != null ? !!inv.is_advance : classifyAdvance({ items: (inv.invoice_items||[]).map(it=>({ sizes:it.sizes, amt:it.amount })), received: parseFloat(inv.received)||0 }),
       _supaId:      inv.id,
       totalSqft:    parseFloat(inv.total_sqft) || 0,
@@ -6825,10 +6993,49 @@ async function loadFromSupabase(silent) {
 }
 
 // ══════════════════════════════════════════════
+// OCC — OPTIMISTIC CONCURRENCY CHECK (shared)
+// ══════════════════════════════════════════════
+// table:              Supabase table name
+// matchCol/matchVal:   column+value to look up the current remote row (e.g. 'inv_num','INV-1042')
+// baselineUpdatedAt:   the updated_at the client had when it opened the edit (ISO string or null)
+// displayFields:       array of {key,label} pairs to diff/show in the conflict UI
+async function _checkOCC(table, matchCol, matchVal, baselineUpdatedAt, displayFields) {
+  if (!baselineUpdatedAt) return { ok: true, skipped: true }; // no baseline = never block
+  if (!navigator.onLine || typeof sb === 'undefined' || !sb) return { ok: true, skipped: true };
+  try {
+    const selectCols = ['updated_at'].concat(displayFields.map(f => f.key)).join(',');
+    const { data: remoteRow, error } = await sb.from(table).select(selectCols).eq(matchCol, matchVal).maybeSingle();
+    if (error || !remoteRow || !remoteRow.updated_at) return { ok: true, skipped: true }; // fail-open
+    const same = Math.abs(new Date(remoteRow.updated_at).getTime() - new Date(baselineUpdatedAt).getTime()) < 1000;
+    if (same) return { ok: true };
+    return { ok: false, remoteRow: remoteRow, changedFields: displayFields.map(f => ({
+      key: f.key, label: f.label, localValue: f.localValue, remoteValue: remoteRow[f.key]
+    })) };
+  } catch (e) {
+    console.warn('[_checkOCC]', table, matchVal, e);
+    return { ok: true, skipped: true }; // never block a save on a network hiccup
+  }
+}
+
+// ══════════════════════════════════════════════
 // SUPABASE — SAVE ONE INVOICE
 // ══════════════════════════════════════════════
 async function saveToSupabase(data) {
   setSyncStatus('syncing', '⟳ Saving...');
+  if (data.invNum && data._baselineUpdatedAt) {
+    const occ = await _checkOCC('invoices', 'inv_num', data.invNum, data._baselineUpdatedAt, [
+      {key:'cust_name',label:'Customer', localValue: data.custName},
+      {key:'received',label:'Received', localValue: data.received},
+      {key:'discount',label:'Discount', localValue: data.discount},
+      {key:'bad_debt',label:'Bad Debt', localValue: parseFloat(data.badDebt) || 0},
+      {key:'total',label:'Total', localValue: data.afterDiscount ?? data.total},
+      {key:'remaining',label:'Remaining', localValue: data.remaining}
+    ]);
+    if (!occ.ok) {
+      setSyncStatus('offline', '● Save paused — conflict detected');
+      return { conflict: true, remoteRow: occ.remoteRow, changedFields: occ.changedFields, localData: data };
+    }
+  }
   try {
     // 1. Upsert invoice row — safe to call multiple times, won't duplicate
     // Calculate total sqft and kg from items
@@ -6857,7 +7064,8 @@ async function saveToSupabase(data) {
         extra_charges:        parseFloat(data.extraCharges) || 0,
         extra_charges_label:  data.extraChargesLabel || 'Extra Charges',
         total_sqft:           parseFloat(_totalSqft.toFixed(3)) || 0,
-        total_kg:             parseFloat(_totalKg.toFixed(2))   || 0
+        total_kg:             parseFloat(_totalKg.toFixed(2))   || 0,
+        updated_at:           new Date().toISOString()
       }, { onConflict: 'inv_num' })
       .select()
       .single();
@@ -6908,23 +7116,27 @@ async function saveToSupabase(data) {
 // ══════════════════════════════════════════════
 // SUPABASE — UPDATE FIELD (badDebt)
 // ══════════════════════════════════════════════
-async function updateSupabaseField(supaId, field, value) {
+async function updateSupabaseField(supaId, field, value, baselineUpdatedAt) {
   if (!supaId) return;
   const fieldMap = { badDebt: 'bad_debt' };
   const col = fieldMap[field];
   if (!col) return;
-  const update = { [col]: value || 0 };
+  const update = { [col]: value || 0, updated_at: new Date().toISOString() };
   if (!navigator.onLine || !sb) {
-    _addToPendingUpdates(supaId, update);
+    _addToPendingUpdates(supaId, update, baselineUpdatedAt);
     setSyncStatus('offline', '● Offline — update queued');
     return;
+  }
+  if (baselineUpdatedAt) {
+    const occ = await _checkOCC('invoices', 'id', supaId, baselineUpdatedAt, [{key: col, label: field, localValue: value}]);
+    if (!occ.ok) return { conflict: true, remoteRow: occ.remoteRow, changedFields: occ.changedFields };
   }
   try {
     const { error } = await sb.from('invoices').update(update).eq('id', supaId);
     if (error) throw error;
   } catch(e) {
     console.error('Update error — queued for retry:', e);
-    _addToPendingUpdates(supaId, update);
+    _addToPendingUpdates(supaId, update, baselineUpdatedAt);
     setSyncStatus('offline', '● Update queued — will retry');
   }
 }
@@ -7676,7 +7888,10 @@ function collectData() {
     afterDiscount:  afterDiscount2,
     received,
     remaining:      afterDiscount2 - received,
-    _editIdx:       (typeof window._currentEditIdx === 'number') ? window._currentEditIdx : undefined
+    _editIdx:       (typeof window._currentEditIdx === 'number') ? window._currentEditIdx : undefined,
+    _baselineUpdatedAt:   window._editBaselineUpdatedAt || undefined,
+    _cpBaselineAmount:    window._editBaselineCpAmount,
+    _cpBaselineUpdatedAt: window._editBaselineCpUpdatedAt
   };
 }
 
@@ -7961,49 +8176,49 @@ async function doSubmit(data) {
     }
     if (navigator.onLine && typeof sb !== 'undefined' && sb && data.invNum) {
       (async function() {
-        try {
-          var newAmount = parseFloat(data.received) || 0;
-          var cpRes = await sb.from('customer_payments').select('id,amount').eq('invoice_ref', data.invNum).eq('type','payment').limit(1);
-          if (cpRes.data && cpRes.data.length > 0) {
-            if (newAmount > 0) {
-              if (Math.abs(cpRes.data[0].amount - newAmount) > 0.01) {
-                await sb.from('customer_payments').update({ amount: newAmount }).eq('id', cpRes.data[0].id);
-              }
-            } else {
-              await sb.from('customer_payments').delete().eq('id', cpRes.data[0].id);
-            }
-          } else if (newAmount > 0) {
-            // Double-check no duplicate exists before inserting
-            var _dupCheck = await sb.from('customer_payments').select('id').eq('invoice_ref', data.invNum).eq('type','payment');
-            if (_dupCheck.data && _dupCheck.data.length > 0) {
-              // Row exists — update instead of insert to prevent duplicates
-              await sb.from('customer_payments').update({ amount: newAmount }).eq('invoice_ref', data.invNum).eq('type','payment');
-            } else {
-              var insRes = await sb.from('customer_payments').insert({
-                customer_name: data.custName || 'Unknown',
-                phone: data.phone || null,
-                amount: newAmount,
-                payment_date: parseDateStr ? parseDateStr(data.date) : data.date,
-                type: 'payment',
-                source: 'non_imported',
-                note: 'Invoice payment — ' + data.invNum,
-                invoice_ref: data.invNum,
-                created_by: currentUser || 'unknown'
-              });
-              if (insRes.error) throw insRes.error;
-            }
-          }
-          if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-          if (typeof _searchNameList !== 'undefined') _searchNameList = null;
+        var _clearCpPending = function() {
           try {
             var _cpP = JSON.parse(localStorage.getItem('cp_pending_sync') || '[]');
             _cpP = _cpP.filter(function(e) { return e.invoice_ref !== data.invNum; });
             localStorage.setItem('cp_pending_sync', JSON.stringify(_cpP));
           } catch(_cpE2) { console.error('[doSubmit]', _cpE2); }
+        };
+        var _afterCpSuccess = function() {
+          if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+          if (typeof _searchNameList !== 'undefined') _searchNameList = null;
+          _clearCpPending();
           if (typeof _rpAutoRefreshFinanceTab === 'function') {
             var _epDate = parseDateStr ? parseDateStr(data.date) : data.date;
             if (_epDate) _rpAutoRefreshFinanceTab(_epDate);
           }
+        };
+        try {
+          var newAmount = parseFloat(data.received) || 0;
+          var _meta = { customer_name: data.custName, phone: data.phone, payment_date: parseDateStr ? parseDateStr(data.date) : data.date, created_by: currentUser };
+          var r = await _upsertCustomerPaymentWithOCC(data.invNum, 'payment', newAmount, _meta,
+            { updatedAt: data._cpBaselineUpdatedAt, amount: data._cpBaselineAmount });
+          if (r.conflict) {
+            _showOCCConflictDialog('Invoice ' + data.invNum + ' Payment', 'customer_payments', data.invNum,
+              r.changedFields,
+              async function onKeepLocal() {
+                var r2 = await _upsertCustomerPaymentWithOCC(data.invNum, 'payment', newAmount, _meta, undefined);
+                if (r2.ok) _afterCpSuccess();
+              },
+              function onUseRemote() {
+                var _idx = database.findIndex(function(d){ return d.invNum === data.invNum; });
+                if (_idx !== -1) {
+                  database[_idx].received = r.remoteRow.amount;
+                  var afterDisc = (database[_idx].afterDiscount != null ? database[_idx].afterDiscount : database[_idx].total) || 0;
+                  database[_idx].remaining = afterDisc - r.remoteRow.amount - (database[_idx].badDebt||0);
+                  localStorage.setItem('inv_database', JSON.stringify(database));
+                  renderDB(); renderSummary();
+                }
+                _clearCpPending();
+                toast('☁ Loaded the current payment amount from the server instead');
+              });
+            return;
+          }
+          if (r.ok) _afterCpSuccess();
         } catch(e) {
           console.warn('[CP-EDIT] failed:', e);
           if (typeof Sentry !== 'undefined') Sentry.captureException(e);
@@ -8051,7 +8266,59 @@ async function doSubmit(data) {
       setSyncStatus('syncing', '● Saving...');
       const updatedRecord = database.findIndex(d => d.invNum === data.invNum);
       const syncData = updatedRecord !== -1 ? database[updatedRecord] : { ...data, _supaId: prevSupaId };
-      const supaId = await saveToSupabase(syncData);
+      const result = await saveToSupabase(syncData);
+      if (result && result.conflict) {
+        var _fieldIdMap = { cust_name:'custName', received:'billReceived', discount:'billDiscount' };
+        _showOCCConflictDialog('Invoice ' + data.invNum, 'invoices', data.invNum, result.changedFields,
+          async function onKeepLocal() {
+            var retryData = Object.assign({}, syncData);
+            delete retryData._baselineUpdatedAt;
+            const supaId2 = await saveToSupabase(retryData);
+            if (supaId2 !== null && !(supaId2 && supaId2.conflict)) {
+              const idx2 = database.findIndex(d => d.invNum === data.invNum);
+              if (idx2 !== -1) { database[idx2]._supaId = supaId2; database[idx2].updatedAt = new Date().toISOString(); localStorage.setItem('inv_database', JSON.stringify(database)); }
+              toast('✅ Invoice ' + data.invNum + ' updated & synced!'); _pbCustCache = null;
+            } else {
+              addToPendingQueue({ ...retryData, _supaId: prevSupaId });
+              toast('Invoice ' + data.invNum + ' updated locally — cloud sync pending.');
+            }
+          },
+          async function onUseRemote() {
+            try {
+              const _full = await sb.from('invoices').select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,remaining,bad_debt,created_at,edited_at,is_advance,extra_charges,extra_charges_label,total_sqft,total_kg,updated_at').eq('inv_num', data.invNum).maybeSingle();
+              if (!_full.data) { toast('⚠️ Could not reload the current version'); return; }
+              const _itemsRes = await sb.from('invoice_items').select('*').eq('invoice_id', _full.data.id).order('row_num');
+              const freshInv = {
+                invNum: _full.data.inv_num, date: _full.data.date, custName: _full.data.cust_name, phone: _full.data.phone,
+                area: _full.data.area, delDate: _full.data.del_date, total: parseFloat(_full.data.sub_total||_full.data.total)||0,
+                discount: parseFloat(_full.data.discount)||0, afterDiscount: parseFloat(_full.data.total)||0,
+                received: parseFloat(_full.data.received)||0, remaining: parseFloat(_full.data.remaining)||0,
+                badDebt: parseFloat(_full.data.bad_debt)||'', extraCharges: parseFloat(_full.data.extra_charges)||0,
+                extraChargesLabel: _full.data.extra_charges_label||'Extra Charges', savedAt: _full.data.created_at,
+                editedAt: _full.data.edited_at||null, updatedAt: _full.data.updated_at||null, _supaId: _full.data.id,
+                totalSqft: parseFloat(_full.data.total_sqft)||0, totalKg: parseFloat(_full.data.total_kg)||0,
+                items: (_itemsRes.data||[]).sort(function(a,b){return a.row_num-b.row_num;}).map(function(it){ return {
+                  sizes:it.sizes, foot:it.foot, inch:it.inch, sooter:it.sooter, foot2:it.foot2||0, inch2:it.inch2||0, sooter2:it.sooter2||0,
+                  kg:it.kg, qty:it.qty, gauge:it.gauge, rate:it.rate, sqft:it.sqft, amt:it.amount, mode:it.mode
+                }; })
+              };
+              const idx3 = database.findIndex(function(d){ return d.invNum === data.invNum; });
+              if (idx3 !== -1) { database[idx3] = Object.assign({}, database[idx3], freshInv); localStorage.setItem('inv_database', JSON.stringify(database)); }
+              document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+              document.querySelectorAll('.tab')[0].classList.add('active');
+              document.getElementById('invoiceTab').style.display = '';
+              document.getElementById('databaseTab').style.display = 'none';
+              loadInvoiceIntoForm(freshInv, idx3 !== -1 ? idx3 : data._editIdx);
+              window._editBaselineUpdatedAt = freshInv.updatedAt;
+              const idsToHighlight = result.changedFields.map(function(f){ return _fieldIdMap[f.key]; }).filter(Boolean);
+              _occHighlightFields(idsToHighlight);
+              renderDB(); updateDBCount();
+              toast('☁ Reloaded the current version — your edit was not saved');
+            } catch(e) { console.warn('[doSubmit] onUseRemote reload failed', e); toast('⚠️ Could not reload the current version'); }
+          });
+        return;
+      }
+      const supaId = result;
       if (supaId !== null) {
         const idx2 = database.findIndex(d => d.invNum === data.invNum);
         if (idx2 !== -1) { database[idx2]._supaId = supaId; localStorage.setItem('inv_database', JSON.stringify(database)); }
@@ -8069,6 +8336,7 @@ async function doSubmit(data) {
   }
 
   // If submitting from a draft, remove it from drafts
+  const _wasFromDraft = _editingDraftIdx !== null;
   if (_editingDraftIdx !== null) {
     draftsDB.splice(_editingDraftIdx, 1);
     localStorage.setItem('inv_drafts', JSON.stringify(draftsDB));
@@ -8111,8 +8379,13 @@ async function doSubmit(data) {
   database.push(inv);
   localStorage.setItem('inv_database', JSON.stringify(database));
 
-  invoiceCounter++;
-  localStorage.setItem('inv_counter', invoiceCounter);
+  // A draft reusing its original invNum already consumed a counter slot when it was
+  // first created (or when its source invoice was originally submitted) — only bump
+  // the counter here for a genuinely new number, or one that had to be reassigned above.
+  if (!_wasFromDraft || _alreadyUsed) {
+    invoiceCounter++;
+    localStorage.setItem('inv_counter', invoiceCounter);
+  }
   clearForm();
   renderDB();
   updateDBCount();
@@ -8125,22 +8398,21 @@ async function doSubmit(data) {
     postInvoiceToLedger(data).catch(e => console.warn('Finance ledger auto-post:', e));
   }
 
-  // Auto-create customer_payments entry for the INITIAL payment
-  // received at invoice creation time (including advance payments)
+  // Create/refresh the customer_payments entry for this invoice's received amount.
+  // Uses the check-then-insert-or-update helper (not a raw insert) so resubmitting a
+  // draft that already has a payment row from its original submission updates that
+  // row instead of creating a duplicate.
   if (!data.isNull && (parseFloat(data.received)||0) > 0 && typeof sb !== 'undefined' && sb) {
     (async function() {
       try {
-        await sb.from('customer_payments').insert({
+        const r = await _upsertCustomerPaymentWithOCC(data.invNum, 'payment', parseFloat(data.received) || 0, {
           customer_name: data.custName || 'Unknown',
           phone: data.phone || null,
-          amount: parseFloat(data.received) || 0,
           payment_date: parseDateStr ? parseDateStr(data.date) : data.date,
-          type: 'payment',
-          source: 'non_imported',
           note: (isAdvance ? 'Advance payment — ' : 'Initial payment — ') + data.invNum,
-          invoice_ref: data.invNum,
           created_by: currentUser || 'unknown'
-        });
+        }, undefined);
+        if (!r.ok) { console.warn('customer_payments auto-create/update failed:', r.error); return; }
         if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
         if (typeof _rpAutoRefreshFinanceTab === 'function') {
           var _npDate = parseDateStr ? parseDateStr(data.date) : data.date;
@@ -8204,6 +8476,9 @@ function clearForm() {
   calcTotals();
   // Clear edit state
   window._currentEditIdx = undefined;
+  window._editBaselineUpdatedAt = undefined;
+  window._editBaselineCpAmount = undefined;
+  window._editBaselineCpUpdatedAt = undefined;
   _editingDraftIdx = null;
   const banner = document.getElementById('editBanner');
   if (banner) banner.remove();
@@ -8575,32 +8850,65 @@ async function renderDB() {
     document.head.appendChild(_msEl);
   }
 
-  // Partition database into advance vs regular submitted
+  // Partition database into advance vs regular submitted vs null
   const advanceInvs   = database.filter(inv => inv.isAdvance && !inv.isNull);
-  const submittedInvs = database.filter(inv => !inv.isAdvance);
+  const submittedInvs = database.filter(inv => !inv.isAdvance && !inv.isNull);
+  const visibleDrafts = draftsDB.map(function(inv, i){ return { inv: inv, idx: i }; }).filter(function(x){ return !x.inv.isNullEntry; });
+  const nullFromDb     = database.filter(function(inv){ return inv.isNull; });
+  const nullFromDrafts = draftsDB.filter(function(inv){ return inv.isNullEntry; });
+  const nullRows = nullFromDb.concat(nullFromDrafts);
 
   // Update sub-tab counts
   const scEl = document.getElementById('submittedCount');
   const acEl = document.getElementById('advanceCount');
   const dcEl = document.getElementById('draftCount');
+  const ncEl = document.getElementById('nullCount');
   if (scEl) scEl.textContent = submittedInvs.length;
   if (acEl) acEl.textContent = advanceInvs.length;
-  if (dcEl) dcEl.textContent = draftsDB.length;
+  if (dcEl) dcEl.textContent = visibleDrafts.length;
+  if (ncEl) ncEl.textContent = nullRows.length;
+
+  if (_activeDbTab === 'null') {
+    // ── NULL TAB — union of database isNull entries + draftsDB isNullEntry entries.
+    // Numbers here are permanently reserved (never reusable) but carry no customer/item data.
+    const oldLM4 = document.getElementById('dbLoadMore');
+    if (oldLM4) oldLM4.remove();
+    if (nullRows.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" class="empty-db">No Null invoices. Numbers recorded via "Record as Null" or deleted from Drafts appear here — preserved so the number is never reused.</td></tr>`;
+      document.getElementById('dbSubCount').textContent = '0 Null invoices';
+      return;
+    }
+    tbody.innerHTML = nullRows.slice().reverse().map(function(inv, ri) {
+      const serialNo = nullRows.length - ri;
+      return `<tr style="opacity:0.55;border-left:4px solid #c0392b;background:rgba(192,57,43,0.05);">
+        <td class="mono${_isMob ? ' _msr' : ''}" style="text-align:center;color:#c0392b">${serialNo}</td>
+        <td class="date-col${_isMob ? ' _mdt' : ''}">${fmtDateDisplay(inv.date)}</td>
+        <td><em style="color:#e74c3c">NULL</em></td>
+        <td class="mono">—</td>
+        <td class="mono" style="color:#c0392b;font-weight:700;">${inv.invNum} <span style="display:inline-block;background:#c0392b;color:#fff;font-size:0.58rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:4px;letter-spacing:0.5px;">NULL</span></td>
+        <td class="mono"><span style="color:#e74c3c">—</span></td>
+        <td></td>
+      </tr>`;
+    }).join('');
+    document.getElementById('dbSubCount').textContent = nullRows.length + ' Null invoice(s) — number reserved, cannot be reused';
+    return;
+  }
 
   if (_activeDbTab === 'draft') {
-    // ── DRAFT TAB ──
-    if (draftsDB.length === 0) {
+    // ── DRAFT TAB (excludes isNullEntry — those show in the Null tab instead) ──
+    if (visibleDrafts.length === 0) {
       tbody.innerHTML = `<tr><td colspan="7" class="empty-db">No drafts saved. Click "Save as Draft" on an invoice to save it here.</td></tr>`;
       document.getElementById('dbSubCount').textContent = '0 drafts';
       return;
     }
     const oldLM3 = document.getElementById('dbLoadMore');
     if (oldLM3) oldLM3.remove();
-    tbody.innerHTML = draftsDB.slice().reverse().map((inv, ri) => {
-      const draftIdx = draftsDB.length - 1 - ri;
+    tbody.innerHTML = visibleDrafts.slice().reverse().map((x, ri) => {
+      const inv = x.inv;
+      const draftIdx = x.idx;
       const remaining = Math.max(0, inv.remaining || 0);
       return `<tr style="border-left:4px solid #e67e22;background:rgba(230,126,34,0.06);">
-        <td class="mono${_isMob ? ' _msr' : ''}" style="text-align:center;color:#e67e22">${draftsDB.length - ri}</td>
+        <td class="mono${_isMob ? ' _msr' : ''}" style="text-align:center;color:#e67e22">${visibleDrafts.length - ri}</td>
         <td class="date-col${_isMob ? ' _mdt' : ''}">${fmtDateDisplay(inv.date)}</td>
         <td>${inv.custName || '—'}</td>
         <td class="mono">${inv.phone || '—'}</td>
@@ -8615,7 +8923,7 @@ async function renderDB() {
         </td>
       </tr>`;
     }).join('');
-    document.getElementById('dbSubCount').textContent = draftsDB.length + ' draft(s) — not included in totals';
+    document.getElementById('dbSubCount').textContent = visibleDrafts.length + ' draft(s) — not included in totals';
     return;
   }
 
@@ -8674,6 +8982,7 @@ async function renderDB() {
 
   const filtered = getFilteredDB().filter(function(inv) {
     if (inv.isAdvance) return false;
+    if (inv.isNull) return false;
     if (dbNameQ && !_nameMatch(inv.custName)) return false;
     if (dbInvQ  && !_invMatch(inv.invNum)) return false;
     return true;
@@ -8858,44 +9167,111 @@ function updateDBCount() {
   const sc = document.getElementById('submittedCount');
   const ac = document.getElementById('advanceCount');
   const dc = document.getElementById('draftCount');
+  const nc = document.getElementById('nullCount');
   const advanceInvs = database.filter(inv => inv.isAdvance && !inv.isNull);
-  const submittedInvs = database.filter(inv => !inv.isAdvance);
+  const submittedInvs = database.filter(inv => !inv.isAdvance && !inv.isNull);
+  const visibleDraftCount = draftsDB.filter(function(inv){ return !inv.isNullEntry; }).length;
+  const nullCount = database.filter(function(inv){ return inv.isNull; }).length
+    + draftsDB.filter(function(inv){ return inv.isNullEntry; }).length;
   if (sc) sc.textContent = submittedInvs.length + excelCount;
   if (ac) ac.textContent = advanceInvs.length;
-  if (dc) dc.textContent = draftsDB.length;
+  if (dc) dc.textContent = visibleDraftCount;
+  if (nc) nc.textContent = nullCount;
 }
 
 async function saveDBField(idx, field, value) {
   if (field === 'badDebt') {
     const amt = parseFloat(value) || 0;
-    database[idx].badDebt = amt;
-    const afterDisc = (database[idx].afterDiscount != null ? database[idx].afterDiscount : database[idx].total) || 0;
-    database[idx].remaining = Math.max(0, afterDisc - (database[idx].received||0) - amt);
-    localStorage.setItem('inv_database', JSON.stringify(database));
+    const _baselineUpdatedAt = database[idx].updatedAt || null;
     const supaId = database[idx]._supaId;
-    if (supaId) {
-      const _bdUpd = { bad_debt: amt, remaining: database[idx].remaining };
-      if (!navigator.onLine || !sb) {
-        _addToPendingUpdates(supaId, _bdUpd);
-      } else {
-        try {
-          const { error } = await sb.from('invoices').update(_bdUpd).eq('id', supaId);
-          if (error) throw error;
-        } catch(e) {
-          console.error('badDebt save failed — queued:', e);
-          _addToPendingUpdates(supaId, _bdUpd);
-        }
+
+    if (supaId && navigator.onLine && sb && _baselineUpdatedAt) {
+      const occ = await _checkOCC('invoices', 'id', supaId, _baselineUpdatedAt, [
+        {key:'bad_debt', label:'Bad Debt'}, {key:'remaining', label:'Remaining'}
+      ]);
+      if (!occ.ok) {
+        _showOCCConflictDialog('Invoice ' + (database[idx].invNum || ''), 'invoices', database[idx].invNum,
+          occ.changedFields.map(f => Object.assign({}, f, {localValue: f.key === 'bad_debt' ? database[idx].badDebt : database[idx].remaining})),
+          async function onKeepLocal() { await _saveDBFieldBadDebtCommit(idx, amt); },
+          async function onUseRemote() {
+            database[idx].bad_debt = occ.remoteRow.bad_debt;
+            database[idx].badDebt = occ.remoteRow.bad_debt;
+            database[idx].remaining = occ.remoteRow.remaining;
+            database[idx].updatedAt = occ.remoteRow.updated_at;
+            localStorage.setItem('inv_database', JSON.stringify(database));
+            renderDB(); renderSummary();
+            toast('☁ Loaded the current value from the server instead');
+          });
+        return;
       }
     }
-    renderDB();
-    renderSummary();
-    toast('✅ Bad debt set to Rs.' + fmt(amt));
+    await _saveDBFieldBadDebtCommit(idx, amt);
     return;
   }
   database[idx][field] = value === '' ? '' : parseFloat(value) || '';
   localStorage.setItem('inv_database', JSON.stringify(database));
   const supaId = database[idx]._supaId;
-  if (supaId) updateSupabaseField(supaId, field, database[idx][field]);
+  if (supaId) updateSupabaseField(supaId, field, database[idx][field], database[idx].updatedAt || null);
+}
+
+async function _saveDBFieldBadDebtCommit(idx, amt) {
+  database[idx].badDebt = amt;
+  const afterDisc = (database[idx].afterDiscount != null ? database[idx].afterDiscount : database[idx].total) || 0;
+  database[idx].remaining = Math.max(0, afterDisc - (database[idx].received||0) - amt);
+  localStorage.setItem('inv_database', JSON.stringify(database));
+  const supaId = database[idx]._supaId;
+  if (supaId) {
+    const _nowIso = new Date().toISOString();
+    const _bdUpd = { bad_debt: amt, remaining: database[idx].remaining, updated_at: _nowIso };
+    if (!navigator.onLine || !sb) {
+      _addToPendingUpdates(supaId, _bdUpd, database[idx].updatedAt || null);
+    } else {
+      try {
+        const { error } = await sb.from('invoices').update(_bdUpd).eq('id', supaId);
+        if (error) throw error;
+        database[idx].updatedAt = _nowIso;
+        localStorage.setItem('inv_database', JSON.stringify(database));
+      } catch(e) {
+        console.error('badDebt save failed — queued:', e);
+        _addToPendingUpdates(supaId, _bdUpd, database[idx].updatedAt || null);
+      }
+    }
+  }
+  renderDB();
+  renderSummary();
+  toast('✅ Bad debt set to Rs.' + fmt(amt));
+}
+
+// ══════════════════════════════════════════════
+// EXCEL_INVOICES — SHARED FIELD WRITER WITH OCC + OFFLINE QUEUE
+// ══════════════════════════════════════════════
+// field: any single excel_invoices column ('total_bill' | 'discount' | 'bad_debt' | 'received' | ...)
+// Owns only the raw column write + OCC + queueing. Callers keep their own
+// `remaining` recompute and customer_payments mirror logic.
+async function _writeExcelFieldWithOCC(orderNum, field, value, baselineUpdatedAt, extraCols) {
+  const _rawOrderNum = String(orderNum).replace(/^INV-/i, '');
+  const amt = parseFloat(value);
+  if (isNaN(amt) || amt < 0) return { ok:false, error:'invalid amount' };
+
+  if (!navigator.onLine || typeof sb === 'undefined' || !sb) {
+    _addToExcelPendingQueue(_rawOrderNum, field, amt, baselineUpdatedAt);
+    return { ok:true, queued:true };
+  }
+
+  const occ = await _checkOCC('excel_invoices', 'order_num', _rawOrderNum, baselineUpdatedAt, [{key: field, label: field, localValue: amt}]);
+  if (!occ.ok) return { ok:false, conflict:true, remoteRow: occ.remoteRow, changedFields: occ.changedFields };
+
+  try {
+    const nowIso = new Date().toISOString();
+    const update = Object.assign({ [field]: amt, updated_at: nowIso }, extraCols || {});
+    const { error } = await sb.from('excel_invoices').update(update).eq('order_num', _rawOrderNum);
+    if (error) throw error;
+    return { ok:true, updatedAt: nowIso };
+  } catch(e) {
+    console.warn('[_writeExcelFieldWithOCC]', orderNum, field, e);
+    _addToExcelPendingQueue(_rawOrderNum, field, amt, baselineUpdatedAt);
+    return { ok:false, queued:true, error:e };
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -8915,82 +9291,101 @@ async function saveExcelField(orderNum, field, value) {
   const row = (_excelDBCache || []).find(function(r){ return r.order_num === _cacheKey || r.order_num === ('INV-' + _rawOrderNum); });
   if (!row) { toast('❌ Row not found — reload DB tab'); return; }
 
+  const _baselineUpdatedAt = row._baselineUpdatedAt || null;
+
   if (field === 'total_bill') {
+    const newRemaining = amt - (parseFloat(row.received)||0) - (parseFloat(row.received1)||0) - (parseFloat(row.discount)||0) - (parseFloat(row.bad_debt)||0);
+    const r = await _writeExcelFieldWithOCC(orderNum, 'total_bill', amt, _baselineUpdatedAt, { remaining: newRemaining });
+    if (r.conflict) {
+      _showOCCConflictDialog('Invoice ' + orderNum, 'excel_invoices', _rawOrderNum,
+        [{key:'total_bill', label:'Total Bill', localValue: row.total_bill, remoteValue: r.remoteRow.total_bill}],
+        async function onKeepLocal() {
+          const r2 = await _writeExcelFieldWithOCC(orderNum, 'total_bill', amt, null, { remaining: newRemaining });
+          if (r2.ok) { row.total_bill = amt; row.remaining = newRemaining; row._baselineUpdatedAt = r2.updatedAt || row._baselineUpdatedAt; renderDB(); renderSummary(); toast('✅ Total Bill updated to Rs.' + fmt(amt) + ' for ' + orderNum); }
+        },
+        function onUseRemote() {
+          row.total_bill = r.remoteRow.total_bill;
+          row._baselineUpdatedAt = r.remoteRow.updated_at;
+          renderDB(); renderSummary();
+          toast('☁ Loaded the current total bill from the server instead');
+        });
+      return;
+    }
+    if (!r.ok && !r.queued) { toast('❌ Save failed'); return; }
     row.total_bill = amt;
-    row.remaining = amt - (parseFloat(row.received)||0) - (parseFloat(row.received1)||0) - (parseFloat(row.discount)||0) - (parseFloat(row.bad_debt)||0);
-    try {
-      if (typeof sb !== 'undefined' && sb)
-        await sb.from('excel_invoices').update({ total_bill: amt, remaining: row.remaining }).eq('order_num', _rawOrderNum);
-      toast('✅ Total Bill updated to Rs.' + fmt(amt) + ' for ' + orderNum);
-    } catch(e) { console.error('[saveExcelField:excel_invoices update]', e); toast('❌ Save failed: ' + e.message); return; }
+    row.remaining = newRemaining;
+    if (r.updatedAt) row._baselineUpdatedAt = r.updatedAt;
+    toast(r.queued ? '📴 Offline — Total Bill saved locally, will sync when online' : ('✅ Total Bill updated to Rs.' + fmt(amt) + ' for ' + orderNum));
 
   } else if (field === 'discount') {
-    row.discount = amt;
-    row.remaining = (parseFloat(row.total_bill)||0) - (parseFloat(row.received)||0) - (parseFloat(row.received1)||0) - amt - (parseFloat(row.bad_debt)||0);
-    try {
-      if (typeof sb !== 'undefined' && sb) {
-        await sb.from('excel_invoices').update({ discount: amt, remaining: row.remaining }).eq('order_num', _rawOrderNum);
-        // Sync customer_payments discount entry
-        var _invRefD = 'INV-' + orderNum;
-        var _cpD = await sb.from('customer_payments').select('id').eq('invoice_ref', _invRefD).eq('type','discount').limit(1);
-        if (_cpD.data && _cpD.data.length > 0) {
-          if (amt > 0) {
-            await sb.from('customer_payments').update({ amount: amt }).eq('id', _cpD.data[0].id);
-          } else {
-            await sb.from('customer_payments').delete().eq('id', _cpD.data[0].id);
+    const newRemaining = (parseFloat(row.total_bill)||0) - (parseFloat(row.received)||0) - (parseFloat(row.received1)||0) - amt - (parseFloat(row.bad_debt)||0);
+    const r = await _writeExcelFieldWithOCC(orderNum, 'discount', amt, _baselineUpdatedAt, { remaining: newRemaining });
+    if (r.conflict) {
+      _showOCCConflictDialog('Invoice ' + orderNum, 'excel_invoices', _rawOrderNum,
+        [{key:'discount', label:'Discount', localValue: row.discount, remoteValue: r.remoteRow.discount}],
+        async function onKeepLocal() {
+          const r2 = await _writeExcelFieldWithOCC(orderNum, 'discount', amt, null, { remaining: newRemaining });
+          if (r2.ok) {
+            row.discount = amt; row.remaining = newRemaining; row._baselineUpdatedAt = r2.updatedAt || row._baselineUpdatedAt;
+            await _upsertCustomerPaymentWithOCC('INV-'+orderNum, 'discount', amt, { customer_name: row.customer_name, phone: row.phone, payment_date: row.date }, undefined);
+            if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+            if (typeof _searchNameList !== 'undefined') _searchNameList = null;
+            renderDB(); renderSummary(); toast('✅ Discount updated to Rs.' + fmt(amt) + ' for ' + orderNum);
           }
-        } else if (amt > 0) {
-          await sb.from('customer_payments').insert({
-            customer_name: row.customer_name,
-            phone: row.phone || null,
-            amount: amt,
-            payment_date: row.date,
-            type: 'discount',
-            source: 'non_imported',
-            note: 'Discount — ' + _invRefD,
-            invoice_ref: _invRefD,
-            created_by: currentUser || 'unknown'
-          });
-        }
-        if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-        if (typeof _searchNameList !== 'undefined') _searchNameList = null;
-      }
-      toast('✅ Discount updated to Rs.' + fmt(amt) + ' for ' + orderNum);
-    } catch(e) { console.error('[saveExcelField:excel_invoices insert]', e); toast('❌ Save failed: ' + e.message); return; }
+        },
+        function onUseRemote() {
+          row.discount = r.remoteRow.discount;
+          row._baselineUpdatedAt = r.remoteRow.updated_at;
+          renderDB(); renderSummary();
+          toast('☁ Loaded the current discount from the server instead');
+        });
+      return;
+    }
+    if (!r.ok && !r.queued) { toast('❌ Save failed'); return; }
+    row.discount = amt;
+    row.remaining = newRemaining;
+    if (r.updatedAt) row._baselineUpdatedAt = r.updatedAt;
+    if (!r.queued) {
+      await _upsertCustomerPaymentWithOCC('INV-'+orderNum, 'discount', amt, { customer_name: row.customer_name, phone: row.phone, payment_date: row.date }, undefined);
+      if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+      if (typeof _searchNameList !== 'undefined') _searchNameList = null;
+    }
+    toast(r.queued ? '📴 Offline — Discount saved locally, will sync when online' : ('✅ Discount updated to Rs.' + fmt(amt) + ' for ' + orderNum));
 
   } else if (field === 'bad_debt') {
-    row.bad_debt = amt;
-    row.remaining = (parseFloat(row.total_bill)||0) - (parseFloat(row.received)||0) - (parseFloat(row.received1)||0) - (parseFloat(row.discount)||0) - amt;
-    try {
-      if (typeof sb !== 'undefined' && sb) {
-        await sb.from('excel_invoices').update({ bad_debt: amt, remaining: row.remaining }).eq('order_num', _rawOrderNum);
-        // Sync customer_payments bad_debt entry
-        var _invRefB = 'INV-' + orderNum;
-        var _cpB = await sb.from('customer_payments').select('id').eq('invoice_ref', _invRefB).eq('type','bad_debt').limit(1);
-        if (_cpB.data && _cpB.data.length > 0) {
-          if (amt > 0) {
-            await sb.from('customer_payments').update({ amount: amt }).eq('id', _cpB.data[0].id);
-          } else {
-            await sb.from('customer_payments').delete().eq('id', _cpB.data[0].id);
+    const newRemaining = (parseFloat(row.total_bill)||0) - (parseFloat(row.received)||0) - (parseFloat(row.received1)||0) - (parseFloat(row.discount)||0) - amt;
+    const r = await _writeExcelFieldWithOCC(orderNum, 'bad_debt', amt, _baselineUpdatedAt, { remaining: newRemaining });
+    if (r.conflict) {
+      _showOCCConflictDialog('Invoice ' + orderNum, 'excel_invoices', _rawOrderNum,
+        [{key:'bad_debt', label:'Bad Debt', localValue: row.bad_debt, remoteValue: r.remoteRow.bad_debt}],
+        async function onKeepLocal() {
+          const r2 = await _writeExcelFieldWithOCC(orderNum, 'bad_debt', amt, null, { remaining: newRemaining });
+          if (r2.ok) {
+            row.bad_debt = amt; row.remaining = newRemaining; row._baselineUpdatedAt = r2.updatedAt || row._baselineUpdatedAt;
+            await _upsertCustomerPaymentWithOCC('INV-'+orderNum, 'bad_debt', amt, { customer_name: row.customer_name, phone: row.phone, payment_date: row.date }, undefined);
+            if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+            if (typeof _searchNameList !== 'undefined') _searchNameList = null;
+            renderDB(); renderSummary(); toast('✅ Bad debt set to Rs.' + fmt(amt) + ' for order ' + orderNum);
           }
-        } else if (amt > 0) {
-          await sb.from('customer_payments').insert({
-            customer_name: row.customer_name,
-            phone: row.phone || null,
-            amount: amt,
-            payment_date: row.date,
-            type: 'bad_debt',
-            source: 'non_imported',
-            note: 'Bad debt — ' + _invRefB,
-            invoice_ref: _invRefB,
-            created_by: currentUser || 'unknown'
-          });
-        }
-        if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-        if (typeof _searchNameList !== 'undefined') _searchNameList = null;
-      }
-      toast('✅ Bad debt set to Rs.' + fmt(amt) + ' for order ' + orderNum);
-    } catch(e) { console.error('[saveExcelField:excel_invoices insert]', e); toast('❌ Save failed: ' + e.message); return; }
+        },
+        function onUseRemote() {
+          row.bad_debt = r.remoteRow.bad_debt;
+          row._baselineUpdatedAt = r.remoteRow.updated_at;
+          renderDB(); renderSummary();
+          toast('☁ Loaded the current bad debt from the server instead');
+        });
+      return;
+    }
+    if (!r.ok && !r.queued) { toast('❌ Save failed'); return; }
+    row.bad_debt = amt;
+    row.remaining = newRemaining;
+    if (r.updatedAt) row._baselineUpdatedAt = r.updatedAt;
+    if (!r.queued) {
+      await _upsertCustomerPaymentWithOCC('INV-'+orderNum, 'bad_debt', amt, { customer_name: row.customer_name, phone: row.phone, payment_date: row.date }, undefined);
+      if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+      if (typeof _searchNameList !== 'undefined') _searchNameList = null;
+    }
+    toast(r.queued ? '📴 Offline — Bad debt saved locally, will sync when online' : ('✅ Bad debt set to Rs.' + fmt(amt) + ' for order ' + orderNum));
   }
 
   renderDB();
@@ -9055,39 +9450,40 @@ function editExcelInvoice(oNum) {
           var rvAmt = parseFloat(rv);
           if (!isNaN(rvAmt) && rvAmt >= 0) {
             _anyChange = true;
-            row.received = rvAmt;
-            row.remaining = (parseFloat(row.total_bill)||0) - rvAmt - (parseFloat(row.received1)||0) - (parseFloat(row.discount)||0) - (parseFloat(row.bad_debt)||0);
-            if (typeof sb !== 'undefined' && sb) {
-              try {
-                await sb.from('excel_invoices').update({
-                  received: rvAmt,
-                  remaining: row.remaining
-                }).eq('order_num', oNum);
-                // Sync customer_payments
-                var _invRef = 'INV-' + oNum;
-                var _cpChk = await sb.from('customer_payments').select('id,amount').eq('invoice_ref', _invRef).eq('type','payment').limit(1);
-                if (_cpChk.data && _cpChk.data.length > 0) {
-                  if (rvAmt > 0) {
-                    await sb.from('customer_payments').update({ amount: rvAmt }).eq('id', _cpChk.data[0].id);
-                  } else {
-                    await sb.from('customer_payments').delete().eq('id', _cpChk.data[0].id);
+            var newRemaining = (parseFloat(row.total_bill)||0) - rvAmt - (parseFloat(row.received1)||0) - (parseFloat(row.discount)||0) - (parseFloat(row.bad_debt)||0);
+            var rw = await _writeExcelFieldWithOCC(oNum, 'received', rvAmt, row._baselineUpdatedAt || null, { remaining: newRemaining });
+            if (rw.conflict) {
+              _showOCCConflictDialog('Invoice ' + oNum, 'excel_invoices', String(oNum).replace(/^INV-/i,''),
+                [{key:'received', label:'Received', localValue: row.received, remoteValue: rw.remoteRow.received}],
+                async function onKeepLocal() {
+                  var rw2 = await _writeExcelFieldWithOCC(oNum, 'received', rvAmt, null, { remaining: newRemaining });
+                  if (rw2.ok) {
+                    row.received = rvAmt; row.remaining = newRemaining; row._baselineUpdatedAt = rw2.updatedAt || row._baselineUpdatedAt;
+                    await _upsertCustomerPaymentWithOCC('INV-'+oNum, 'payment', rvAmt, { customer_name: row.customer_name, phone: row.phone, payment_date: row.date }, undefined);
+                    if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+                    if (typeof _searchNameList !== 'undefined') _searchNameList = null;
+                    renderDB(); renderSummary(); toast('✅ Invoice ' + oNum + ' updated successfully');
                   }
-                } else if (rvAmt > 0) {
-                  await sb.from('customer_payments').insert({
-                    customer_name: row.customer_name,
-                    phone: row.phone || null,
-                    amount: rvAmt,
-                    payment_date: row.date,
-                    type: 'payment',
-                    source: 'non_imported',
-                    note: 'Invoice payment — ' + _invRef,
-                    invoice_ref: _invRef,
-                    created_by: currentUser || 'unknown'
-                  });
-                }
+                },
+                function onUseRemote() {
+                  row.received = rw.remoteRow.received;
+                  row._baselineUpdatedAt = rw.remoteRow.updated_at;
+                  renderDB(); renderSummary();
+                  toast('☁ Loaded the current received amount from the server instead');
+                });
+              return;
+            }
+            if (!rw.ok && !rw.queued) {
+              toast('❌ Received save failed');
+            } else {
+              row.received = rvAmt;
+              row.remaining = newRemaining;
+              if (rw.updatedAt) row._baselineUpdatedAt = rw.updatedAt;
+              if (!rw.queued) {
+                await _upsertCustomerPaymentWithOCC('INV-'+oNum, 'payment', rvAmt, { customer_name: row.customer_name, phone: row.phone, payment_date: row.date }, undefined);
                 if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
                 if (typeof _searchNameList !== 'undefined') _searchNameList = null;
-              } catch(e) { console.error('[editExcelInvoice:excel_invoices insert]', e); toast('❌ Received save failed: ' + e.message); }
+              }
             }
           }
         }
@@ -9247,6 +9643,24 @@ async function editInvoice(idx) {
                 database[idx].items = inv.items;
               }
             } catch(e) { console.warn('[editInvoice] items fetch failed:', e); }
+          }
+          // OCC baseline: grab the freshest updated_at for this invoice + its payment row
+          window._editBaselineUpdatedAt = inv.updatedAt || null;
+          window._editBaselineCpAmount = undefined;
+          window._editBaselineCpUpdatedAt = undefined;
+          if (inv._supaId && sb && navigator.onLine) {
+            try {
+              const _freshInv = await sb.from('invoices').select('updated_at').eq('id', inv._supaId).maybeSingle();
+              if (_freshInv.data && _freshInv.data.updated_at) window._editBaselineUpdatedAt = _freshInv.data.updated_at;
+            } catch(e) { console.warn('[editInvoice] baseline fetch failed:', e); }
+            try {
+              const _freshCp = await sb.from('customer_payments').select('amount,updated_at')
+                .eq('invoice_ref', inv.invNum).eq('type','payment').maybeSingle();
+              if (_freshCp.data) {
+                window._editBaselineCpAmount = _freshCp.data.amount;
+                window._editBaselineCpUpdatedAt = _freshCp.data.updated_at;
+              }
+            } catch(e) { console.warn('[editInvoice] cp baseline fetch failed:', e); }
           }
           loadInvoiceIntoForm(inv, idx);
           // Switch to invoice tab
@@ -13008,6 +13422,53 @@ function clearAllCustomerFields() {
 // ══════════════════════════════════════════════
 // DRAFTS
 // ══════════════════════════════════════════════
+
+// Deletes the live invoice row (+ its items) from Supabase, removes it from the
+// local database array, and pushes it into draftsDB with invNum preserved exactly.
+// customer_payments is never touched — payments are tracked independently by
+// invoice_ref regardless of draft/submitted state.
+async function _convertSubmittedToDraft(editIdx, data, supaId) {
+  // ── Update local state + UI FIRST — the Draft tab must reflect this instantly,
+  // not after waiting on network round trips. Server sync happens after, in the
+  // background, without blocking what the user sees. ──
+  if (editIdx > -1 && editIdx < database.length) {
+    database.splice(editIdx, 1);
+    localStorage.setItem('inv_database', JSON.stringify(database));
+  }
+
+  const draftData = Object.assign({}, data);
+  delete draftData._editIdx;
+  delete draftData._baselineUpdatedAt;
+  delete draftData._cpBaselineAmount;
+  delete draftData._cpBaselineUpdatedAt;
+  delete draftData._supaId;
+  draftData.isDraft = true;
+  draftData.savedAt = new Date().toISOString();
+  draftsDB.push(draftData);
+  localStorage.setItem('inv_drafts', JSON.stringify(draftsDB));
+
+  toast('📋 Moved to Drafts: ' + data.invNum);
+  updateDBCount();
+  renderDB();
+  clearForm();
+
+  // ── Now sync to the server in the background ──
+  if (supaId && navigator.onLine && typeof sb !== 'undefined' && sb) {
+    try {
+      await sb.from('invoice_items').delete().eq('invoice_id', supaId);
+      await sb.from('invoices').delete().eq('id', supaId);
+    } catch(e) { console.warn('[saveDraft] failed to delete live invoice row:', e); }
+  }
+  if (typeof sb !== 'undefined' && sb) {
+    try {
+      await sb.from('shop_settings').upsert(
+        [{ key: 'inv_drafts', value: JSON.stringify(draftsDB), updated_at: new Date().toISOString() }],
+        { onConflict: 'key' }
+      );
+    } catch(e) { console.warn('Drafts sync failed:', e); }
+  }
+}
+
 async function saveDraft() {
   const data = collectData();
   const hasPhone = !!data.phone;
@@ -13019,6 +13480,71 @@ async function saveDraft() {
       'A draft requires at least a <strong>customer name</strong> or <strong>phone number</strong>, and at least <strong>one item</strong>.<br><br>Please fill these in before saving as draft.',
       [{ label: 'OK', cls: 'btn-primary', fn: closeModal }]
     );
+    return;
+  }
+
+  // ── Converting a SUBMITTED invoice back to a draft ──
+  // Reuses invNum exactly (no duplicate check, no counter increment), OCC-protected
+  // like any other write, deletes the live invoices row, and never touches
+  // customer_payments — those are tracked independently of draft/submitted state.
+  if (typeof window._currentEditIdx === 'number' && _editingDraftIdx === null) {
+    const editIdx = window._currentEditIdx;
+    const original = database[editIdx];
+    const supaId = original ? original._supaId : null;
+
+    if (!navigator.onLine || typeof sb === 'undefined' || !sb) {
+      toast('📵 Cannot convert to draft while offline — the live invoice must be removed from the server first.');
+      return;
+    }
+
+    if (supaId && data._baselineUpdatedAt) {
+      const occ = await _checkOCC('invoices', 'id', supaId, data._baselineUpdatedAt, [
+        {key:'cust_name',label:'Customer', localValue: data.custName},
+        {key:'received',label:'Received', localValue: data.received},
+        {key:'discount',label:'Discount', localValue: data.discount},
+        {key:'bad_debt',label:'Bad Debt', localValue: parseFloat(data.badDebt) || 0},
+        {key:'total',label:'Total', localValue: data.afterDiscount ?? data.total},
+        {key:'remaining',label:'Remaining', localValue: data.remaining}
+      ]);
+      if (!occ.ok) {
+        var _fieldIdMap = { cust_name:'custName', received:'billReceived', discount:'billDiscount' };
+        _showOCCConflictDialog('Invoice ' + data.invNum, 'invoices', data.invNum, occ.changedFields,
+          function onKeepLocal() {
+            _convertSubmittedToDraft(editIdx, data, supaId);
+          },
+          async function onUseRemote() {
+            try {
+              const _full = await sb.from('invoices').select('id,inv_num,date,cust_name,phone,area,del_date,sub_total,discount,total,received,remaining,bad_debt,created_at,edited_at,is_advance,extra_charges,extra_charges_label,total_sqft,total_kg,updated_at').eq('inv_num', data.invNum).maybeSingle();
+              if (!_full.data) { toast('⚠️ Could not reload the current version'); return; }
+              const _itemsRes = await sb.from('invoice_items').select('*').eq('invoice_id', _full.data.id).order('row_num');
+              const freshInv = {
+                invNum: _full.data.inv_num, date: _full.data.date, custName: _full.data.cust_name, phone: _full.data.phone,
+                area: _full.data.area, delDate: _full.data.del_date, total: parseFloat(_full.data.sub_total||_full.data.total)||0,
+                discount: parseFloat(_full.data.discount)||0, afterDiscount: parseFloat(_full.data.total)||0,
+                received: parseFloat(_full.data.received)||0, remaining: parseFloat(_full.data.remaining)||0,
+                badDebt: parseFloat(_full.data.bad_debt)||'', extraCharges: parseFloat(_full.data.extra_charges)||0,
+                extraChargesLabel: _full.data.extra_charges_label||'Extra Charges', savedAt: _full.data.created_at,
+                editedAt: _full.data.edited_at||null, updatedAt: _full.data.updated_at||null, _supaId: _full.data.id,
+                totalSqft: parseFloat(_full.data.total_sqft)||0, totalKg: parseFloat(_full.data.total_kg)||0,
+                items: (_itemsRes.data||[]).sort(function(a,b){return a.row_num-b.row_num;}).map(function(it){ return {
+                  sizes:it.sizes, foot:it.foot, inch:it.inch, sooter:it.sooter, foot2:it.foot2||0, inch2:it.inch2||0, sooter2:it.sooter2||0,
+                  kg:it.kg, qty:it.qty, gauge:it.gauge, rate:it.rate, sqft:it.sqft, amt:it.amount, mode:it.mode
+                }; })
+              };
+              if (editIdx > -1 && database[editIdx]) { database[editIdx] = Object.assign({}, database[editIdx], freshInv); localStorage.setItem('inv_database', JSON.stringify(database)); }
+              loadInvoiceIntoForm(freshInv, editIdx);
+              window._editBaselineUpdatedAt = freshInv.updatedAt;
+              const idsToHighlight = occ.changedFields.map(function(f){ return _fieldIdMap[f.key]; }).filter(Boolean);
+              _occHighlightFields(idsToHighlight);
+              renderDB(); updateDBCount();
+              toast('☁ Reloaded the current version — draft not saved');
+            } catch(e) { console.warn('[saveDraft] onUseRemote reload failed', e); toast('⚠️ Could not reload the current version'); }
+          });
+        return;
+      }
+    }
+
+    await _convertSubmittedToDraft(editIdx, data, supaId);
     return;
   }
 
@@ -13471,11 +13997,21 @@ function renderHistoricalRecent() {
 }
 
 function deleteDraft(draftIdx) {
-  showModal('🗑️ Delete Draft', 'Delete draft ' + (draftsDB[draftIdx]?.invNum || '') + '? This cannot be undone.',
+  showModal('🗑️ Delete Draft',
+    'Invoice <strong>' + (draftsDB[draftIdx]?.invNum || '') + '</strong> will be marked <strong>Null</strong> and moved to the Null tab.<br><br>' +
+    'The invoice number and date are preserved and can never be reused, but customer name, phone, area, delivery date, and all items will be permanently wiped.<br><br>' +
+    '<span style="color:#c0392b;font-weight:600;">This invoice number will be marked Null and moved to the Null tab — the wiped details cannot be recovered.</span>',
     [
       { label:'Cancel', cls:'btn-outline', fn:closeModal },
       { label:'Delete', cls:'btn-danger', fn: async () => {
-        draftsDB.splice(draftIdx, 1);
+        const d = draftsDB[draftIdx];
+        if (!d) { closeModal(); return; }
+        d.custName = '';
+        d.phone = '';
+        d.area = '';
+        d.delDate = '';
+        d.items = [];
+        d.isNullEntry = true;
         localStorage.setItem('inv_drafts', JSON.stringify(draftsDB));
         if (typeof sb !== 'undefined' && sb) {
           try {
@@ -13486,7 +14022,7 @@ function deleteDraft(draftIdx) {
           } catch(e) { console.warn('Drafts sync failed:', e); }
         }
         renderDB(); updateDBCount(); closeModal();
-        toast('Draft deleted');
+        toast('Invoice ' + (d.invNum || '') + ' marked Null — moved to the Null tab');
       }}
     ]
   );
@@ -13498,9 +14034,10 @@ function switchDbTab(tab) {
   const subBtn = document.getElementById('dbTabSubmitted');
   const advBtn = document.getElementById('dbTabAdvance');
   const dftBtn = document.getElementById('dbTabDraft');
+  const nulBtn = document.getElementById('dbTabNull');
   if (!subBtn || !dftBtn) return;
 
-  [subBtn, advBtn, dftBtn].forEach(b => { if(b){ b.style.background='transparent'; b.style.color='#64748b'; b.style.boxShadow='none'; }});
+  [subBtn, advBtn, dftBtn, nulBtn].forEach(b => { if(b){ b.style.background='transparent'; b.style.color='#64748b'; b.style.boxShadow='none'; }});
 
   const tableWrap = document.getElementById('dbTableWrap');
   if (tableWrap) tableWrap.style.display = '';
@@ -13511,6 +14048,8 @@ function switchDbTab(tab) {
     subBtn.style.boxShadow  = '0 2px 8px rgba(30,41,59,0.2)';
   } else if (tab === 'advance') {
     if (advBtn) { advBtn.style.background='#7c3aed'; advBtn.style.color='#fff'; advBtn.style.boxShadow='0 2px 8px rgba(124,58,237,0.35)'; }
+  } else if (tab === 'null') {
+    if (nulBtn) { nulBtn.style.background='#c0392b'; nulBtn.style.color='#fff'; nulBtn.style.boxShadow='0 2px 8px rgba(192,57,43,0.35)'; }
   } else {
     dftBtn.style.background = '#d97706';
     dftBtn.style.color      = '#fff';
@@ -15733,8 +16272,8 @@ async function loadExcelDBCache() {
     const { count: totalCount } = await sb.from('excel_invoices').select('*', { count: 'exact', head: true });
 
     // Try fetching with received_entries column; fall back gracefully if column doesn't exist yet
-    const _colsFull = 'customer_name,phone,order_num,date,total_bill,received,received_entries,bad_debt,discount,remaining';
-    const _colsBase = 'customer_name,phone,order_num,date,total_bill,received,bad_debt,discount,remaining';
+    const _colsFull = 'customer_name,phone,order_num,date,total_bill,received,received_entries,bad_debt,discount,remaining,updated_at';
+    const _colsBase = 'customer_name,phone,order_num,date,total_bill,received,bad_debt,discount,remaining,updated_at';
     let _useFullCols = true;
     // Quick probe to check if received_entries column exists
     const _probe = await sb.from('excel_invoices').select(_colsFull).range(0, 0);
@@ -15761,6 +16300,8 @@ async function loadExcelDBCache() {
       }
       // Derive received1 from entries array only (received1 column dropped from DB)
       r.received1 = r.received_entries.reduce(function(s,e){ return s+(parseFloat(e.amount)||0); }, 0);
+      // OCC baseline — carried alongside the row so edit-open handlers can pass it into a write without an extra fetch
+      r._baselineUpdatedAt = r.updated_at || null;
     });
     _excelDBCache = allRows;
     window._excelCacheLoadedAt = Date.now();
@@ -16424,7 +16965,7 @@ async function rpRenderCustomerPanel(name, phone) {
       + '<td style="padding:6px 8px;font-size:0.78rem;color:#94a3b8;font-size:0.7rem;">' + _invRef + '</td>'
       + '<td style="padding:6px 8px;font-size:0.78rem;text-align:right;color:#7c3aed;">Rs.' + fmt(_eAmt) + '</td>'
       + '<td style="padding:6px 8px;text-align:center;">'
-      +   '<button onclick="rpEditExcelDisc(\'' + _oNum + '\',\'' + _eAmt + '\',\'' + encodeURIComponent(_eDate) + '\')" style="padding:2px 8px;background:#f5f3ff;border:1px solid #7c3aed;border-radius:5px;color:#7c3aed;font-size:0.72rem;cursor:pointer;font-family:Montserrat,sans-serif;" title="Edit or Delete">✏️ Edit</button>'
+      +   '<button onclick="rpEditExcelDisc(\'' + _oNum + '\',\'' + _eAmt + '\',\'' + encodeURIComponent(_eDate) + '\',\'' + encodeURIComponent(r.updated_at||'') + '\')" style="padding:2px 8px;background:#f5f3ff;border:1px solid #7c3aed;border-radius:5px;color:#7c3aed;font-size:0.72rem;cursor:pointer;font-family:Montserrat,sans-serif;" title="Edit or Delete">✏️ Edit</button>'
       + '</td></tr>';
   }).join('');
 
@@ -16451,7 +16992,7 @@ async function rpRenderCustomerPanel(name, phone) {
       + '<td style="padding:6px 8px;font-size:0.78rem;color:#94a3b8;font-size:0.7rem;">' + _invRef + '</td>'
       + '<td style="padding:6px 8px;font-size:0.78rem;text-align:right;color:#ea580c;">Rs.' + fmt(_eAmt) + '</td>'
       + '<td style="padding:6px 8px;text-align:center;">'
-      +   '<button onclick="rpEditExcelBd(\'' + _oNum + '\',\'' + _eAmt + '\',\'' + encodeURIComponent(_eDate) + '\')" style="padding:2px 8px;background:#fff7ed;border:1px solid #ea580c;border-radius:5px;color:#ea580c;font-size:0.72rem;cursor:pointer;font-family:Montserrat,sans-serif;" title="Edit or Delete">✏️ Edit</button>'
+      +   '<button onclick="rpEditExcelBd(\'' + _oNum + '\',\'' + _eAmt + '\',\'' + encodeURIComponent(_eDate) + '\',\'' + encodeURIComponent(r.updated_at||'') + '\')" style="padding:2px 8px;background:#fff7ed;border:1px solid #ea580c;border-radius:5px;color:#ea580c;font-size:0.72rem;cursor:pointer;font-family:Montserrat,sans-serif;" title="Edit or Delete">✏️ Edit</button>'
       + '</td></tr>';
   }).join('');
 
@@ -16660,7 +17201,7 @@ function rpEditPayment(paymentId, currentAmount, encodedName, entryType, noDelet
   );
 }
 
-function rpEditExcelDisc(orderNum, currentAmount, encodedDate) {
+function rpEditExcelDisc(orderNum, currentAmount, encodedDate, encodedUpdatedAt) {
   showModal('✏️ Edit Discount Entry',
     '<div style="font-size:0.85rem;color:#64748b;margin-bottom:14px;">Current amount: <strong style="color:#7c3aed;">Rs.' + currentAmount + '</strong></div>'
     + '<div style="margin-bottom:10px;"><label style="font-size:0.78rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;">New Amount (Rs.)</label>'
@@ -16685,23 +17226,44 @@ function rpEditExcelDisc(orderNum, currentAmount, encodedDate) {
           var newAmt = parseFloat(document.getElementById('_rpEditDiscAmt').value);
           closeModal();
           if (isNaN(newAmt) || newAmt < 0) { alert('Invalid amount'); return; }
+          var _rawNum = String(orderNum).replace(/^INV-/i,'');
+          var _baselineUpdatedAt = (encodedUpdatedAt && decodeURIComponent(encodedUpdatedAt)) || null;
+          var _invRef = 'INV-' + _rawNum;
+          var _date = decodeURIComponent(encodedDate);
+          var rw = await _writeExcelFieldWithOCC(_rawNum, 'discount', newAmt, _baselineUpdatedAt);
+          if (rw.conflict) {
+            _showOCCConflictDialog('Invoice ' + _invRef, 'excel_invoices', _rawNum,
+              [{key:'discount', label:'Discount', localValue: currentAmount, remoteValue: rw.remoteRow.discount}],
+              async function onKeepLocal() {
+                var rw2 = await _writeExcelFieldWithOCC(_rawNum, 'discount', newAmt, null);
+                if (rw2.ok) {
+                  var row2 = (_excelDBCache||[]).find(function(r){ return String(r.order_num).replace(/^INV-/i,'') === _rawNum; });
+                  if (row2) { row2.discount = newAmt; row2._baselineUpdatedAt = rw2.updatedAt || row2._baselineUpdatedAt; }
+                  await _upsertCustomerPaymentWithOCC(_invRef, 'discount', newAmt, { customer_name: _rpCurrentCustomer.name, phone: _rpCurrentCustomer.phone, payment_date: _date }, undefined);
+                  if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+                  await rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
+                  toast && toast('✅ Discount updated.');
+                }
+              },
+              function onUseRemote() {
+                var row2 = (_excelDBCache||[]).find(function(r){ return String(r.order_num).replace(/^INV-/i,'') === _rawNum; });
+                if (row2) { row2.discount = rw.remoteRow.discount; row2._baselineUpdatedAt = rw.remoteRow.updated_at; }
+                rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
+                toast && toast('☁ Loaded the current discount from the server instead');
+              });
+            return;
+          }
+          if (!rw.ok && !rw.queued) { alert('Failed to save discount'); return; }
           try {
-            var _rawNum = String(orderNum).replace(/^INV-/i,'');
             var row = (_excelDBCache||[]).find(function(r){ return String(r.order_num).replace(/^INV-/i,'') === _rawNum; });
-            if (row) { row.discount = newAmt; }
-            await sb.from('excel_invoices').update({ discount: newAmt }).eq('order_num', _rawNum);
-            var _invRef = 'INV-' + _rawNum;
-            var _cpChk = await sb.from('customer_payments').select('id').eq('invoice_ref', _invRef).eq('type','discount').limit(1);
-            if (_cpChk.data && _cpChk.data.length > 0) {
-              await sb.from('customer_payments').update({ amount: newAmt }).eq('id', _cpChk.data[0].id);
-            } else if (newAmt > 0 && _rpCurrentCustomer) {
-              var _date = decodeURIComponent(encodedDate);
-              await sb.from('customer_payments').insert({ customer_name: _rpCurrentCustomer.name, phone: _rpCurrentCustomer.phone||null, amount: newAmt, payment_date: _date, type: 'discount', source: 'non_imported', note: 'Discount — ' + _invRef, invoice_ref: _invRef, created_by: currentUser||'unknown' });
+            if (row) { row.discount = newAmt; if (rw.updatedAt) row._baselineUpdatedAt = rw.updatedAt; }
+            if (!rw.queued) {
+              await _upsertCustomerPaymentWithOCC(_invRef, 'discount', newAmt, { customer_name: _rpCurrentCustomer.name, phone: _rpCurrentCustomer.phone, payment_date: _date }, undefined);
+              if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
             }
-            if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
             await rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
-            toast && toast('✅ Discount updated.');
-          } catch(e) { console.error('[rpEditExcelDisc:excel_invoices insert]', e); alert('Failed: ' + (e.message||e)); }
+            toast && toast(rw.queued ? '📴 Offline — discount saved locally, will sync when online' : '✅ Discount updated.');
+          } catch(e) { console.error('[rpEditExcelDisc]', e); alert('Failed: ' + (e.message||e)); }
         }
       }
     ]
@@ -16724,7 +17286,7 @@ async function rpDeleteExcelDisc(orderNum, encodedName) {
   } catch(e) { console.error('[rpDeleteExcelDisc:excel_invoices update]', e); alert('Failed: ' + (e.message||e)); }
 }
 
-function rpEditExcelBd(orderNum, currentAmount, encodedDate) {
+function rpEditExcelBd(orderNum, currentAmount, encodedDate, encodedUpdatedAt) {
   showModal('✏️ Edit Bad Debt Entry',
     '<div style="font-size:0.85rem;color:#64748b;margin-bottom:14px;">Current amount: <strong style="color:#ea580c;">Rs.' + currentAmount + '</strong></div>'
     + '<div style="margin-bottom:10px;"><label style="font-size:0.78rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;">New Amount (Rs.)</label>'
@@ -16749,23 +17311,44 @@ function rpEditExcelBd(orderNum, currentAmount, encodedDate) {
           var newAmt = parseFloat(document.getElementById('_rpEditBdAmt').value);
           closeModal();
           if (isNaN(newAmt) || newAmt < 0) { alert('Invalid amount'); return; }
+          var _rawNum = String(orderNum).replace(/^INV-/i,'');
+          var _baselineUpdatedAt = (encodedUpdatedAt && decodeURIComponent(encodedUpdatedAt)) || null;
+          var _invRef = 'INV-' + _rawNum;
+          var _date = decodeURIComponent(encodedDate);
+          var rw = await _writeExcelFieldWithOCC(_rawNum, 'bad_debt', newAmt, _baselineUpdatedAt);
+          if (rw.conflict) {
+            _showOCCConflictDialog('Invoice ' + _invRef, 'excel_invoices', _rawNum,
+              [{key:'bad_debt', label:'Bad Debt', localValue: currentAmount, remoteValue: rw.remoteRow.bad_debt}],
+              async function onKeepLocal() {
+                var rw2 = await _writeExcelFieldWithOCC(_rawNum, 'bad_debt', newAmt, null);
+                if (rw2.ok) {
+                  var row2 = (_excelDBCache||[]).find(function(r){ return String(r.order_num).replace(/^INV-/i,'') === _rawNum; });
+                  if (row2) { row2.bad_debt = newAmt; row2._baselineUpdatedAt = rw2.updatedAt || row2._baselineUpdatedAt; }
+                  await _upsertCustomerPaymentWithOCC(_invRef, 'bad_debt', newAmt, { customer_name: _rpCurrentCustomer.name, phone: _rpCurrentCustomer.phone, payment_date: _date }, undefined);
+                  if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+                  await rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
+                  toast && toast('✅ Bad debt updated.');
+                }
+              },
+              function onUseRemote() {
+                var row2 = (_excelDBCache||[]).find(function(r){ return String(r.order_num).replace(/^INV-/i,'') === _rawNum; });
+                if (row2) { row2.bad_debt = rw.remoteRow.bad_debt; row2._baselineUpdatedAt = rw.remoteRow.updated_at; }
+                rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
+                toast && toast('☁ Loaded the current bad debt from the server instead');
+              });
+            return;
+          }
+          if (!rw.ok && !rw.queued) { alert('Failed to save bad debt'); return; }
           try {
-            var _rawNum = String(orderNum).replace(/^INV-/i,'');
             var row = (_excelDBCache||[]).find(function(r){ return String(r.order_num).replace(/^INV-/i,'') === _rawNum; });
-            if (row) { row.bad_debt = newAmt; }
-            await sb.from('excel_invoices').update({ bad_debt: newAmt }).eq('order_num', _rawNum);
-            var _invRef = 'INV-' + _rawNum;
-            var _cpChk = await sb.from('customer_payments').select('id').eq('invoice_ref', _invRef).eq('type','bad_debt').limit(1);
-            if (_cpChk.data && _cpChk.data.length > 0) {
-              await sb.from('customer_payments').update({ amount: newAmt }).eq('id', _cpChk.data[0].id);
-            } else if (newAmt > 0 && _rpCurrentCustomer) {
-              var _date = decodeURIComponent(encodedDate);
-              await sb.from('customer_payments').insert({ customer_name: _rpCurrentCustomer.name, phone: _rpCurrentCustomer.phone||null, amount: newAmt, payment_date: _date, type: 'bad_debt', source: 'non_imported', note: 'Bad debt — ' + _invRef, invoice_ref: _invRef, created_by: currentUser||'unknown' });
+            if (row) { row.bad_debt = newAmt; if (rw.updatedAt) row._baselineUpdatedAt = rw.updatedAt; }
+            if (!rw.queued) {
+              await _upsertCustomerPaymentWithOCC(_invRef, 'bad_debt', newAmt, { customer_name: _rpCurrentCustomer.name, phone: _rpCurrentCustomer.phone, payment_date: _date }, undefined);
+              if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
             }
-            if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
             await rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
-            toast && toast('✅ Bad debt updated.');
-          } catch(e) { console.error('[rpEditExcelBd:excel_invoices insert]', e); alert('Failed: ' + (e.message||e)); }
+            toast && toast(rw.queued ? '📴 Offline — bad debt saved locally, will sync when online' : '✅ Bad debt updated.');
+          } catch(e) { console.error('[rpEditExcelBd]', e); alert('Failed: ' + (e.message||e)); }
         }
       }
     ]
@@ -16784,20 +17367,39 @@ function rpEditExcelTotal(orderNum, currentTotal) {
           var newTotal = parseFloat(document.getElementById('_rpEditTotalAmt').value);
           closeModal();
           if (isNaN(newTotal) || newTotal < 0) { alert('Invalid amount'); return; }
+          var row = (_excelDBCache||[]).find(function(r){ return String(r.order_num).replace(/^INV-/i,'') === _rawNum; });
+          if (!row) { alert('Row not found — reload DB tab'); return; }
+          var newRemaining = newTotal - (parseFloat(row.received)||0) - (parseFloat(row.received1)||0) - (parseFloat(row.discount)||0) - (parseFloat(row.bad_debt)||0);
+          var rw = await _writeExcelFieldWithOCC(_rawNum, 'total_bill', newTotal, row._baselineUpdatedAt || null, { remaining: newRemaining });
+          if (rw.conflict) {
+            _showOCCConflictDialog('Invoice INV-' + _rawNum, 'excel_invoices', _rawNum,
+              [{key:'total_bill', label:'Total Bill', localValue: currentTotal, remoteValue: rw.remoteRow.total_bill}],
+              async function onKeepLocal() {
+                var rw2 = await _writeExcelFieldWithOCC(_rawNum, 'total_bill', newTotal, null, { remaining: newRemaining });
+                if (rw2.ok) {
+                  row.total_bill = newTotal; row.remaining = newRemaining; row._baselineUpdatedAt = rw2.updatedAt || row._baselineUpdatedAt;
+                  if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+                  await rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
+                  toast && toast('✅ Invoice total updated.');
+                }
+              },
+              function onUseRemote() {
+                row.total_bill = rw.remoteRow.total_bill;
+                row._baselineUpdatedAt = rw.remoteRow.updated_at;
+                rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
+                toast && toast('☁ Loaded the current total bill from the server instead');
+              });
+            return;
+          }
+          if (!rw.ok && !rw.queued) { alert('Failed to save total bill'); return; }
           try {
-            if (typeof sb === 'undefined' || !sb) throw new Error('Not connected');
-            var row = (_excelDBCache||[]).find(function(r){ return String(r.order_num).replace(/^INV-/i,'') === _rawNum; });
-            if (row) {
-              row.total_bill = newTotal;
-              row.remaining = newTotal - (parseFloat(row.received)||0) - (parseFloat(row.received1)||0) - (parseFloat(row.discount)||0) - (parseFloat(row.bad_debt)||0);
-            }
-            if (row) {
-              await sb.from('excel_invoices').update({ total_bill: newTotal, remaining: row.remaining }).eq('order_num', _rawNum);
-            }
-            if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+            row.total_bill = newTotal;
+            row.remaining = newRemaining;
+            if (rw.updatedAt) row._baselineUpdatedAt = rw.updatedAt;
+            if (!rw.queued && typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
             await rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
-            toast && toast('✅ Invoice total updated.');
-          } catch(e) { console.error('[rpEditExcelTotal:excel_invoices update]', e); alert('Failed: ' + (e.message||e)); }
+            toast && toast(rw.queued ? '📴 Offline — total bill saved locally, will sync when online' : '✅ Invoice total updated.');
+          } catch(e) { console.error('[rpEditExcelTotal]', e); alert('Failed: ' + (e.message||e)); }
         }
       }
     ]
@@ -17439,6 +18041,109 @@ function closeModal() {
 document.getElementById('modal').addEventListener('click', e => {
   if (e.target === document.getElementById('modal')) closeModal();
 });
+
+// ══════════════════════════════════════════════
+// OCC — CONFLICT DIALOG, LOGGING, FIELD HIGHLIGHTING
+// ══════════════════════════════════════════════
+// changedFields: [{key,label,localValue,remoteValue}]
+// onKeepLocal(): re-attempt the save, overwriting the remote row anyway
+// onUseRemote(): discard the local edit, reload with fresh remote data
+function _showOCCConflictDialog(entityLabel, table, recordKey, changedFields, onKeepLocal, onUseRemote) {
+  const rowsHtml = changedFields.map(f => `
+    <tr>
+      <td style="padding:6px 10px;color:#64748b;font-weight:600;">${f.label}</td>
+      <td style="padding:6px 10px;"><span class="occ-diff-old">${f.localValue ?? '—'}</span></td>
+      <td style="padding:6px 10px;">→</td>
+      <td style="padding:6px 10px;"><span class="occ-diff-new">${f.remoteValue ?? '—'}</span> <span class="occ-changed-badge">changed</span></td>
+    </tr>`).join('');
+  showModal('⚠️ Someone Else Edited ' + entityLabel,
+    `<p style="margin-bottom:10px;">This record was changed on another device since you opened it. Review the difference below before deciding what to do:</p>
+     <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+       <tr><th></th><th style="text-align:left;color:#94a3b8;font-size:0.7rem;">YOUR VALUE</th><th></th><th style="text-align:left;color:#94a3b8;font-size:0.7rem;">THEIR VALUE</th></tr>
+       ${rowsHtml}
+     </table>`,
+    [
+      { label: 'Keep My Version', cls: 'btn-danger', fn: () => {
+          closeModal();
+          _logSyncConflict(table, recordKey, changedFields, 'kept_local');
+          onKeepLocal();
+        } },
+      { label: 'Use Their Version', cls: 'btn-primary', fn: () => {
+          closeModal();
+          _logSyncConflict(table, recordKey, changedFields, 'used_remote');
+          onUseRemote();
+        } }
+    ]
+  );
+}
+
+function _logSyncConflict(table, recordKey, changedFields, resolution) {
+  if (typeof sb === 'undefined' || !sb) return; // best-effort — never block the resolution UX
+  try {
+    const rows = changedFields.map(f => ({
+      table_name: table,
+      record_key: String(recordKey),
+      field: f.key,
+      local_value: JSON.stringify(f.localValue ?? null),
+      remote_value: JSON.stringify(f.remoteValue ?? null),
+      resolution: resolution,
+      device_id: (typeof DEVICE_ID !== 'undefined') ? DEVICE_ID : null,
+      created_by: (typeof currentUser !== 'undefined') ? currentUser : null
+    }));
+    sb.from('sync_conflict_log').insert(rows).then(function(){}, function(e){ console.warn('[sync_conflict_log]', e); });
+  } catch(e) { console.warn('[sync_conflict_log]', e); }
+}
+
+// fieldIds: array of DOM element ids to visually flag as "changed since you last saw this"
+function _occHighlightFields(fieldIds) {
+  (fieldIds || []).forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add('occ-field-changed');
+    setTimeout(function(){ el.classList.remove('occ-field-changed'); }, 8000);
+  });
+}
+
+// ─── PERSISTENT SYNC-CONFLICT QUEUE (background-flush conflicts) ───
+// Conflicts detected by an unattended background flush (10s auto-sync, online
+// event, _masterResync) have no open form to interrupt, so they can't pop a
+// dialog immediately without risking one clobbering another mid-loop. Instead
+// they queue here behind a persistent banner (no auto-dismiss) that the user
+// clicks when ready — resolving one at a time through the same real dialog
+// used by the interactive path, never a silent/vanishing toast.
+let _bgConflictQueue = [];
+
+// entry: { entityLabel, table, recordKey, changedFields, onKeepLocal, onUseRemote }
+function _queueBgConflict(entry) {
+  _bgConflictQueue.push(entry);
+  _renderBgConflictBanner();
+}
+
+function _renderBgConflictBanner() {
+  var banner = document.getElementById('bgConflictBanner');
+  if (_bgConflictQueue.length === 0) {
+    if (banner) banner.remove();
+    return;
+  }
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'bgConflictBanner';
+    banner.className = 'bg-conflict-banner';
+    banner.onclick = _resolveNextBgConflict;
+    document.body.appendChild(banner);
+  }
+  var n = _bgConflictQueue.length;
+  banner.textContent = '⚠️ ' + n + ' sync conflict' + (n > 1 ? 's need' : ' needs') + ' your attention — tap to resolve';
+}
+
+function _resolveNextBgConflict() {
+  if (_bgConflictQueue.length === 0) return;
+  var entry = _bgConflictQueue.shift();
+  _renderBgConflictBanner();
+  _showOCCConflictDialog(entry.entityLabel, entry.table, entry.recordKey, entry.changedFields,
+    entry.onKeepLocal, entry.onUseRemote);
+}
+window._resolveNextBgConflict = _resolveNextBgConflict;
 
 // ══════════════════════════════════════════════
 // TOAST
@@ -27613,6 +28318,11 @@ async function _authInit() {
     // new auth system in this case and does nothing — so we must
     // perform the actual app startup here: load data, render tables,
     // and update counts, exactly as the legacy handler used to.
+    // NOTE: must set the bare `currentUser` (not just window.currentUser) —
+    // it's a separate script-scope binding that the rest of the app (e.g.
+    // doSubmit's online/currentUser gate) actually reads.
+    currentUser = sess.display_name;
+    window.currentUser = sess.display_name;
     _authUpdateHeader(sess);
 
     var ls = document.getElementById('loginScreen');
@@ -27844,6 +28554,7 @@ window._authDoLogin = _authDoLogin;
 
 // ─── COMPLETE LOGIN ───────────────────────────────────────────
 async function _authCompleteLogin(sess) {
+  currentUser = sess.display_name;
   window.currentUser = sess.display_name;
   localStorage.setItem('inv_logged_user', sess.display_name);
   _authUpdateHeader(sess);
@@ -29461,6 +30172,7 @@ window.addEventListener('online', async function() {
     }
     if (typeof flushPendingUpdates === 'function') await flushPendingUpdates();
     if (typeof flushPendingQueue   === 'function') await flushPendingQueue();
+    if (typeof flushExcelPendingQueue === 'function') await flushExcelPendingQueue();
     var sumTab = document.getElementById('summaryTab');
     if (sumTab && sumTab.style.display !== 'none' && typeof renderSummary === 'function') {
       await renderSummary();
