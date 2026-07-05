@@ -6329,16 +6329,28 @@ async function adminApplyEdit() {
   if (!newName && !newPhone) { toast('⚠ Enter a new name or phone'); return; }
   try {
     var rpcData = null;
-    if (newName && newName !== oldName) {
+    var nameChanged = !!(newName && newName !== oldName);
+    var draftRenameCount = 0;
+    if (nameChanged) {
       var check = await _checkNameExists(newName);
-      var existingCount = (check.inv_count || 0) + (check.excel_count || 0);
+      var existingCount = (check.inv_count || 0) + (check.excel_count || 0) + (check.pay_count || 0) + (check.grant_count || 0);
       if (existingCount > 0) {
         if (!confirm('⚠ "' + newName + '" already has ' + existingCount + ' record(s). This will merge them. Continue?')) return;
       }
       var _rpc = await sb.rpc('update_customer_name', { p_old_name: oldName, p_new_name: newName });
       rpcData = _rpc.data;
       if (_rpc.error) throw _rpc.error;
-      toast('✅ Renamed — ' + ((rpcData && rpcData[0] && rpcData[0].total) || 0) + ' record(s) updated');
+
+      // Also rename matching draft entries — atomic, targeted JSONB update inside
+      // the RPC (never a wholesale client-side read-modify-write), so drafts don't
+      // keep showing the old name after the rest of the customer's records change.
+      try {
+        var _draftRpc = await sb.rpc('rename_customer_in_drafts', { p_old_name: oldName, p_new_name: newName });
+        draftRenameCount = _draftRpc.data || 0;
+      } catch(_draftErr) { console.warn('[adminApplyEdit] draft rename failed', _draftErr); }
+
+      toast('✅ Renamed — ' + ((rpcData && rpcData[0] && rpcData[0].total) || 0) + ' record(s) updated'
+        + (draftRenameCount > 0 ? ' + ' + draftRenameCount + ' draft(s)' : ''));
     }
     if (newPhone) {
       await updateCustomerPhone(newName || oldName, newPhone);
@@ -6364,8 +6376,32 @@ async function adminApplyEdit() {
         branch_id:     'branch_main'
       });
     } catch(_logErr) { console.error('[adminApplyEdit log FAILED]', _logErr); toast('⚠ Edit applied but audit log failed'); }
+
+    // Refresh local in-memory state immediately so THIS admin's own open tab
+    // reflects the new name right away, instead of showing stale data until
+    // the next full reload (updateCustomerPhone already does this for phone).
+    if (nameChanged) {
+      var oldKey = oldName.trim().toLowerCase();
+      (database || []).forEach(function(inv) {
+        if ((inv.custName||'').trim().toLowerCase() === oldKey) inv.custName = newName;
+      });
+      localStorage.setItem('inv_database', JSON.stringify(database));
+
+      (_excelDBCache || []).forEach(function(r) {
+        if ((r.customer_name||'').trim().toLowerCase() === oldKey) r.customer_name = newName;
+      });
+
+      (draftsDB || []).forEach(function(d) {
+        if ((d.custName||'').trim().toLowerCase() === oldKey) d.custName = newName;
+      });
+      localStorage.setItem('inv_drafts', JSON.stringify(draftsDB));
+
+      _pbCustCache = null;
+    }
+
     adminCancelEdit();
     if (typeof renderDB === 'function') renderDB();
+    if (typeof renderSummary === 'function') renderSummary();
   } catch(e) { console.error(e); toast('⚠ Failed: ' + (e.message || e)); }
 }
 
@@ -13052,11 +13088,12 @@ async function denyIdentityChange(requestId) {
 }
 
 async function _checkNameExists(name) {
-  if (!sb || !name) return { inv_count: 0, excel_count: 0 };
+  var empty = { inv_count: 0, excel_count: 0, pay_count: 0, grant_count: 0 };
+  if (!sb || !name) return empty;
   try {
     var { data } = await sb.rpc('count_customer_invoices', { p_name: name });
-    return (data && data[0]) || { inv_count: 0, excel_count: 0 };
-  } catch(e) { console.warn(e); return { inv_count: 0, excel_count: 0 }; }
+    return (data && data[0]) || empty;
+  } catch(e) { console.warn(e); return empty; }
 }
 
 // ── Total Bill inline edit helpers ──
@@ -25625,161 +25662,6 @@ window.debugExcel = async function() {
   const r4 = await sb.from('excel_invoices').select('source').limit(5);
   console.log('Source values in table:', r4.data?.map(r=>r.source));
 };
-
-// ══════════════════════════════════════════
-// AUTOCOMPLETE on invoice screen
-// ══════════════════════════════════════════
-(function() {
-  function tryInit() {
-    var nameEl  = document.getElementById('custName');
-    var phoneEl = document.getElementById('custPhone');
-    if (!nameEl || !phoneEl) { setTimeout(tryInit, 800); return; }
-
-    function makeDD(anchor, id) {
-      var existing = document.getElementById(id);
-      if (existing) return existing;
-      var dd = document.createElement('div');
-      dd.id  = id;
-      dd.style.cssText = 'display:none;position:absolute;z-index:9999;background:#fff;border:1.5px solid #6ee7b7;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,0.15);max-height:220px;overflow-y:auto;font-family:Montserrat,sans-serif;min-width:260px;left:0;top:100%;';
-      var p = anchor.parentNode;
-      if (window.getComputedStyle(p).position === 'static') p.style.position = 'relative';
-      p.appendChild(dd);
-      return dd;
-    }
-
-    function getAllCustomers() {
-      if (_pbCustCache) return Promise.resolve(_pbCustCache);
-      var map = {};
-
-      // 1. From live invoices database
-      (window.database || []).forEach(function(inv) {
-        if (inv.isNull || inv.isDraft || !inv.custName) return;
-        var ph  = (inv.phone || '').replace(/[^0-9]/g, '');
-        var key = ph || ('n_' + inv.custName.toLowerCase().trim());
-        if (!map[key]) map[key] = { name: inv.custName, phone: inv.phone || '', area: inv.area || '' };
-        if (inv.area && !map[key].area) map[key].area = inv.area;
-      });
-
-      if (!sb) { _pbCustCache = Object.values(map); return Promise.resolve(_pbCustCache); }
-
-      // 2. From pending_bills table
-      var p1 = sb.from('pending_bills').select('customer_name,phone,area').then(function(r) {
-        (r.data || []).forEach(function(rec) {
-          var ph  = (rec.phone || '').replace(/[^0-9]/g, '');
-          var key = ph || ('n_' + (rec.customer_name || '').toLowerCase().trim());
-          if (!map[key]) map[key] = { name: rec.customer_name || '', phone: rec.phone || '', area: rec.area || '' };
-          if (rec.area && !map[key].area) map[key].area = rec.area;
-        });
-      }).catch(function(){});
-
-      // 3. From excel_invoices table — paginated, with name→phone merge
-      var p2 = (async function() {
-        var allRecs = [], from = 0, batch = 1000, done = false;
-        while (!done) {
-          var res = await sb.from('excel_invoices')
-            .select('customer_name,phone')
-            .range(from, from + batch - 1);
-          if (res.error || !res.data) break;
-          allRecs = allRecs.concat(res.data);
-          if (res.data.length < batch) done = true;
-          else from += batch;
-        }
-        // Build name→phone lookup
-        var n2p = {};
-        allRecs.forEach(function(rec) {
-          var ph = (rec.phone || '').replace(/[^0-9]/g, '');
-          var nm = (rec.customer_name || '').trim();
-          if (ph && !n2p[nm]) n2p[nm] = rec.phone;
-        });
-        // Merge into map
-        allRecs.forEach(function(rec) {
-          var nm  = (rec.customer_name || '').trim();
-          var ph  = (rec.phone || '').replace(/[^0-9]/g, '') || (n2p[nm]||'').replace(/[^0-9]/g,'');
-          var key = ph || ('n_' + nm.toLowerCase());
-          var resolvedPhone = rec.phone || n2p[nm] || '';
-          if (!map[key]) map[key] = { name: nm, phone: resolvedPhone, area: '' };
-          if (resolvedPhone && !map[key].phone) map[key].phone = resolvedPhone;
-        });
-      })().catch(function(){});
-
-      return Promise.all([p1, p2]).then(function() {
-        _pbCustCache = Object.values(map);
-        return _pbCustCache;
-      }).catch(function() {
-        _pbCustCache = Object.values(map);
-        return _pbCustCache;
-      });
-    }
-
-    function fillCust(c) {
-      var n = document.getElementById('custName');
-      var p = document.getElementById('custPhone');
-      var a = document.getElementById('custArea');
-      if (n) { n.value = c.name; n.readOnly = true; if (typeof lockCustField === 'function') lockCustField('custName', 'custNameLabel', 'Customer Name'); }
-      if (p && c.phone) {
-        var ph = c.phone.replace(/[^0-9]/g, '');
-        // Field has +92 prefix already — strip leading 0 so result is +92-3XXXXXXXXX
-        if (ph.startsWith('0')) ph = ph.slice(1);
-        p.value = ph;
-        // Trigger readonly lock like manual entry would
-        if (typeof lockCustField === 'function') lockCustField('custPhone', 'custPhoneLabel', 'Phone <span class="req">★ required</span>');
-      }
-      if (a && c.area) { a.value = c.area; if (typeof lockCustField === 'function') lockCustField('custArea', 'custAreaLabel', 'Area / Address'); }
-      if (typeof toast === 'function') toast('Customer: ' + c.name);
-      ['pbNameDrop', 'pbPhoneDrop'].forEach(function(id) { var d = document.getElementById(id); if (d) d.style.display = 'none'; });
-    }
-
-    function showDD(dd, items) {
-      if (!items.length) { dd.style.display = 'none'; return; }
-      dd.innerHTML = '';
-      items.forEach(function(c) {
-        var div = document.createElement('div');
-        div.style.cssText = 'padding:9px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:0.8rem;';
-        div.innerHTML =
-          '<span style="font-weight:700;color:#0f1e45;">' + c.name + '</span>' +
-          (c.phone ? '<span style="color:#64748b;margin-left:8px;font-size:0.7rem;">' + c.phone + '</span>' : '') +
-          (c.area  ? '<span style="color:#94a3b8;margin-left:6px;font-size:0.65rem;">' + c.area  + '</span>' : '');
-        div.addEventListener('mouseover', function() { this.style.background = '#f0fdf4'; });
-        div.addEventListener('mouseout',  function() { this.style.background = ''; });
-        div.addEventListener('mousedown', function() { fillCust(c); });
-        dd.appendChild(div);
-      });
-      dd.style.display = '';
-    }
-
-    var nameDrop  = makeDD(nameEl,  'pbNameDrop');
-    var phoneDrop = makeDD(phoneEl, 'pbPhoneDrop');
-
-    nameEl.addEventListener('input', function() {
-      if (this.readOnly) return;
-      var q = this.value.trim().toLowerCase();
-      if (q.length < 2) { nameDrop.style.display = 'none'; return; }
-      getAllCustomers().then(function(all) {
-        // Rank: starts-with first, then contains
-        var starts   = all.filter(function(c){ return c.name.toLowerCase().startsWith(q); });
-        var contains = all.filter(function(c){ return !c.name.toLowerCase().startsWith(q) && c.name.toLowerCase().includes(q); });
-        var m = starts.concat(contains).slice(0, 10);
-        showDD(nameDrop, m);
-      });
-    });
-    nameEl.addEventListener('blur', function() { setTimeout(function() { nameDrop.style.display = 'none'; }, 250); });
-
-    phoneEl.addEventListener('input', function() {
-      if (this.readOnly) return;
-      var q = this.value.replace(/[^0-9]/g, '');
-      if (q.length < 4) { phoneDrop.style.display = 'none'; return; }
-      getAllCustomers().then(function(all) {
-        var m = all.filter(function(c) {
-          var ph = (c.phone || '').replace(/[^0-9]/g, '');
-          return ph && (ph.includes(q) || ph.endsWith(q));
-        }).slice(0, 10);
-        if (m.length) showDD(phoneDrop, m); else phoneDrop.style.display = 'none';
-      });
-    });
-    phoneEl.addEventListener('blur', function() { setTimeout(function() { phoneDrop.style.display = 'none'; }, 250); });
-  }
-  setTimeout(tryInit, 1200);
-})();
 
 // ════════════════════════════════════════════════════
 // GLOBAL: Print customer account statement
