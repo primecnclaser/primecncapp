@@ -25073,7 +25073,7 @@ function pbBuildUnifiedMap() {
     map[key].orders.push({ orderNo: r.order_no, date: r.bill_date, totalBill: parseFloat(r.total_bill) || 0, received: (parseFloat(r.received1) || 0) + (parseFloat(r.received2) || 0), discount: parseFloat(r.discount) || 0, pending: bal });
   });
 
-  (window.database || []).forEach(function(inv) {
+  (database || []).forEach(function(inv) {
     if (inv.isNull || inv.isDraft || inv.isAdvance) return;
     var phone = (inv.phone || '').replace(/[^0-9]/g, '');
     var key   = phone ? phone : ('noPhone_' + (inv.custName || '').trim().toLowerCase());
@@ -25121,17 +25121,6 @@ function pbRenderSummary() {
       '<div style="font-size:0.62rem;font-weight:700;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px;">Total Bills</div>' +
       '<div style="font-size:1.1rem;font-weight:800;color:#fff;">Rs. ' + pbFmt(totalBill) + '</div>' +
     '</div>';
-
-  // Also update the Remaining in Market card in Summary tab if visible
-  var remCard = document.querySelector('.s-card.sc-remaining .s-card-val');
-  if (remCard && totalPending > 0) {
-    var curText = remCard.textContent || '';
-    var curNum  = parseFloat(curText.replace(/[^0-9.]/g, '')) || 0;
-    if (curNum > 0) {
-      remCard.innerHTML = 'Rs. ' + pbFmt(curNum + totalPending) +
-        '<div style="font-size:0.55rem;opacity:0.8;margin-top:2px;">incl. Rs.' + pbFmt(totalPending) + ' excel import</div>';
-    }
-  }
 }
 
 // ── Customer table ──
@@ -25317,7 +25306,7 @@ function pbLoadXLSX() {
 // Build a name-to-phone lookup from existing live invoices
 function pbBuildNamePhoneMap() {
   var map = {};
-  (window.database || []).forEach(function(inv) {
+  (database || []).forEach(function(inv) {
     if (!inv.custName || !inv.phone || inv.isNull) return;
     var name  = inv.custName.trim().toLowerCase();
     var phone = inv.phone.replace(/[^0-9]/g, '');
