@@ -4554,24 +4554,6 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
 
       </div>
 
-      <!-- PENDING BILLS PANEL -->
-      <div id="finPendingBills" style="display:none;padding:18px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
-          <span class="fin-section-title">&#127978; Pending Bills</span>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <button onclick="pbSetupTable()" style="padding:8px 14px;background:#1e293b;color:#fff;border:none;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;">&#128295; Setup Table</button>
-            <button onclick="pbOpenImport()" style="padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;">&#128229; Import Excel</button>
-            <button onclick="pbOpenEditCustomer()" style="padding:8px 14px;background:#d97706;color:#fff;border:none;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;">&#9998; Edit Customer</button>
-            <button onclick="pbLoad()" style="padding:8px 14px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;">&#128260; Refresh</button>
-          </div>
-        </div>
-        <div id="pbSummaryCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px;"></div>
-        <div id="pbCustomerTable" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">
-          <div style="padding:20px;text-align:center;color:#94a3b8;font-size:0.82rem;">Click Refresh to load pending bills.</div>
-        </div>
-        <div id="pbOrdersPanel" style="display:none;margin-top:16px;background:#fff;border-radius:12px;border:1.5px solid #6366f1;overflow:hidden;"></div>
-      </div>
-
       <!-- ═══ INVESTORS / PARTNERS ═══ -->
       <div id="finInvestors" style="display:none;padding:18px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
@@ -4887,8 +4869,6 @@ const DEVICE_ID = localStorage.getItem('sb_device_id') || (() => {
 })();
 
 let pendingQueue = JSON.parse(localStorage.getItem('inv_pending_queue') || '[]');
-let _pbPendingEdits = JSON.parse(localStorage.getItem('inv_pb_pending_edits') || '[]');
-function _savePbPending() { localStorage.setItem('inv_pb_pending_edits', JSON.stringify(_pbPendingEdits)); }
 let isSyncing = false;
 
 // ─── PENDING FIELD-UPDATE QUEUE (badDebt, remaining) ───
@@ -5195,7 +5175,6 @@ function _hasPendingWork() {
     (typeof _pendingUpdates !== 'undefined' && _pendingUpdates.length > 0) ||
     (typeof _finPendingSync !== 'undefined' && _finPendingSync.length > 0) ||
     (typeof _finDeleteQueue !== 'undefined' && _finDeleteQueue.length > 0) ||
-    (typeof _pbPendingEdits !== 'undefined' && _pbPendingEdits.length > 0) ||
     (JSON.parse(localStorage.getItem('cp_pending_sync') || '[]')).length > 0 ||
     (JSON.parse(localStorage.getItem('manual_inv_pending') || '[]')).length > 0 ||
     (typeof _excelPendingQueue !== 'undefined' && _excelPendingQueue.length > 0)
@@ -5236,19 +5215,6 @@ async function _masterResync() {
     await _flushManualInvPending();       // manually typed offline invoices
     await flushFinLedgerPending();        // finance ledger inserts + deletes
     await flushExcelPendingQueue();       // excel_invoices field edits
-
-    // flush _pbPendingEdits if function exists
-    if (typeof _flushPbPending === 'function') {
-      await _flushPbPending();
-    } else if (typeof _pbPendingEdits !== 'undefined' && _pbPendingEdits.length > 0 && sb) {
-      for (var i = 0; i < _pbPendingEdits.length; i++) {
-        try {
-          await sb.from('pending_bills').upsert(_pbPendingEdits[i], { onConflict: 'id' });
-        } catch(e) { console.warn('[pbPending]', e); }
-      }
-      _pbPendingEdits = [];
-      if (typeof _savePbPending === 'function') _savePbPending();
-    }
 
     // ── Phase 2: Pull fresh data (Download latest) ──
     setSyncStatus('syncing', '⟳ Fetching latest data...');
@@ -5478,23 +5444,6 @@ window.addEventListener('online', async () => {
   await _flushManualInvPending();
   // Flush excel_invoices field edits queued while offline
   await flushExcelPendingQueue();
-  if (_pbPendingEdits.length > 0 && sb) {
-    var _toRetry = [..._pbPendingEdits];
-    _pbPendingEdits = [];
-    _savePbPending();
-    _toRetry.forEach(function(edit) {
-      sb.from('pending_bills').update(edit.payload).ilike('customer_name', edit.oldName).then(function(r) {
-        if (r.error) throw r.error;
-        if (!edit.oldPhone) return;
-        return sb.from('pending_bills').update(edit.payload).eq('phone', edit.oldPhone);
-      }).then(function() {
-        toast('☁ Pending customer edit synced');
-      }).catch(function(e) {
-        _pbPendingEdits.push(edit);
-        _savePbPending();
-      });
-    });
-  }
   if (currentUser) {
     await loadFromSupabase();
     renderDB();
@@ -6395,8 +6344,6 @@ async function adminApplyEdit() {
         if ((d.custName||'').trim().toLowerCase() === oldKey) d.custName = newName;
       });
       localStorage.setItem('inv_drafts', JSON.stringify(draftsDB));
-
-      _pbCustCache = null;
     }
 
     adminCancelEdit();
@@ -7374,7 +7321,6 @@ function setInvoiceNumber() {
   } catch(_lde) { console.warn("[setInvoiceNumber drafts]", _lde); }
 
   // Query Supabase for highest submitted invoice number
-  // and also check pending_bills / any other sources
   if (typeof sb !== "undefined" && sb && navigator.onLine) {
     sb.from("invoices")
       .select("inv_num")
@@ -8292,7 +8238,7 @@ async function doSubmit(data) {
             if (supaId2 !== null && !(supaId2 && supaId2.conflict)) {
               const idx2 = database.findIndex(d => d.invNum === data.invNum);
               if (idx2 !== -1) { database[idx2]._supaId = supaId2; database[idx2].updatedAt = new Date().toISOString(); localStorage.setItem('inv_database', JSON.stringify(database)); }
-              toast('✅ Invoice ' + data.invNum + ' updated & synced!'); _pbCustCache = null;
+              toast('✅ Invoice ' + data.invNum + ' updated & synced!');
             } else {
               addToPendingQueue({ ...retryData, _supaId: prevSupaId });
               toast('Invoice ' + data.invNum + ' updated locally — cloud sync pending.');
@@ -8337,7 +8283,7 @@ async function doSubmit(data) {
       if (supaId !== null) {
         const idx2 = database.findIndex(d => d.invNum === data.invNum);
         if (idx2 !== -1) { database[idx2]._supaId = supaId; localStorage.setItem('inv_database', JSON.stringify(database)); }
-        toast('✅ Invoice ' + data.invNum + ' updated & synced!'); _pbCustCache = null;
+        toast('✅ Invoice ' + data.invNum + ' updated & synced!');
 
       } else {
         addToPendingQueue({ ...data, _supaId: prevSupaId });
@@ -8453,7 +8399,7 @@ async function doSubmit(data) {
       } else if (isAdvance) {
         toast('💰 Advance payment saved! Rs.' + fmt(data.received) + ' recorded for ' + (data.custName || data.phone));
       } else {
-        toast('✅ Invoice saved! Next: INV-' + invoiceCounter); _pbCustCache = null;
+        toast('✅ Invoice saved! Next: INV-' + invoiceCounter);
       }
     } else {
       addToPendingQueue(data);
@@ -12654,8 +12600,8 @@ function onSearchInv(val) {
 // Reads only already-in-memory arrays (no network round trip), so
 // unlike the old per-function scanning this needs no caching layer.
 // Does NOT touch financial-total functions (rpGetCustomerSummary,
-// pbBuildUnifiedMap) — those intentionally keep excluding drafts from
-// money totals, since a draft has no real committed bill yet.
+// buildAllCustomerSummaries) — those intentionally keep excluding drafts
+// from money totals, since a draft has no real committed bill yet.
 // query: optional — if provided, filters by name substring (starts-with
 // ranked above contains-only) matching the existing dropdown UX; if
 // omitted, returns the full deduped list alphabetically (used by
@@ -13004,8 +12950,6 @@ async function updateCustomerPhone(name, newPhone) {
       catch(e3) { console.warn('Phone update (excel_invoices fallback):', e3); }
     }
   }
-
-  _pbCustCache = null;
 
   var displayTotal = supaTotal || updNew;
   toast('✅ Phone updated to ' + newPhone + ' — ' + displayTotal + ' invoice(s) updated for ' + trimName);
@@ -19315,14 +19259,12 @@ function switchFinTab(tab, el) {
   document.getElementById('finDaily').style.display     = tab === 'daily'     ? '' : 'none';
   document.getElementById('finLedger').style.display    = tab === 'ledger'    ? '' : 'none';
   document.getElementById('finSalaries').style.display  = tab === 'salaries'  ? '' : 'none';
-  document.getElementById('finPendingBills').style.display  = tab === 'pendingbills' ? '' : 'none';
   document.getElementById('finInvestors').style.display = tab === 'investors' ? '' : 'none';
   document.getElementById('finPLReport').style.display  = tab === 'plreport'  ? '' : 'none';
   if (tab === 'dashboard') renderDashboard();
   if (tab === 'daily')     { initRecentYearDropdown(); }
   if (tab === 'ledger')    { _ledgerPage = 1; populateLedgerYears().then(() => renderLedger()); }
   if (tab === 'salaries')  { salInit(); }
-  if (tab === 'pendingbills') { pbLoad(); }
   if (tab === 'investors') { renderInvestSavings(); }
   if (tab === 'plreport')  { renderPLReport(); }
 }
@@ -24870,428 +24812,7 @@ async function exportFullBackup() {
 </div>
 
 
-<!-- PENDING BILLS MODALS -->
-<div id="pbImportModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)pbCloseImport()">
-  <div style="background:#fff;border-radius:18px;width:100%;max-width:720px;max-height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,0.4);font-family:Montserrat,sans-serif;">
-    <div style="background:linear-gradient(135deg,#065f46,#059669);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-      <div>
-        <div style="font-weight:700;color:#fff;font-size:1rem;">&#128229; Import Pending Bills</div>
-        <div style="font-size:0.7rem;color:#bbf7d0;margin-top:3px;">Upload Excel — auto-matches phones from existing invoices</div>
-      </div>
-      <button onclick="pbCloseImport()" style="background:rgba(255,255,255,0.15);border:none;color:#fff;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:1rem;">&#10005;</button>
-    </div>
-    <div style="padding:20px 24px;overflow-y:auto;flex:1;">
-      <div id="pbStep1">
-        <div style="border:2px dashed #6ee7b7;border-radius:12px;padding:30px;text-align:center;background:#f0fdf4;cursor:pointer;" onclick="document.getElementById('pbFileInput').click()">
-          <div style="font-size:2rem;margin-bottom:8px;">&#128194;</div>
-          <div style="font-weight:700;color:#065f46;font-size:0.9rem;">Click to select Excel file</div>
-          <div style="font-size:0.72rem;color:#059669;margin-top:4px;">Orders.xlsx</div>
-        </div>
-        <input type="file" id="pbFileInput" accept=".xlsx,.xls" style="display:none;" onchange="pbReadExcel(this)">
-        <div id="pbReadStatus" style="margin-top:12px;font-size:0.78rem;color:#64748b;text-align:center;"></div>
-      </div>
-      <div id="pbStep2" style="display:none;">
-        <div style="margin-bottom:10px;">
-          <div style="font-size:0.78rem;font-weight:700;color:#065f46;" id="pbPreviewTitle">Preview</div>
-          <div style="font-size:0.65rem;margin-top:4px;color:#475569;">
-            &#128994; Original phone &nbsp; &#128309; Auto-matched from invoices &nbsp; &#128993; Still no phone
-          </div>
-        </div>
-        <div id="pbPhoneAssign" style="display:none;margin-bottom:14px;background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:14px;">
-          <div id="pbNoPhoneTitle" style="font-size:0.75rem;font-weight:700;color:#92400e;margin-bottom:10px;">Customers still without phone — assign manually (optional):</div>
-          <div id="pbPhoneAssignList" style="display:flex;flex-direction:column;gap:8px;max-height:200px;overflow-y:auto;"></div>
-        </div>
-        <div id="pbPreviewTable" style="overflow-x:auto;max-height:320px;overflow-y:auto;border-radius:8px;border:1px solid #e2e8f0;"></div>
-      </div>
-    </div>
-    <div style="padding:14px 24px;border-top:1px solid #e2e8f0;display:flex;gap:10px;justify-content:flex-end;flex-shrink:0;">
-      <button onclick="pbCloseImport()" style="padding:9px 20px;border:1.5px solid #cbd5e1;border-radius:8px;background:#fff;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.82rem;cursor:pointer;color:#64748b;">Cancel</button>
-      <button id="pbSaveBtn" onclick="pbSaveToSupabase()" style="display:none;padding:9px 22px;border:none;border-radius:8px;background:linear-gradient(135deg,#065f46,#059669);color:#fff;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.82rem;cursor:pointer;">Save to Supabase</button>
-    </div>
-  </div>
-</div>
-
-<div id="pbEditCustModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)pbCloseEditCustomer()">
-  <div style="background:#fff;border-radius:18px;width:100%;max-width:560px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.4);font-family:Montserrat,sans-serif;">
-    <div style="background:linear-gradient(135deg,#92400e,#d97706);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;">
-      <div>
-        <div style="font-weight:700;color:#fff;font-size:1rem;">&#9998; Edit Customer</div>
-        <div style="font-size:0.7rem;color:#fde68a;margin-top:3px;">Fix name, phone, area — updates all records</div>
-      </div>
-      <button onclick="pbCloseEditCustomer()" style="background:rgba(255,255,255,0.15);border:none;color:#fff;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:1rem;">&#10005;</button>
-    </div>
-    <div style="padding:20px 24px;">
-      <div style="margin-bottom:16px;">
-        <div style="font-size:0.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.7px;margin-bottom:5px;">Search Customer</div>
-        <input type="text" id="pbEditSearch" placeholder="Type name or phone..." style="width:100%;padding:9px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.88rem;outline:none;box-sizing:border-box;" oninput="pbEditSearchCustomer(this.value)">
-        <div id="pbEditSearchResults" style="margin-top:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;max-height:150px;overflow-y:auto;display:none;"></div>
-      </div>
-      <div id="pbEditFields" style="display:none;">
-        <div style="background:#f0fdf4;border:1.5px solid #6ee7b7;border-radius:10px;padding:14px;margin-bottom:14px;">
-          <div style="font-size:0.68rem;font-weight:700;color:#065f46;margin-bottom:10px;">Edit and save:</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div>
-              <div style="font-size:0.62rem;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:3px;">Name</div>
-              <input type="text" id="pbEditName" style="width:100%;padding:8px 10px;border:1.5px solid #cbd5e1;border-radius:7px;font-family:Montserrat,sans-serif;font-size:0.85rem;outline:none;box-sizing:border-box;">
-            </div>
-            <div>
-              <div style="font-size:0.62rem;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:3px;">Phone</div>
-              <input type="text" id="pbEditPhone" style="width:100%;padding:8px 10px;border:1.5px solid #cbd5e1;border-radius:7px;font-family:Montserrat,sans-serif;font-size:0.85rem;outline:none;box-sizing:border-box;">
-            </div>
-            <div style="grid-column:1/-1;">
-              <div style="font-size:0.62rem;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:3px;">Area (optional)</div>
-              <input type="text" id="pbEditArea" style="width:100%;padding:8px 10px;border:1.5px solid #cbd5e1;border-radius:7px;font-family:Montserrat,sans-serif;font-size:0.85rem;outline:none;box-sizing:border-box;">
-            </div>
-          </div>
-          <div style="font-size:0.65rem;color:#94a3b8;margin-top:10px;" id="pbEditRecordCount"></div>
-        </div>
-        <div style="display:flex;gap:8px;justify-content:flex-end;">
-          <button onclick="pbCloseEditCustomer()" style="padding:9px 18px;border:1.5px solid #cbd5e1;border-radius:8px;background:#fff;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.82rem;cursor:pointer;color:#64748b;">Cancel</button>
-          <button onclick="pbSaveCustomerEdit()" style="padding:9px 20px;border:none;border-radius:8px;background:linear-gradient(135deg,#92400e,#d97706);color:#fff;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.82rem;cursor:pointer;">Update All Records</button>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════ -->
-<!-- ║  SECTION 15 — PENDING BILLS SCRIPT                 ║ -->
-<!-- ═══════════════════════════════════════════════════════ -->
 <script>
-// ═══════════════ PENDING BILLS SYSTEM ═══════════════
-var _pbData        = [];
-var _pbEditTarget  = null;
-var _pbParsedRows  = [];
-var _pbCustCache   = null;
-
-// ── Setup Table ──
-function pbSetupTable() {
-  if (!sb) { toast('Supabase not connected'); return; }
-  toast('Checking table...');
-  sb.from('pending_bills').select('id').limit(1).then(function(r) {
-    if (!r.error) { toast('Table ready!'); }
-    else { pbShowSQLModal(); }
-  }).catch(function() { pbShowSQLModal(); });
-}
-
-function pbShowSQLModal() {
-  var lines = [
-    'CREATE TABLE IF NOT EXISTS pending_bills (',
-    '  id BIGSERIAL PRIMARY KEY,',
-    '  customer_name TEXT,',
-    '  phone TEXT,',
-    '  area TEXT,',
-    '  order_no TEXT,',
-    '  bill_date TEXT,',
-    '  total_bill NUMERIC DEFAULT 0,',
-    '  received1 NUMERIC DEFAULT 0,',
-    '  received2 NUMERIC DEFAULT 0,',
-    '  discount NUMERIC DEFAULT 0,',
-    '  bad_debt NUMERIC DEFAULT 0,',
-    '  pending_balance NUMERIC DEFAULT 0,',
-    "  source TEXT DEFAULT 'excel_import',",
-    '  created_at TIMESTAMPTZ DEFAULT NOW()',
-    ');',
-    'CREATE INDEX IF NOT EXISTS idx_pb_phone ON pending_bills(phone);',
-    'CREATE INDEX IF NOT EXISTS idx_pb_name  ON pending_bills(customer_name);'
-  ];
-  var sql = lines.join('\n');
-  var m = document.getElementById('pbSQLModal');
-  if (!m) {
-    m = document.createElement('div');
-    m.id = 'pbSQLModal';
-    m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:99999;align-items:center;justify-content:center;padding:20px;font-family:Montserrat,sans-serif;';
-    var box = document.createElement('div');
-    box.style.cssText = 'background:#fff;border-radius:16px;width:100%;max-width:560px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.4);';
-    var hdr = document.createElement('div');
-    hdr.style.cssText = 'background:linear-gradient(135deg,#1e293b,#334155);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;';
-    var ttl = document.createElement('div');
-    ttl.style.cssText = 'color:#fff;font-weight:700;font-size:0.95rem;';
-    ttl.textContent = 'Create Supabase Table';
-    var cls = document.createElement('button');
-    cls.style.cssText = 'background:rgba(255,255,255,0.15);border:none;color:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:1rem;';
-    cls.textContent = 'X';
-    cls.onclick = function() { m.style.display = 'none'; };
-    hdr.appendChild(ttl); hdr.appendChild(cls);
-    var body = document.createElement('div');
-    body.style.cssText = 'padding:18px 20px;';
-    var p1 = document.createElement('p');
-    p1.style.cssText = 'font-size:0.78rem;color:#475569;margin-bottom:8px;';
-    p1.innerHTML = 'Table <strong>pending_bills</strong> not found. Run this SQL in Supabase:';
-    var p2 = document.createElement('p');
-    p2.style.cssText = 'font-size:0.72rem;color:#6366f1;margin-bottom:10px;font-weight:700;';
-    p2.textContent = 'supabase.com > Your Project > SQL Editor > New Query > Paste > Run';
-    var ta = document.createElement('textarea');
-    ta.id = 'pbSQLText';
-    ta.readOnly = true;
-    ta.style.cssText = 'width:100%;height:180px;font-family:monospace;font-size:0.7rem;padding:10px;border:1.5px solid #e2e8f0;border-radius:8px;background:#f8fafc;resize:none;outline:none;box-sizing:border-box;';
-    ta.value = sql;
-    var cpBtn = document.createElement('button');
-    cpBtn.style.cssText = 'margin-top:10px;width:100%;padding:10px;background:#1e293b;color:#fff;border:none;border-radius:8px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.82rem;cursor:pointer;';
-    cpBtn.textContent = 'Copy SQL';
-    cpBtn.onclick = function() { ta.select(); document.execCommand('copy'); toast('SQL copied! Paste in Supabase SQL Editor.'); };
-    body.appendChild(p1); body.appendChild(p2); body.appendChild(ta); body.appendChild(cpBtn);
-    box.appendChild(hdr); box.appendChild(body);
-    m.appendChild(box);
-    m.onclick = function(e) { if (e.target === m) m.style.display = 'none'; };
-    document.body.appendChild(m);
-  }
-  m.style.display = 'flex';
-}
-
-// ── Load from Supabase ──
-function pbLoad() {
-  var wrap = document.getElementById('pbCustomerTable');
-  if (!wrap) return;
-  if (!sb) {
-    wrap.innerHTML = '<div style="padding:20px;text-align:center;color:#dc2626;font-size:0.82rem;">Supabase not connected.</div>';
-    return;
-  }
-  wrap.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:0.82rem;">Loading...</div>';
-  sb.from('pending_bills').select('*').order('customer_name').then(function(r) {
-    if (r.error) throw r.error;
-    _pbData = r.data || [];
-    pbRenderSummary();
-    pbRenderCustomerTable();
-  }).catch(function(e) {
-    wrap.innerHTML = '<div style="padding:20px;text-align:center;color:#dc2626;font-size:0.82rem;">Error: ' + (e.message || e) + '<br><br>If table does not exist, click Setup Table first.</div>';
-  });
-}
-
-// ── Build unified customer map (excel + live invoices) ──
-function pbBuildUnifiedMap() {
-  var map = {};
-
-  _pbData.forEach(function(r) {
-    var phone = (r.phone || '').replace(/[^0-9]/g, '');
-    var key   = phone ? phone : ('noPhone_' + (r.customer_name || '').trim().toLowerCase());
-    if (!map[key]) map[key] = { name: r.customer_name || '-', phone: r.phone || '', area: r.area || '', totalBill: 0, totalReceived: 0, pending: 0, orders: [] };
-    var bal = parseFloat(r.pending_balance) || 0;
-    map[key].totalBill     += parseFloat(r.total_bill) || 0;
-    map[key].totalReceived += (parseFloat(r.received1) || 0) + (parseFloat(r.received2) || 0);
-    map[key].pending       += bal;
-    map[key].orders.push({ orderNo: r.order_no, date: r.bill_date, totalBill: parseFloat(r.total_bill) || 0, received: (parseFloat(r.received1) || 0) + (parseFloat(r.received2) || 0), discount: parseFloat(r.discount) || 0, pending: bal });
-  });
-
-  (database || []).forEach(function(inv) {
-    if (inv.isNull || inv.isDraft || inv.isAdvance) return;
-    var phone = (inv.phone || '').replace(/[^0-9]/g, '');
-    var key   = phone ? phone : ('noPhone_' + (inv.custName || '').trim().toLowerCase());
-    if (!map[key]) map[key] = { name: inv.custName || '-', phone: inv.phone || '', area: inv.area || '', totalBill: 0, totalReceived: 0, pending: 0, orders: [] };
-    if (inv.custName && map[key].name === '-') map[key].name = inv.custName;
-    if (inv.area && !map[key].area) map[key].area = inv.area;
-    var afterDisc = (inv.afterDiscount != null ? inv.afterDiscount : inv.total) || 0;
-    var paid     = inv.received || 0;
-    var rem      = Math.max(0, afterDisc - paid);
-    map[key].totalBill     += inv.total || 0;
-    map[key].totalReceived += paid;
-    map[key].pending       += rem;
-    map[key].orders.push({ orderNo: inv.invNum || '-', date: inv.date || '', totalBill: inv.total || 0, received: paid, discount: inv.discount || 0, pending: rem });
-  });
-
-  return map;
-}
-
-function pbFmt(n) { return Math.round(n).toLocaleString('en-PK'); }
-
-// ── Summary cards ──
-function pbRenderSummary() {
-  var cards = document.getElementById('pbSummaryCards');
-  if (!cards) return;
-  var map          = pbBuildUnifiedMap();
-  var customers    = Object.values(map);
-  var totalPending = customers.reduce(function(s, c) { return s + c.pending; }, 0);
-  var totalBill    = customers.reduce(function(s, c) { return s + c.totalBill; }, 0);
-  var withPending  = customers.filter(function(c) { return c.pending > 0; }).length;
-
-  cards.innerHTML =
-    '<div style="background:linear-gradient(135deg,#7f1d1d,#dc2626);border-radius:12px;padding:16px 18px;">' +
-      '<div style="font-size:0.62rem;font-weight:700;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px;">Total Pending</div>' +
-      '<div style="font-size:1.1rem;font-weight:800;color:#fff;">Rs. ' + pbFmt(totalPending) + '</div>' +
-    '</div>' +
-    '<div style="background:linear-gradient(135deg,#1e293b,#334155);border-radius:12px;padding:16px 18px;">' +
-      '<div style="font-size:0.62rem;font-weight:700;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px;">Customers with Balance</div>' +
-      '<div style="font-size:1.1rem;font-weight:800;color:#fff;">' + withPending + '</div>' +
-    '</div>' +
-    '<div style="background:linear-gradient(135deg,#065f46,#059669);border-radius:12px;padding:16px 18px;">' +
-      '<div style="font-size:0.62rem;font-weight:700;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px;">Imported Rows</div>' +
-      '<div style="font-size:1.1rem;font-weight:800;color:#fff;">' + _pbData.length + '</div>' +
-    '</div>' +
-    '<div style="background:linear-gradient(135deg,#1e3a8a,#3b82f6);border-radius:12px;padding:16px 18px;">' +
-      '<div style="font-size:0.62rem;font-weight:700;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px;">Total Bills</div>' +
-      '<div style="font-size:1.1rem;font-weight:800;color:#fff;">Rs. ' + pbFmt(totalBill) + '</div>' +
-    '</div>';
-}
-
-// ── Customer table ──
-function pbRenderCustomerTable() {
-  var wrap = document.getElementById('pbCustomerTable');
-  if (!wrap) return;
-  var map  = pbBuildUnifiedMap();
-  var rows = [];
-  Object.keys(map).forEach(function(k) {
-    if (map[k].pending > 0) rows.push({ key: k, name: map[k].name, phone: map[k].phone, area: map[k].area, totalBill: map[k].totalBill, totalReceived: map[k].totalReceived, pending: map[k].pending, orders: map[k].orders });
-  });
-  rows.sort(function(a, b) { return b.pending - a.pending; });
-
-  if (!rows.length) {
-    wrap.innerHTML = '<div style="padding:30px;text-align:center;color:#94a3b8;font-size:0.82rem;">No pending balances found. Import Excel data first.</div>';
-    return;
-  }
-
-  var th  = 'padding:9px 10px;font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap;';
-  var td  = 'padding:9px 10px;font-size:0.78rem;font-weight:600;white-space:nowrap;';
-  var tdn = 'padding:9px 10px;font-size:0.82rem;font-weight:800;white-space:nowrap;';
-  var gB  = rows.reduce(function(s, c) { return s + c.totalBill; }, 0);
-  var gR  = rows.reduce(function(s, c) { return s + c.totalReceived; }, 0);
-  var gP  = rows.reduce(function(s, c) { return s + c.pending; }, 0);
-
-  var rowsHtml = rows.map(function(c, i) {
-    var bg = i % 2 === 0 ? '#fff' : '#f9fafb';
-    return '<tr style="background:' + bg + ';cursor:pointer;" data-pbrow="' + i + '">' +
-      '<td style="' + td + 'color:#94a3b8;text-align:center;">' + (i + 1) + '</td>' +
-      '<td style="' + tdn + 'color:#0f1e45;">' + c.name + '</td>' +
-      '<td style="' + td + 'color:#334155;">' + (c.phone || '-') + '</td>' +
-      '<td style="' + td + 'color:#475569;">' + (c.area  || '-') + '</td>' +
-      '<td style="' + td + 'text-align:right;">' + pbFmt(c.totalBill) + '</td>' +
-      '<td style="' + td + 'color:#059669;text-align:right;">' + pbFmt(c.totalReceived) + '</td>' +
-      '<td style="' + tdn + 'color:#dc2626;text-align:right;">' + pbFmt(c.pending) + '</td>' +
-      '<td style="' + td + 'color:#6366f1;text-align:center;font-size:0.7rem;">&#9654; Details</td>' +
-    '</tr>';
-  }).join('');
-
-  wrap.innerHTML =
-    '<div style="overflow-x:auto;">' +
-    '<table style="width:100%;border-collapse:collapse;font-family:Montserrat,sans-serif;min-width:600px;">' +
-      '<thead><tr style="background:#1e293b;">' +
-        '<th style="' + th + 'color:#94a3b8;text-align:center;width:36px;">#</th>' +
-        '<th style="' + th + 'color:#e2e8f0;text-align:left;">Customer</th>' +
-        '<th style="' + th + 'color:#e2e8f0;">Phone</th>' +
-        '<th style="' + th + 'color:#e2e8f0;">Area</th>' +
-        '<th style="' + th + 'color:#e2e8f0;text-align:right;">Total Bill</th>' +
-        '<th style="' + th + 'color:#4ade80;text-align:right;">Received</th>' +
-        '<th style="' + th + 'color:#f87171;text-align:right;">Pending</th>' +
-        '<th style="' + th + 'color:#a5b4fc;text-align:center;">Details</th>' +
-      '</tr></thead>' +
-      '<tbody>' + rowsHtml + '</tbody>' +
-      '<tfoot><tr style="background:#1e293b;">' +
-        '<td colspan="4" style="' + th + 'color:rgba(255,255,255,0.6);text-align:right;">Grand Total</td>' +
-        '<td style="' + tdn + 'color:#f0c96e;text-align:right;">' + pbFmt(gB) + '</td>' +
-        '<td style="' + tdn + 'color:#4ade80;text-align:right;">' + pbFmt(gR) + '</td>' +
-        '<td style="' + tdn + 'color:#f87171;text-align:right;">' + pbFmt(gP) + '</td>' +
-        '<td></td>' +
-      '</tr></tfoot>' +
-    '</table></div>';
-
-  wrap.querySelectorAll('tr[data-pbrow]').forEach(function(tr) {
-    var idx     = parseInt(tr.getAttribute('data-pbrow'), 10);
-    var rowData = rows[idx];
-    tr.addEventListener('mouseover', function() { this.style.background = '#fef3c7'; });
-    tr.addEventListener('mouseout',  function() { this.style.background = idx % 2 === 0 ? '#fff' : '#f9fafb'; });
-    tr.addEventListener('click',     function() { if (rowData) pbShowOrders(rowData.key); });
-  });
-}
-
-// ── Orders drill-down ──
-function pbShowOrders(key) {
-  var panel = document.getElementById('pbOrdersPanel');
-  if (!panel) return;
-  if (panel.style.display !== 'none' && panel.dataset.pbkey === key) {
-    panel.style.display = 'none'; panel.dataset.pbkey = ''; return;
-  }
-  panel.dataset.pbkey = key;
-  var map = pbBuildUnifiedMap();
-  var c   = map[key];
-  if (!c) { panel.style.display = 'none'; return; }
-
-  var orders = c.orders.slice().sort(function(a, b) {
-    var da = a.date ? new Date(a.date.split('.').reverse().join('-')) : new Date(0);
-    var db = b.date ? new Date(b.date.split('.').reverse().join('-')) : new Date(0);
-    return da - db;
-  });
-
-  var th  = 'padding:8px 10px;font-size:0.6rem;font-weight:700;text-transform:uppercase;white-space:nowrap;';
-  var td  = 'padding:8px 10px;font-size:0.75rem;font-weight:600;';
-  var tdn = 'padding:8px 10px;font-size:0.78rem;font-weight:800;';
-  var gB  = orders.reduce(function(s, o) { return s + o.totalBill; }, 0);
-  var gR  = orders.reduce(function(s, o) { return s + o.received;  }, 0);
-  var gP  = orders.reduce(function(s, o) { return s + o.pending;   }, 0);
-
-  var rowsHtml = orders.map(function(o, i) {
-    var bg = i % 2 === 0 ? '#fff' : '#f9fafb';
-    return '<tr style="background:' + bg + ';">' +
-      '<td style="' + td + 'color:#94a3b8;text-align:center;">' + (i + 1) + '</td>' +
-      '<td style="' + tdn + 'color:#0f1e45;">'  + (o.orderNo || '-') + '</td>' +
-      '<td style="' + td  + 'color:#475569;">'  + (o.date    || '-') + '</td>' +
-      '<td style="' + td  + 'text-align:right;">' + pbFmt(o.totalBill) + '</td>' +
-      '<td style="' + td  + 'color:#059669;text-align:right;">' + pbFmt(o.received) + '</td>' +
-      '<td style="' + td  + 'color:#d97706;text-align:right;">' + (o.discount > 0 ? pbFmt(o.discount) : '-') + '</td>' +
-      '<td style="' + tdn + 'color:' + (o.pending > 0 ? '#dc2626' : '#059669') + ';text-align:right;">' + pbFmt(o.pending) + '</td>' +
-    '</tr>';
-  }).join('');
-
-  var hdr = document.createElement('div');
-  hdr.style.cssText = 'background:linear-gradient(135deg,#3730a3,#6366f1);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;';
-  var hdrInfo  = document.createElement('div');
-  var hdrTitle = document.createElement('div');
-  hdrTitle.style.cssText = 'font-family:Playfair Display,serif;font-size:0.95rem;font-weight:700;color:#fff;';
-  hdrTitle.textContent   = c.name;
-  var hdrSub   = document.createElement('div');
-  hdrSub.style.cssText   = 'font-size:0.68rem;color:rgba(255,255,255,0.75);margin-top:2px;';
-  hdrSub.textContent     = (c.phone || 'No phone') + (c.area ? ' - ' + c.area : '') + ' - ' + orders.length + ' orders';
-  hdrInfo.appendChild(hdrTitle);
-  hdrInfo.appendChild(hdrSub);
-  var closeBtn = document.createElement('button');
-  closeBtn.style.cssText = 'background:rgba(255,255,255,0.2);border:none;border-radius:50%;width:30px;height:30px;color:#fff;font-size:1rem;cursor:pointer;font-weight:700;';
-  closeBtn.textContent   = 'X';
-  closeBtn.onclick       = function() { panel.style.display = 'none'; panel.dataset.pbkey = ''; };
-  hdr.appendChild(hdrInfo);
-  hdr.appendChild(closeBtn);
-
-  var tableWrap = document.createElement('div');
-  tableWrap.style.cssText = 'overflow-x:auto;';
-  tableWrap.innerHTML =
-    '<table style="width:100%;border-collapse:collapse;font-family:Montserrat,sans-serif;min-width:480px;">' +
-      '<thead><tr style="background:#e0e7ff;">' +
-        '<th style="' + th + 'color:#3730a3;text-align:center;">#</th>' +
-        '<th style="' + th + 'color:#3730a3;">Invoice #</th>' +
-        '<th style="' + th + 'color:#3730a3;">Date</th>' +
-        '<th style="' + th + 'color:#3730a3;text-align:right;">Total Bill</th>' +
-        '<th style="' + th + 'color:#059669;text-align:right;">Received</th>' +
-        '<th style="' + th + 'color:#d97706;text-align:right;">Discount</th>' +
-        '<th style="' + th + 'color:#dc2626;text-align:right;">Pending</th>' +
-      '</tr></thead>' +
-      '<tbody>' + rowsHtml + '</tbody>' +
-      '<tfoot><tr style="background:#1e293b;">' +
-        '<td colspan="3" style="' + th + 'color:rgba(255,255,255,0.6);text-align:right;">Total</td>' +
-        '<td style="' + tdn + 'color:#f0c96e;text-align:right;">' + pbFmt(gB) + '</td>' +
-        '<td style="' + tdn + 'color:#4ade80;text-align:right;">' + pbFmt(gR) + '</td>' +
-        '<td></td>' +
-        '<td style="' + tdn + 'color:#f87171;text-align:right;">' + pbFmt(gP) + '</td>' +
-      '</tr></tfoot>' +
-    '</table>';
-
-  panel.innerHTML = '';
-  panel.appendChild(hdr);
-  panel.appendChild(tableWrap);
-  panel.style.display = '';
-  setTimeout(function() { panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
-}
-
-// ══════════════════════════════════════════
-// IMPORT EXCEL — with auto phone matching
-// ══════════════════════════════════════════
-function pbOpenImport() {
-  document.getElementById('pbImportModal').style.display = 'flex';
-  document.getElementById('pbStep1').style.display = '';
-  document.getElementById('pbStep2').style.display = 'none';
-  document.getElementById('pbSaveBtn').style.display = 'none';
-  document.getElementById('pbReadStatus').textContent = '';
-  document.getElementById('pbFileInput').value = '';
-  _pbParsedRows = [];
-}
-function pbCloseImport() { document.getElementById('pbImportModal').style.display = 'none'; }
-
 function pbLoadXLSX() {
   return new Promise(function(resolve, reject) {
     if (window.XLSX) { resolve(window.XLSX); return; }
@@ -25300,337 +24821,6 @@ function pbLoadXLSX() {
     s.onload  = function() { resolve(window.XLSX); };
     s.onerror = function() { reject(new Error('Failed to load XLSX library')); };
     document.head.appendChild(s);
-  });
-}
-
-// Build a name-to-phone lookup from existing live invoices
-function pbBuildNamePhoneMap() {
-  var map = {};
-  (database || []).forEach(function(inv) {
-    if (!inv.custName || !inv.phone || inv.isNull) return;
-    var name  = inv.custName.trim().toLowerCase();
-    var phone = inv.phone.replace(/[^0-9]/g, '');
-    if (phone && !map[name]) map[name] = phone;
-  });
-  return map;
-}
-
-// Match a name against the live-invoice name map (exact then partial)
-function pbMatchPhone(name, namePhoneMap) {
-  if (!name) return '';
-  var lc = name.trim().toLowerCase();
-  // Exact match
-  if (namePhoneMap[lc]) return namePhoneMap[lc];
-  // Partial match — name from excel contains live name or vice versa
-  var keys = Object.keys(namePhoneMap);
-  for (var i = 0; i < keys.length; i++) {
-    var k = keys[i];
-    if (lc.includes(k) || k.includes(lc)) return namePhoneMap[k];
-  }
-  return '';
-}
-
-function pbReadExcel(input) {
-  var file = input.files[0];
-  if (!file) return;
-  var statusEl = document.getElementById('pbReadStatus');
-  statusEl.textContent = 'Reading file...';
-
-  pbLoadXLSX().then(function(XLSX) {
-    return file.arrayBuffer().then(function(buf) {
-      var wb  = XLSX.read(buf, { type: 'array' });
-      var sheetName = wb.SheetNames[0]; // Orders.xlsx has only Sheet1
-      var ws  = wb.Sheets[sheetName];
-      var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-
-      // Find header row (row with Urdu column labels)
-      var headerRow = 1;
-      for (var i = 0; i < Math.min(5, raw.length); i++) {
-        var r = raw[i].map(function(c) { return String(c || '').trim(); });
-        if (r.some(function(c) { return c.includes('\u0633\u06CC\u0631\u06CC\u0644') || c.includes('\u0646\u0627\u0645') || c.includes('\u0622\u0631\u0688\u0631'); })) {
-          headerRow = i; break;
-        }
-      }
-
-      // Build name-to-phone map from live invoices for auto-matching
-      var namePhoneMap = pbBuildNamePhoneMap();
-      var autoMatched  = 0;
-
-      _pbParsedRows = [];
-      for (var j = headerRow + 1; j < raw.length; j++) {
-        var row = raw[j];
-        if (!row || row.every(function(c) { return !c && c !== 0; })) continue;
-
-        var name      = String(row[2] || '').trim();
-        var phone     = String(row[3] || '').replace(/[^0-9]/g, '');
-        var orderNo   = String(row[4] || '').trim();
-        var totalBill = parseFloat(row[5]) || 0;
-        var rec1      = parseFloat(row[6]) || 0;
-        var rec2      = parseFloat(row[7]) || 0;
-        var discount  = parseFloat(row[8]) || 0;
-        var badDebt   = parseFloat(row[9]) || 0;
-
-        // Skip completely empty rows
-        if (!name && !orderNo && !totalBill) continue;
-
-        // Auto-match phone from live invoices if missing
-        var autoPhone = '';
-        if (!phone && name) {
-          autoPhone = pbMatchPhone(name, namePhoneMap);
-          if (autoPhone) autoMatched++;
-        }
-
-        var pending = Math.max(0, totalBill - rec1 - rec2 - discount - badDebt);
-
-        // Convert Excel serial date if needed
-        var dateRaw = String(row[1] || '').trim();
-        if (dateRaw !== '' && !isNaN(dateRaw) && parseFloat(dateRaw) > 40000) {
-          var d   = new Date(Math.round((parseFloat(dateRaw) - 25569) * 86400 * 1000));
-          dateRaw = d.getDate() + '.' + (d.getMonth() + 1) + '.' + d.getFullYear();
-        }
-
-        _pbParsedRows.push({
-          customer_name:   name,
-          phone:           phone || autoPhone,
-          _autoPhone:      !phone && !!autoPhone, // flag for display
-          area:            '',
-          order_no:        orderNo,
-          bill_date:       dateRaw,
-          total_bill:      totalBill,
-          received1:       rec1,
-          received2:       rec2,
-          discount:        discount,
-          bad_debt:        badDebt,
-          pending_balance: pending,
-          source:          'excel_import'
-        });
-      }
-
-      statusEl.textContent = 'Read ' + _pbParsedRows.length + ' rows. Auto-matched ' + autoMatched + ' phone numbers from existing invoices.';
-      pbShowPreview();
-    });
-  }).catch(function(e) { statusEl.textContent = 'Error: ' + (e.message || e); });
-}
-
-function pbShowPreview() {
-  document.getElementById('pbStep1').style.display = 'none';
-  document.getElementById('pbStep2').style.display = '';
-  document.getElementById('pbSaveBtn').style.display = '';
-
-  // Only show no-phone customers that could NOT be auto-matched
-  var noPhoneNames = [];
-  var seen = {};
-  _pbParsedRows.forEach(function(r) {
-    if (!r.phone && r.customer_name && !seen[r.customer_name]) {
-      seen[r.customer_name] = true;
-      noPhoneNames.push(r.customer_name);
-    }
-  });
-
-  var assignWrap = document.getElementById('pbPhoneAssign');
-  var assignList = document.getElementById('pbPhoneAssignList');
-
-  if (noPhoneNames.length > 0) {
-    assignWrap.style.display = '';
-    assignList.innerHTML = noPhoneNames.slice(0, 50).map(function(name) {
-      var safe = name.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-      return '<div style="display:flex;align-items:center;gap:8px;">' +
-        '<span style="font-size:0.75rem;font-weight:600;color:#92400e;flex:1;">' + safe + '</span>' +
-        '<input type="text" placeholder="Phone (optional)" data-custname="' + safe + '"' +
-        ' style="padding:5px 8px;border:1.5px solid #fde68a;border-radius:6px;font-family:Montserrat,sans-serif;font-size:0.78rem;width:140px;outline:none;"' +
-        ' oninput="pbUpdatePhone(this.dataset.custname, this.value)">' +
-        '</div>';
-    }).join('');
-    var noPhoneTitle = document.getElementById('pbNoPhoneTitle');
-    if (noPhoneTitle) noPhoneTitle.textContent = noPhoneNames.length + ' customers still have no phone — enter manually (optional):';
-  } else {
-    assignWrap.style.display = 'none';
-  }
-
-  // Stats line
-  var withPhone   = _pbParsedRows.filter(function(r) { return !!r.phone; }).length;
-  var autoMatched = _pbParsedRows.filter(function(r) { return r._autoPhone; }).length;
-  var manualPhone = _pbParsedRows.filter(function(r) { return r.phone && !r._autoPhone; }).length;
-  var stillNone   = _pbParsedRows.filter(function(r) { return !r.phone; }).length;
-
-  document.getElementById('pbPreviewTitle').textContent =
-    _pbParsedRows.length + ' rows | ' +
-    manualPhone + ' with original phone | ' +
-    autoMatched + ' auto-matched | ' +
-    stillNone   + ' still no phone';
-
-  // Preview table (first 60 rows)
-  var preview  = document.getElementById('pbPreviewTable');
-  var dispRows = _pbParsedRows.slice(0, 60);
-  var th = 'padding:6px 8px;font-size:0.58rem;font-weight:700;text-transform:uppercase;white-space:nowrap;';
-  var td = 'padding:6px 8px;font-size:0.72rem;white-space:nowrap;';
-
-  preview.innerHTML =
-    '<table style="width:100%;border-collapse:collapse;font-family:Montserrat,sans-serif;">' +
-    '<thead><tr style="background:#1e293b;position:sticky;top:0;">' +
-      '<th style="' + th + 'color:#94a3b8;">Name</th>' +
-      '<th style="' + th + 'color:#94a3b8;">Phone</th>' +
-      '<th style="' + th + 'color:#94a3b8;">Order</th>' +
-      '<th style="' + th + 'color:#94a3b8;">Date</th>' +
-      '<th style="' + th + 'color:#e2e8f0;text-align:right;">Bill</th>' +
-      '<th style="' + th + 'color:#4ade80;text-align:right;">Received</th>' +
-      '<th style="' + th + 'color:#f87171;text-align:right;">Pending</th>' +
-    '</tr></thead><tbody>' +
-    dispRows.map(function(r, i) {
-      var bg   = i % 2 === 0 ? '#fff' : '#f9fafb';
-      // Green = has original phone, Blue = auto-matched, Orange = still no phone
-      var dot  = r.phone && !r._autoPhone ? '&#128994; ' : (r._autoPhone ? '&#128309; ' : '&#128993; ');
-      var phoneDisplay = r.phone
-        ? (r._autoPhone ? '<span style="color:#6366f1;font-size:0.68rem;">' + r.phone + ' (auto)</span>' : r.phone)
-        : '<span style="color:#d97706;">-</span>';
-      return '<tr style="background:' + bg + ';">' +
-        '<td style="' + td + '">' + dot + r.customer_name + '</td>' +
-        '<td style="' + td + '">' + phoneDisplay + '</td>' +
-        '<td style="' + td + 'color:#6366f1;">' + (r.order_no || '-') + '</td>' +
-        '<td style="' + td + '">' + (r.bill_date  || '-') + '</td>' +
-        '<td style="' + td + 'text-align:right;">' + (r.total_bill ? pbFmt(r.total_bill) : '-') + '</td>' +
-        '<td style="' + td + 'color:#059669;text-align:right;">' + pbFmt(r.received1 + r.received2) + '</td>' +
-        '<td style="' + td + 'font-weight:800;color:' + (r.pending_balance > 0 ? '#dc2626' : '#059669') + ';text-align:right;">' + pbFmt(r.pending_balance) + '</td>' +
-      '</tr>';
-    }).join('') +
-    '</tbody></table>';
-}
-
-function pbUpdatePhone(name, phone) {
-  var cleaned = phone.replace(/[^0-9]/g, '');
-  _pbParsedRows.forEach(function(r) {
-    if (r.customer_name === name && !r.phone) { r.phone = cleaned; r._autoPhone = false; }
-  });
-}
-
-function pbSaveToSupabase() {
-  if (!sb) { toast('Supabase not connected'); return; }
-  if (!_pbParsedRows.length) { toast('No data to save'); return; }
-  var btn = document.getElementById('pbSaveBtn');
-  btn.textContent = 'Saving...';
-  btn.disabled    = true;
-
-  // Strip internal _autoPhone flag before saving
-  var toSave = _pbParsedRows.map(function(r) {
-    return {
-      customer_name:   r.customer_name,
-      phone:           r.phone || null,
-      area:            r.area  || null,
-      order_no:        r.order_no,
-      bill_date:       r.bill_date,
-      total_bill:      r.total_bill,
-      received1:       r.received1,
-      received2:       r.received2,
-      discount:        r.discount,
-      bad_debt:        r.bad_debt,
-      pending_balance: r.pending_balance,
-      source:          r.source
-    };
-  });
-
-  sb.from('pending_bills').delete().eq('source', 'excel_import').then(function() {
-    var chunks = [];
-    for (var i = 0; i < toSave.length; i += 100) chunks.push(toSave.slice(i, i + 100));
-    return chunks.reduce(function(p, chunk) {
-      return p.then(function() {
-        return sb.from('pending_bills').insert(chunk).then(function(r) { if (r.error) throw r.error; });
-      });
-    }, Promise.resolve());
-  }).then(function() {
-    toast(toSave.length + ' rows saved to Supabase!');
-    pbCloseImport();
-    _pbCustCache = null;
-    pbLoad();
-  }).catch(function(e) {
-    toast('Save failed: ' + (e.message || e));
-    btn.textContent = 'Save to Supabase';
-    btn.disabled    = false;
-  });
-}
-
-// ══════════════════════════════════════════
-// EDIT CUSTOMER
-// ══════════════════════════════════════════
-function pbOpenEditCustomer() {
-  document.getElementById('pbEditCustModal').style.display = 'flex';
-  document.getElementById('pbEditSearch').value = '';
-  document.getElementById('pbEditSearchResults').style.display = 'none';
-  document.getElementById('pbEditFields').style.display = 'none';
-  _pbEditTarget = null;
-}
-function pbCloseEditCustomer() { document.getElementById('pbEditCustModal').style.display = 'none'; }
-
-function pbEditSearchCustomer(query) {
-  var q   = query.trim().toLowerCase();
-  var res = document.getElementById('pbEditSearchResults');
-  if (!q || q.length < 2) { res.style.display = 'none'; return; }
-  var map     = pbBuildUnifiedMap();
-  var matches = Object.keys(map).filter(function(k) {
-    var c = map[k];
-    return c.name.toLowerCase().includes(q) || (c.phone || '').includes(q);
-  }).slice(0, 10);
-  if (!matches.length) { res.style.display = 'none'; return; }
-  res.innerHTML = '';
-  res.style.display = '';
-  matches.forEach(function(k) {
-    var c   = map[k];
-    var div = document.createElement('div');
-    div.style.cssText = 'padding:9px 12px;cursor:pointer;font-size:0.78rem;font-family:Montserrat,sans-serif;border-bottom:1px solid #f1f5f9;';
-    div.innerHTML =
-      '<span style="font-weight:700;color:#0f1e45;">' + c.name + '</span>' +
-      '<span style="color:#64748b;margin-left:8px;font-size:0.7rem;">' + (c.phone || 'no phone') + '</span>' +
-      '<span style="color:#94a3b8;margin-left:8px;font-size:0.7rem;">' + c.orders.length + ' orders</span>';
-    div.addEventListener('mouseover', function() { this.style.background = '#f0fdf4'; });
-    div.addEventListener('mouseout',  function() { this.style.background = ''; });
-    div.addEventListener('click',     function() { pbEditSelectCustomer(k); });
-    res.appendChild(div);
-  });
-}
-
-function pbEditSelectCustomer(key) {
-  var map = pbBuildUnifiedMap();
-  var c   = map[key];
-  if (!c) return;
-  _pbEditTarget = { key: key, name: c.name, phone: c.phone, area: c.area, orders: c.orders };
-  document.getElementById('pbEditSearchResults').style.display = 'none';
-  document.getElementById('pbEditSearch').value = c.name;
-  document.getElementById('pbEditName').value   = c.name;
-  document.getElementById('pbEditPhone').value  = c.phone || '';
-  document.getElementById('pbEditArea').value   = c.area  || '';
-  document.getElementById('pbEditRecordCount').textContent = c.orders.length + ' orders linked to this customer';
-  document.getElementById('pbEditFields').style.display = '';
-}
-
-function pbSaveCustomerEdit() {
-  if (!_pbEditTarget) { toast('No customer selected'); return; }
-  if (!sb) { toast('Supabase not connected'); return; }
-  var newName  = document.getElementById('pbEditName').value.trim();
-  var newPhone = document.getElementById('pbEditPhone').value.replace(/[^0-9]/g, '');
-  var newArea  = document.getElementById('pbEditArea').value.trim();
-  if (!newName) { toast('Name cannot be empty'); return; }
-  var oldName  = _pbEditTarget.name;
-  var oldPhone = (_pbEditTarget.phone || '').replace(/[^0-9]/g, '');
-  var payload  = { customer_name: newName, phone: newPhone || null, area: newArea || null };
-  if (!navigator.onLine || !sb) {
-    _pbPendingEdits.push({ oldName: oldName, oldPhone: oldPhone, payload: payload, queuedAt: new Date().toISOString() });
-    _savePbPending();
-    toast('📵 Offline — customer edit queued, will sync when online');
-    pbCloseEditCustomer();
-    return;
-  }
-  sb.from('pending_bills').update(payload).ilike('customer_name', oldName).then(function(r) {
-    if (r.error) throw r.error;
-    if (!oldPhone) return;
-    return sb.from('pending_bills').update(payload).eq('phone', oldPhone);
-  }).then(function() {
-    toast('✅ Customer updated!');
-    pbCloseEditCustomer();
-    _pbCustCache = null;
-    pbLoad();
-  }).catch(function(e) {
-    _pbPendingEdits.push({ oldName: oldName, oldPhone: oldPhone, payload: payload, queuedAt: new Date().toISOString() });
-    _savePbPending();
-    toast('⚠️ Update queued — will retry when online');
   });
 }
 
