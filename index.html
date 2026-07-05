@@ -2283,7 +2283,7 @@ body {
 <!-- ║  SECTION 8 — USER BAR / HEADER                     ║ -->
 <!-- ═══════════════════════════════════════════════════════ -->
 <div id="userBar">
-  <div id="_ubBrand"><span id="_ubBrandText">⚙️ Complete Shop System</span><span id="_appVersionLabel" style="font-size:0.6rem;font-weight:700;color:#f59e0b;font-family:Montserrat,sans-serif;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:middle;">v1.0.6</span></div>
+  <div id="_ubBrand"><span id="_ubBrandText">⚙️ Complete Shop System</span><span id="_appVersionLabel" style="font-size:0.6rem;font-weight:700;color:#f59e0b;font-family:Montserrat,sans-serif;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:middle;">v1.0.7</span></div>
   <div id="topShopName"></div>
   <!-- Col 3: all SPAN children — no div:last-child matches inside -->
   <div id="_ubProfile">
@@ -5029,6 +5029,10 @@ async function flushPendingQueue() {
 
   for (const entry of toProcess) {
     try {
+      // Already queued/being resolved from a previous tick — skip re-checking
+      // until the user actually resolves it, instead of rediscovering the same
+      // conflict every 10s and stacking duplicate banner entries.
+      if (typeof _isConflictPending === 'function' && _isConflictPending('invoices', entry.data.invNum)) continue;
       const result = await saveToSupabase(entry.data);
       if (result && result.conflict) {
         _queueBgConflict({
@@ -6459,47 +6463,23 @@ async function _eagSearchCustomers(query) {
     if (dropdown) dropdown.style.display = 'none';
     return;
   }
-  _eagSearchTimer = setTimeout(async function() {
-    if (!sb) return;
-    try {
-      var q = query.trim();
-      var results = [];
-      var seen = {};
-
-      var { data: exRows } = await sb.from('excel_invoices')
-        .select('customer_name, phone')
-        .ilike('customer_name', '%' + q + '%')
-        .limit(15);
-      (exRows || []).forEach(function(r) {
-        var key = (r.customer_name||'') + '|' + (r.phone||'');
-        if (!seen[key] && r.customer_name) { seen[key] = true; results.push({ name: r.customer_name, phone: r.phone || '' }); }
-      });
-
-      var { data: invRows } = await sb.from('invoices')
-        .select('cust_name, phone')
-        .ilike('cust_name', '%' + q + '%')
-        .limit(15);
-      (invRows || []).forEach(function(r) {
-        var key = (r.cust_name||'') + '|' + (r.phone||'');
-        if (!seen[key] && r.cust_name) { seen[key] = true; results.push({ name: r.cust_name, phone: r.phone || '' }); }
-      });
-
-      if (!dropdown) return;
-      if (!results.length) {
-        dropdown.innerHTML = '<div style="padding:10px 12px;color:#94a3b8;font-size:0.78rem;font-family:Montserrat,sans-serif;">No matching customers</div>';
-        dropdown.style.display = 'block';
-        return;
-      }
-
-      dropdown.innerHTML = results.slice(0, 20).map(function(r) {
-        return '<div onclick="_eagSelectCustomer(\'' + encodeURIComponent(JSON.stringify({name:r.name,phone:r.phone})) + '\')" '
-          + 'style="padding:9px 12px;cursor:pointer;font-family:Montserrat,sans-serif;font-size:0.78rem;border-bottom:1px solid #f1f5f9;" '
-          + 'onmouseover="this.style.background=\'#f0f4ff\'" onmouseout="this.style.background=\'#fff\'">'
-          + '<strong>' + r.name + '</strong>' + (r.phone ? ' <span style="color:#94a3b8;">— ' + r.phone + '</span>' : '')
-          + '</div>';
-      }).join('');
+  _eagSearchTimer = setTimeout(function() {
+    if (!dropdown) return;
+    var results = getAllCustomerNames(query.trim());
+    if (!results.length) {
+      dropdown.innerHTML = '<div style="padding:10px 12px;color:#94a3b8;font-size:0.78rem;font-family:Montserrat,sans-serif;">No matching customers</div>';
       dropdown.style.display = 'block';
-    } catch(e) { console.warn('[_eagSearchCustomers]', e); }
+      return;
+    }
+
+    dropdown.innerHTML = results.slice(0, 20).map(function(r) {
+      return '<div onclick="_eagSelectCustomer(\'' + encodeURIComponent(JSON.stringify({name:r.name,phone:r.phone})) + '\')" '
+        + 'style="padding:9px 12px;cursor:pointer;font-family:Montserrat,sans-serif;font-size:0.78rem;border-bottom:1px solid #f1f5f9;" '
+        + 'onmouseover="this.style.background=\'#f0f4ff\'" onmouseout="this.style.background=\'#fff\'">'
+        + '<strong>' + r.name + '</strong>' + (r.phone ? ' <span style="color:#94a3b8;">— ' + r.phone + '</span>' : '')
+        + '</div>';
+    }).join('');
+    dropdown.style.display = 'block';
   }, 350);
 }
 
@@ -8185,7 +8165,6 @@ async function doSubmit(data) {
         };
         var _afterCpSuccess = function() {
           if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-          if (typeof _searchNameList !== 'undefined') _searchNameList = null;
           _clearCpPending();
           if (typeof _rpAutoRefreshFinanceTab === 'function') {
             var _epDate = parseDateStr ? parseDateStr(data.date) : data.date;
@@ -8438,7 +8417,7 @@ async function doSubmit(data) {
       } else if (isAdvance) {
         toast('💰 Advance payment saved! Rs.' + fmt(data.received) + ' recorded for ' + (data.custName || data.phone));
       } else {
-        toast('✅ Invoice saved! Next: INV-' + invoiceCounter); _pbCustCache = null; _searchNameList = null; // refresh autocomplete cache
+        toast('✅ Invoice saved! Next: INV-' + invoiceCounter); _pbCustCache = null;
       }
     } else {
       addToPendingQueue(data);
@@ -9329,7 +9308,6 @@ async function saveExcelField(orderNum, field, value) {
             row.discount = amt; row.remaining = newRemaining; row._baselineUpdatedAt = r2.updatedAt || row._baselineUpdatedAt;
             await _upsertCustomerPaymentWithOCC('INV-'+orderNum, 'discount', amt, { customer_name: row.customer_name, phone: row.phone, payment_date: row.date }, undefined);
             if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-            if (typeof _searchNameList !== 'undefined') _searchNameList = null;
             renderDB(); renderSummary(); toast('✅ Discount updated to Rs.' + fmt(amt) + ' for ' + orderNum);
           }
         },
@@ -9348,7 +9326,6 @@ async function saveExcelField(orderNum, field, value) {
     if (!r.queued) {
       await _upsertCustomerPaymentWithOCC('INV-'+orderNum, 'discount', amt, { customer_name: row.customer_name, phone: row.phone, payment_date: row.date }, undefined);
       if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-      if (typeof _searchNameList !== 'undefined') _searchNameList = null;
     }
     toast(r.queued ? '📴 Offline — Discount saved locally, will sync when online' : ('✅ Discount updated to Rs.' + fmt(amt) + ' for ' + orderNum));
 
@@ -9364,7 +9341,6 @@ async function saveExcelField(orderNum, field, value) {
             row.bad_debt = amt; row.remaining = newRemaining; row._baselineUpdatedAt = r2.updatedAt || row._baselineUpdatedAt;
             await _upsertCustomerPaymentWithOCC('INV-'+orderNum, 'bad_debt', amt, { customer_name: row.customer_name, phone: row.phone, payment_date: row.date }, undefined);
             if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-            if (typeof _searchNameList !== 'undefined') _searchNameList = null;
             renderDB(); renderSummary(); toast('✅ Bad debt set to Rs.' + fmt(amt) + ' for order ' + orderNum);
           }
         },
@@ -9383,7 +9359,6 @@ async function saveExcelField(orderNum, field, value) {
     if (!r.queued) {
       await _upsertCustomerPaymentWithOCC('INV-'+orderNum, 'bad_debt', amt, { customer_name: row.customer_name, phone: row.phone, payment_date: row.date }, undefined);
       if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-      if (typeof _searchNameList !== 'undefined') _searchNameList = null;
     }
     toast(r.queued ? '📴 Offline — Bad debt saved locally, will sync when online' : ('✅ Bad debt set to Rs.' + fmt(amt) + ' for order ' + orderNum));
   }
@@ -9461,7 +9436,6 @@ function editExcelInvoice(oNum) {
                     row.received = rvAmt; row.remaining = newRemaining; row._baselineUpdatedAt = rw2.updatedAt || row._baselineUpdatedAt;
                     await _upsertCustomerPaymentWithOCC('INV-'+oNum, 'payment', rvAmt, { customer_name: row.customer_name, phone: row.phone, payment_date: row.date }, undefined);
                     if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-                    if (typeof _searchNameList !== 'undefined') _searchNameList = null;
                     renderDB(); renderSummary(); toast('✅ Invoice ' + oNum + ' updated successfully');
                   }
                 },
@@ -9482,7 +9456,6 @@ function editExcelInvoice(oNum) {
               if (!rw.queued) {
                 await _upsertCustomerPaymentWithOCC('INV-'+oNum, 'payment', rvAmt, { customer_name: row.customer_name, phone: row.phone, payment_date: row.date }, undefined);
                 if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-                if (typeof _searchNameList !== 'undefined') _searchNameList = null;
               }
             }
           }
@@ -12635,41 +12608,51 @@ function onSearchInv(val) {
   renderSearchTab();
 }
 
-// Cache of all customer names for the search dropdown
-var _searchNameList = null;
-
-async function _buildSearchNameList() {
-  if (_searchNameList && _searchNameList.length > 0) return _searchNameList;
-
+// ══════════════════════════════════════════════
+// SHARED CUSTOMER NAME LOOKUP — the single source of truth for every
+// name-autocomplete/dropdown in the app. Merges all three places a
+// customer name can genuinely exist — database (submitted + advance
+// invoices), draftsDB (drafts), and _excelDBCache (excel imports) —
+// so a customer who currently exists ONLY as a draft or ONLY in an
+// excel import still shows up in every dropdown, not just some.
+// Reads only already-in-memory arrays (no network round trip), so
+// unlike the old per-function scanning this needs no caching layer.
+// Does NOT touch financial-total functions (rpGetCustomerSummary,
+// pbBuildUnifiedMap) — those intentionally keep excluding drafts from
+// money totals, since a draft has no real committed bill yet.
+// query: optional — if provided, filters by name substring (starts-with
+// ranked above contains-only) matching the existing dropdown UX; if
+// omitted, returns the full deduped list alphabetically (used by
+// phone-based lookups like rpSearchByPhone, which filter by phone
+// themselves after getting the full list).
+// ══════════════════════════════════════════════
+function getAllCustomerNames(query) {
   var rawList = []; // all name+phone pairs before dedup
 
   function addRaw(nm, phone) {
     nm = (nm || '').trim();
     if (!nm) return;
-    var ph = (phone || '').replace(/[^0-9]/g, '');
+    var ph = (phone || '').toString().replace(/[^0-9]/g, '');
     rawList.push({ name: nm, phone: ph });
   }
 
-  // From local database
+  // Source 1: database (submitted + advance invoices) — exclude isNull
+  // (wiped by recordAsNull/deleteDraft — no real name left to show)
   (database || []).forEach(function(inv) {
-    if (inv.isNull || inv.isDraft || !inv.custName) return;
+    if (inv.isNull) return;
     addRaw(inv.custName, inv.phone);
   });
 
-  // From excel_invoices (name+phone only)
-  if (typeof sb !== 'undefined' && sb) {
-    try {
-      var allRecs = [], from = 0, batch = 1000, done = false;
-      while (!done) {
-        var res = await sb.from('excel_invoices').select('customer_name,phone').range(from, from + batch - 1);
-        if (res.error || !res.data) break;
-        allRecs = allRecs.concat(res.data);
-        if (res.data.length < batch) done = true;
-        else from += batch;
-      }
-      allRecs.forEach(function(r) { addRaw(r.customer_name, r.phone); });
-    } catch(e) { console.error('[_buildSearchNameList:excel_invoices select]', e); }
-  }
+  // Source 2: draftsDB — exclude isNullEntry (wiped — no real name left)
+  (draftsDB || []).forEach(function(d) {
+    if (d.isNullEntry) return;
+    addRaw(d.custName, d.phone);
+  });
+
+  // Source 3: excel imports — cached in-memory, populated at login/init
+  (_excelDBCache || []).forEach(function(r) {
+    addRaw(r.customer_name, r.phone);
+  });
 
   // Build name → best phone map (first non-empty phone wins per name)
   var phoneMap = {};
@@ -12678,7 +12661,8 @@ async function _buildSearchNameList() {
     if (e.phone && !phoneMap[key]) phoneMap[key] = e.phone;
   });
 
-  // Deduplicate by name only; fill missing phones from phoneMap
+  // Dedupe by normalized (trim + lowercase) name; fill in a phone from
+  // another source if this particular entry lacks one
   var seen = new Set();
   var list = [];
   rawList.forEach(function(e) {
@@ -12690,9 +12674,16 @@ async function _buildSearchNameList() {
 
   // Sort alphabetically
   list.sort(function(a, b) { return a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
-  _searchNameList = list;
-  return _searchNameList;
+
+  var q = (query || '').trim().toLowerCase();
+  if (!q) return list;
+
+  // Rank: starts-with first, then contains — matches existing dropdown UX
+  var starts   = list.filter(function(c){ return c.name.toLowerCase().startsWith(q); });
+  var contains = list.filter(function(c){ return !c.name.toLowerCase().startsWith(q) && c.name.toLowerCase().includes(q); });
+  return starts.concat(contains);
 }
+window.getAllCustomerNames = getAllCustomerNames;
 
 function onSearchName(val) {
   var drop = document.getElementById('searchNameDrop');
@@ -12721,39 +12712,34 @@ function onSearchName(val) {
   }
 
   // Build and show dropdown
-  _buildSearchNameList().then(function(list) {
-    // Rank: starts-with first, then contains
-    var starts   = list.filter(function(c){ return c.name.toLowerCase().startsWith(q); });
-    var contains = list.filter(function(c){ return !c.name.toLowerCase().startsWith(q) && c.name.toLowerCase().includes(q); });
-    var matches  = starts.concat(contains);
+  var matches = getAllCustomerNames(q);
 
-    if (!matches.length) {
-      if(drop) { drop.innerHTML = '<div style="padding:12px 16px;color:#94a3b8;font-family:Montserrat,sans-serif;font-size:0.82rem;">No customers found</div>'; drop.style.display = ''; }
-      return;
+  if (!matches.length) {
+    if(drop) { drop.innerHTML = '<div style="padding:12px 16px;color:#94a3b8;font-family:Montserrat,sans-serif;font-size:0.82rem;">No customers found</div>'; drop.style.display = ''; }
+    return;
+  }
+
+  drop.innerHTML = matches.slice(0, 20).map(function(c) {
+    // Highlight the matched part
+    var dispName = c.name;
+    var idx = c.name.toLowerCase().indexOf(q);
+    if (idx >= 0) {
+      dispName = c.name.slice(0, idx)
+        + '<span style="color:#6366f1;font-weight:700;">' + c.name.slice(idx, idx + q.length) + '</span>'
+        + c.name.slice(idx + q.length);
     }
+    var encodedName  = encodeURIComponent(c.name);
+    var encodedPhone = encodeURIComponent(c.phone || '');
+    return '<div style="padding:8px 14px;cursor:pointer;border-bottom:1px solid #e2e8f0;transition:background .15s;"'
+      + ' onmouseover="this.style.background=\'rgba(99,102,241,0.07)\'"'
+      + ' onmouseout="this.style.background=\'#ffffff\'"'
+      + ' onmousedown="selectSearchName(\'' + encodedName + '\',\'' + encodedPhone + '\')">'
+      + '<div style="font-family:\'Montserrat\',sans-serif;font-size:0.84rem;font-weight:500;color:#1e293b;">' + dispName + '</div>'
+      + (c.phone ? '<div style="font-family:\'Montserrat\',sans-serif;font-size:0.72rem;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;">📞 ' + c.phone + '</div>' : '')
+      + '</div>';
+  }).join('');
 
-    drop.innerHTML = matches.slice(0, 20).map(function(c) {
-      // Highlight the matched part
-      var dispName = c.name;
-      var idx = c.name.toLowerCase().indexOf(q);
-      if (idx >= 0) {
-        dispName = c.name.slice(0, idx)
-          + '<span style="color:#6366f1;font-weight:700;">' + c.name.slice(idx, idx + q.length) + '</span>'
-          + c.name.slice(idx + q.length);
-      }
-      var encodedName  = encodeURIComponent(c.name);
-      var encodedPhone = encodeURIComponent(c.phone || '');
-      return '<div style="padding:8px 14px;cursor:pointer;border-bottom:1px solid #e2e8f0;transition:background .15s;"'
-        + ' onmouseover="this.style.background=\'rgba(99,102,241,0.07)\'"'
-        + ' onmouseout="this.style.background=\'#ffffff\'"'
-        + ' onmousedown="selectSearchName(\'' + encodedName + '\',\'' + encodedPhone + '\')">'
-        + '<div style="font-family:\'Montserrat\',sans-serif;font-size:0.84rem;font-weight:500;color:#1e293b;">' + dispName + '</div>'
-        + (c.phone ? '<div style="font-family:\'Montserrat\',sans-serif;font-size:0.72rem;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;">📞 ' + c.phone + '</div>' : '')
-        + '</div>';
-    }).join('');
-
-    drop.style.display = '';
-  });
+  drop.style.display = '';
 }
 
 function selectSearchName(encodedName, encodedPhone) {
@@ -12817,38 +12803,34 @@ function onDbNameSearch(val) {
   }
 
   // Show dropdown of matching names
-  _buildSearchNameList().then(function(list) {
-    var starts   = list.filter(function(c){ return c.name.toLowerCase().startsWith(q); });
-    var contains = list.filter(function(c){ return !c.name.toLowerCase().startsWith(q) && c.name.toLowerCase().includes(q); });
-    var matches  = starts.concat(contains);
+  var matches = getAllCustomerNames(q);
 
-    if (!matches.length) {
-      if(drop) { drop.innerHTML = '<div style="padding:10px 14px;color:#94a3b8;font-family:Montserrat,sans-serif;font-size:0.8rem;">No customers found</div>'; drop.style.display = ''; }
-      return;
-    }
+  if (!matches.length) {
+    if(drop) { drop.innerHTML = '<div style="padding:10px 14px;color:#94a3b8;font-family:Montserrat,sans-serif;font-size:0.8rem;">No customers found</div>'; drop.style.display = ''; }
+    return;
+  }
 
-    if(drop) {
-      drop.innerHTML = matches.slice(0, 20).map(function(c) {
-        var dispName = c.name;
-        var idx = c.name.toLowerCase().indexOf(q);
-        if (idx >= 0) {
-          dispName = c.name.slice(0, idx)
-            + '<span style="color:#818cf8;font-weight:800;">' + c.name.slice(idx, idx + q.length) + '</span>'
-            + c.name.slice(idx + q.length);
-        }
-        var encodedName  = encodeURIComponent(c.name);
-        var encodedPhone = encodeURIComponent(c.phone || '');
-        return '<div style="padding:9px 14px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.06);transition:background .12s;"'
-          + ' onmouseover="this.style.background=\'rgba(99,102,241,0.2)\'"'
-          + ' onmouseout="this.style.background=\'\'"'
-          + ' onmousedown="selectDbName(\'' + encodedName + '\',\'' + encodedPhone + '\')">'
-          + '<div style="font-family:Montserrat,sans-serif;font-size:0.84rem;font-weight:600;color:#e2e8f0;">' + dispName + '</div>'
-          + (c.phone ? '<div style="font-family:Montserrat,sans-serif;font-size:0.7rem;color:rgba(255,255,255,0.35);margin-top:1px;">📞 ' + c.phone + '</div>' : '')
-          + '</div>';
-      }).join('');
-      drop.style.display = '';
-    }
-  });
+  if(drop) {
+    drop.innerHTML = matches.slice(0, 20).map(function(c) {
+      var dispName = c.name;
+      var idx = c.name.toLowerCase().indexOf(q);
+      if (idx >= 0) {
+        dispName = c.name.slice(0, idx)
+          + '<span style="color:#818cf8;font-weight:800;">' + c.name.slice(idx, idx + q.length) + '</span>'
+          + c.name.slice(idx + q.length);
+      }
+      var encodedName  = encodeURIComponent(c.name);
+      var encodedPhone = encodeURIComponent(c.phone || '');
+      return '<div style="padding:9px 14px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.06);transition:background .12s;"'
+        + ' onmouseover="this.style.background=\'rgba(99,102,241,0.2)\'"'
+        + ' onmouseout="this.style.background=\'\'"'
+        + ' onmousedown="selectDbName(\'' + encodedName + '\',\'' + encodedPhone + '\')">'
+        + '<div style="font-family:Montserrat,sans-serif;font-size:0.84rem;font-weight:600;color:#e2e8f0;">' + dispName + '</div>'
+        + (c.phone ? '<div style="font-family:Montserrat,sans-serif;font-size:0.7rem;color:rgba(255,255,255,0.35);margin-top:1px;">📞 ' + c.phone + '</div>' : '')
+        + '</div>';
+    }).join('');
+    drop.style.display = '';
+  }
 }
 
 function selectDbName(encodedName, encodedPhone) {
@@ -12988,7 +12970,6 @@ async function updateCustomerPhone(name, newPhone) {
   }
 
   _pbCustCache = null;
-  _searchNameList = null; // refresh autocomplete cache after phone edit
 
   var displayTotal = supaTotal || updNew;
   toast('✅ Phone updated to ' + newPhone + ' — ' + displayTotal + ' invoice(s) updated for ' + trimName);
@@ -13355,8 +13336,6 @@ async function _applyNameChoice(digits, oldName, newName) {
       });
     }
 
-    // 6. Invalidate search name list so it rebuilds with new name
-    _searchNameList = null;
 
     toast('\u2705 Renamed "' + oldName + '" \u2192 "' + newName + '" in all records');
     if (typeof renderDB === 'function') renderDB();
@@ -13658,31 +13637,7 @@ function onHistNameInput(val) {
   var q = (val || '').trim().toLowerCase();
   if (q.length < 1) { drop.style.display = 'none'; return; }
 
-  var seen = {};
-  var matches = [];
-  // Search excel cache
-  if (Array.isArray(_excelDBCache)) {
-    _excelDBCache.forEach(function(r) {
-      var nm = (r.customer_name || '').trim();
-      if (!nm) return;
-      var key = nm.toLowerCase();
-      if (!seen[key] && key.includes(q)) {
-        seen[key] = true;
-        matches.push({ name: nm, phone: r.phone || '' });
-      }
-    });
-  }
-  // Search new invoices database
-  database.forEach(function(inv) {
-    if (inv.isNull || inv.isDraft) return;
-    var nm = (inv.custName || '').trim();
-    if (!nm) return;
-    var key = nm.toLowerCase();
-    if (!seen[key] && key.includes(q)) {
-      seen[key] = true;
-      matches.push({ name: nm, phone: inv.phone || '' });
-    }
-  });
+  var matches = getAllCustomerNames(q);
 
   if (matches.length === 0) { drop.style.display = 'none'; return; }
 
@@ -13869,7 +13824,6 @@ async function addHistoricalInvoice() {
           });
         }
         if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-        if (typeof _searchNameList !== 'undefined') _searchNameList = null;
       } catch(_cpE) {
         console.warn('customer_payments auto-create (manual invoice) failed:', _cpE);
         if (typeof Sentry !== 'undefined') Sentry.captureException(_cpE);
@@ -14950,7 +14904,6 @@ async function saveInvoiceSettings() {
     } catch(e) { console.warn('Supabase sync failed:', e); }
   }
   if (typeof _excelDBCache !== 'undefined') _excelDBCache = null;
-  if (typeof _searchNameList !== 'undefined') _searchNameList = null;
   if (typeof setInvoiceNumber === 'function') setInvoiceNumber();
   if (typeof renderDB === 'function') {
     loadExcelDBCache().then(function(){
@@ -16373,7 +16326,6 @@ function switchTab(tab, el) {
     var _excelCacheAge = window._excelCacheLoadedAt ? (Date.now() - window._excelCacheLoadedAt) : Infinity;
     if (_excelDBCache === null || _excelCacheAge > 5 * 60 * 1000) {
       _excelDBCache = null;
-      _searchNameList = null;
       loadExcelDBCache().then(() => { renderDB(); setInvoiceNumber(); updateDBCount(); });
     } else {
       renderDB(); setInvoiceNumber(); updateDBCount();
@@ -16780,8 +16732,7 @@ async function rpSearchByName(val) {
     if (!q) rpClearPanel();
     return;
   }
-  var list = await _buildSearchNameList();
-  var matches = list.filter(function(c){ return c.name.toLowerCase().includes(q); }).slice(0, 15);
+  var matches = getAllCustomerNames(q).slice(0, 15);
   if (!matches.length) { drop.style.display = 'none'; return; }
   drop.innerHTML = matches.map(function(c) {
     var eName = encodeURIComponent(c.name);
@@ -16850,7 +16801,7 @@ async function rpSearchByPhone(val) {
     if (!q) rpClearPanel();
     return;
   }
-  var list = await _buildSearchNameList();
+  var list = getAllCustomerNames();
   var matches = list.filter(function(c){ return (c.phone||'').replace(/[^0-9]/g,'').includes(q); }).slice(0, 15);
   if (!matches.length) { drop.style.display = 'none'; return; }
   drop.innerHTML = matches.map(function(c) {
@@ -18113,8 +18064,27 @@ function _occHighlightFields(fieldIds) {
 // used by the interactive path, never a silent/vanishing toast.
 let _bgConflictQueue = [];
 
+// table+recordKey pairs currently queued OR actively shown in the resolution dialog —
+// covers the whole window from "conflict first detected" to "user picked an option."
+// Background flushes (10s auto-sync) must not re-check these until they're cleared,
+// otherwise every tick re-detects the same unresolved conflict and stacks duplicate
+// banner entries (each with its own stale local snapshot) instead of waiting for
+// the one the user is already looking at to be resolved.
+let _conflictKeysInFlight = new Set();
+function _conflictKey(table, recordKey) { return table + '::' + recordKey; }
+
+// Lets a pending-queue flush skip re-running _checkOCC for a record that's already
+// queued/being resolved, instead of rediscovering the same conflict every tick.
+function _isConflictPending(table, recordKey) {
+  return _conflictKeysInFlight.has(_conflictKey(table, recordKey));
+}
+window._isConflictPending = _isConflictPending;
+
 // entry: { entityLabel, table, recordKey, changedFields, onKeepLocal, onUseRemote }
 function _queueBgConflict(entry) {
+  var key = _conflictKey(entry.table, entry.recordKey);
+  if (_conflictKeysInFlight.has(key)) return; // already queued or being resolved — don't stack a duplicate
+  _conflictKeysInFlight.add(key);
   _bgConflictQueue.push(entry);
   _renderBgConflictBanner();
 }
@@ -18140,8 +18110,10 @@ function _resolveNextBgConflict() {
   if (_bgConflictQueue.length === 0) return;
   var entry = _bgConflictQueue.shift();
   _renderBgConflictBanner();
+  var key = _conflictKey(entry.table, entry.recordKey);
   _showOCCConflictDialog(entry.entityLabel, entry.table, entry.recordKey, entry.changedFields,
-    entry.onKeepLocal, entry.onUseRemote);
+    function() { _conflictKeysInFlight.delete(key); entry.onKeepLocal(); },
+    function() { _conflictKeysInFlight.delete(key); entry.onUseRemote(); });
 }
 window._resolveNextBgConflict = _resolveNextBgConflict;
 
@@ -30369,33 +30341,29 @@ function onInvCustName(val) {
   var q = val.trim().toLowerCase();
   if (!q || q.length < 2) { drop.style.display = 'none'; return; }
 
-  _buildSearchNameList().then(function(list) {
-    var starts   = list.filter(function(c){ return c.name.toLowerCase().startsWith(q); });
-    var contains = list.filter(function(c){ return !c.name.toLowerCase().startsWith(q) && c.name.toLowerCase().includes(q); });
-    var matches  = starts.concat(contains).slice(0, 15);
+  var matches = getAllCustomerNames(q).slice(0, 15);
 
-    if (!matches.length) { drop.style.display = 'none'; return; }
+  if (!matches.length) { drop.style.display = 'none'; return; }
 
-    drop.innerHTML = matches.map(function(c) {
-      var dispName = c.name;
-      var idx = c.name.toLowerCase().indexOf(q);
-      if (idx >= 0) {
-        dispName = c.name.slice(0, idx)
-          + '<span style="color:#2563eb;font-weight:700;">' + c.name.slice(idx, idx + q.length) + '</span>'
-          + c.name.slice(idx + q.length);
-      }
-      var eName  = encodeURIComponent(c.name);
-      var ePhone = encodeURIComponent(c.phone || '');
-      return '<div style="padding:8px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;transition:background .15s;"'
-        + ' onmouseover="this.style.background=\'#eff6ff\'"'
-        + ' onmouseout="this.style.background=\'#fff\'"'
-        + ' onmousedown="selectInvCustName(\'' + eName + '\',\'' + ePhone + '\')">'
-        + '<div style="font-family:\'Montserrat\',sans-serif;font-size:0.84rem;font-weight:500;color:#1e293b;">' + dispName + '</div>'
-        + (c.phone ? '<div style="font-family:\'Montserrat\',sans-serif;font-size:0.72rem;font-weight:600;color:#475569;margin-top:2px;">📞 ' + c.phone + '</div>' : '')
-        + '</div>';
-    }).join('');
-    drop.style.display = '';
-  });
+  drop.innerHTML = matches.map(function(c) {
+    var dispName = c.name;
+    var idx = c.name.toLowerCase().indexOf(q);
+    if (idx >= 0) {
+      dispName = c.name.slice(0, idx)
+        + '<span style="color:#2563eb;font-weight:700;">' + c.name.slice(idx, idx + q.length) + '</span>'
+        + c.name.slice(idx + q.length);
+    }
+    var eName  = encodeURIComponent(c.name);
+    var ePhone = encodeURIComponent(c.phone || '');
+    return '<div style="padding:8px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;transition:background .15s;"'
+      + ' onmouseover="this.style.background=\'#eff6ff\'"'
+      + ' onmouseout="this.style.background=\'#fff\'"'
+      + ' onmousedown="selectInvCustName(\'' + eName + '\',\'' + ePhone + '\')">'
+      + '<div style="font-family:\'Montserrat\',sans-serif;font-size:0.84rem;font-weight:500;color:#1e293b;">' + dispName + '</div>'
+      + (c.phone ? '<div style="font-family:\'Montserrat\',sans-serif;font-size:0.72rem;font-weight:600;color:#475569;margin-top:2px;">📞 ' + c.phone + '</div>' : '')
+      + '</div>';
+  }).join('');
+  drop.style.display = '';
 }
 
 function selectInvCustName(eName, ePhone) {
