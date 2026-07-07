@@ -5539,10 +5539,22 @@ try {
 let invoiceCounter = parseInt(localStorage.getItem('inv_counter') || '1001');
 let database = JSON.parse(localStorage.getItem('inv_database') || '[]');
 let _supabaseDataReady = false;
+// Set once the mobile paginated-load path has fetched the full invoice set
+// (either directly, if total <= 200, or after its background "older records"
+// fetch completes). Prevents loadFromSupabase() from re-truncating `database`
+// to the most recent 200 and re-running the background merge + toast pair on
+// every 10s auto-sync tick — that full sequence should only happen once per
+// page load. A genuine reload resets this to false naturally (fresh script
+// execution), so the one-time fast-first-load behavior still applies then.
+let _mobileFullDatasetLoaded = false;
 let draftsDB   = JSON.parse(localStorage.getItem('inv_drafts')   || '[]');
 let currentUser = null;
 let _activeDbTab = 'submitted'; // 'submitted' | 'advance' | 'draft'
 let _excelDBCache = null; // cached excel_invoices rows for DB tab
+// In-flight loadExcelDBCache() promise. Lets any caller await the fetch that's
+// already running instead of racing it — a search started right after page load
+// (before the fetch resolves) must wait for real data, not silently see [].
+let _excelDBCacheLoadPromise = null;
 const EXCEL_INDEX_KEY = 'pcnc_excel_index';
 const EXCEL_INDEX_TS_KEY = 'pcnc_excel_index_ts';
 const EXCEL_INDEX_TTL = 24 * 60 * 60 * 1000; // 24 hours
@@ -6446,9 +6458,9 @@ async function _eagSearchCustomers(query) {
     if (dropdown) dropdown.style.display = 'none';
     return;
   }
-  _eagSearchTimer = setTimeout(function() {
+  _eagSearchTimer = setTimeout(async function() {
     if (!dropdown) return;
-    var results = getAllCustomerNames(query.trim());
+    var results = await getAllCustomerNames(query.trim());
     if (!results.length) {
       dropdown.innerHTML = '<div style="padding:10px 12px;color:#94a3b8;font-size:0.78rem;font-family:Montserrat,sans-serif;">No matching customers</div>';
       dropdown.style.display = 'block';
@@ -6754,8 +6766,10 @@ async function loadFromSupabase(silent) {
   if (!silent) setSyncStatus('syncing', '● Syncing...');
 
   // ── Mobile: paginated load — last 200 invoices first, rest in background ──
-  // Desktop falls through to the original full-load code below (completely unchanged).
-  if (window.matchMedia('(max-width: 767px)').matches) {
+  // Only for the FIRST call this page load (see _mobileFullDatasetLoaded above).
+  // Subsequent auto-sync ticks fall through to the same full-refresh code
+  // desktop uses below — no more re-truncating to 200 / re-showing the toast pair.
+  if (window.matchMedia('(max-width: 767px)').matches && !_mobileFullDatasetLoaded) {
     try {
       // Step 1: get total invoice count
       const { count: _mbTotal, error: _mbCntErr } = await sb
@@ -6824,8 +6838,10 @@ async function loadFromSupabase(silent) {
       localStorage.setItem('inv_database', JSON.stringify(database));
       _supabaseDataReady = true;
       setSyncStatus('synced', '● Synced');
+      if (_mbFrom === 0) _mobileFullDatasetLoaded = true; // nothing older to fetch — already complete
 
       // Step 3: load older invoices silently in the background and merge
+      // (one-time only — see _mobileFullDatasetLoaded)
       if (_mbFrom > 0) {
         (async () => {
           try {
@@ -6841,7 +6857,11 @@ async function loadFromSupabase(silent) {
               if (typeof renderDB === 'function') { renderDB(); updateDBCount(); }
               if (typeof toast === 'function') toast('✅ All records loaded');
             }
+            _mobileFullDatasetLoaded = true; // full set now in memory — no more truncate-and-reload cycles
           } catch(bgE) { console.warn('[loadFromSupabase] background load:', bgE); }
+          // NOTE: flag intentionally left false on error so the next 10s auto-sync
+          // tick retries the full first-load sequence rather than silently giving
+          // up on ever fetching the older records.
         })();
       }
     } catch(e) {
@@ -7352,6 +7372,26 @@ function setInvoiceNumber() {
         }
       }).catch(function(e) { console.warn("[setInvoiceNumber supabase]", e); });
   }
+}
+
+// Live conflict check against Supabase — local database/draftsDB arrays are only as
+// fresh as the last full sync, so a draft or invoice added directly to the DB
+// (bypassing this app) or from another device can go undetected by the in-memory
+// checks alone. Read-only: does not mutate local caches.
+async function _liveInvNumConflict(numStr) {
+  if (typeof sb === 'undefined' || !sb || !navigator.onLine) return false;
+  try {
+    var _invRes = await sb.from('invoices').select('inv_num').eq('inv_num', numStr).limit(1);
+    if (_invRes.data && _invRes.data.length) return true;
+  } catch(e) { console.warn('[_liveInvNumConflict invoices]', e); }
+  try {
+    var _dRes = await sb.from('shop_settings').select('value').eq('key', 'inv_drafts').maybeSingle();
+    if (_dRes.data && _dRes.data.value) {
+      var _liveDrafts = JSON.parse(_dRes.data.value);
+      if (Array.isArray(_liveDrafts) && _liveDrafts.some(function(d){ return d.invNum === numStr; })) return true;
+    }
+  } catch(e) { console.warn('[_liveInvNumConflict drafts]', e); }
+  return false;
 }
 
 // Gauge → default rate mapping
@@ -8148,10 +8188,6 @@ async function doSubmit(data) {
         var _afterCpSuccess = function() {
           if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
           _clearCpPending();
-          if (typeof _rpAutoRefreshFinanceTab === 'function') {
-            var _epDate = parseDateStr ? parseDateStr(data.date) : data.date;
-            if (_epDate) _rpAutoRefreshFinanceTab(_epDate);
-          }
         };
         try {
           var newAmount = parseFloat(data.received) || 0;
@@ -8322,13 +8358,15 @@ async function doSubmit(data) {
   var _checkNum = inv.invNum;
   var _alreadyUsed = database.some(function(d){ return d.invNum === _checkNum && d !== inv; })
     || draftsDB.some(function(d){ return d.invNum === _checkNum; })
-    || (_excelDBCache||[]).some(function(r){ return ('INV-'+r.order_num) === _checkNum; });
+    || (_excelDBCache||[]).some(function(r){ return ('INV-'+r.order_num) === _checkNum; })
+    || await _liveInvNumConflict(_checkNum);
   if (_alreadyUsed) {
     var _safeNum = invoiceCounter;
     while (
       database.some(function(d){ return d.invNum === ('INV-'+_safeNum); }) ||
       draftsDB.some(function(d){ return d.invNum === ('INV-'+_safeNum); }) ||
-      (_excelDBCache||[]).some(function(r){ return r.order_num === String(_safeNum); })
+      (_excelDBCache||[]).some(function(r){ return r.order_num === String(_safeNum); }) ||
+      await _liveInvNumConflict('INV-'+_safeNum)
     ) { _safeNum++; }
     inv.invNum = 'INV-' + _safeNum;
     invoiceCounter = _safeNum + 1;
@@ -8354,11 +8392,6 @@ async function doSubmit(data) {
   if (document.getElementById('histOrder')) { var _ho = document.getElementById('histOrder'); _ho.value = invoiceCounter; }
   if (document.getElementById('summaryTab') && document.getElementById('summaryTab').style.display !== 'none') renderSummary();
 
-  // Auto-post invoice amount as Sheets Cutting income in finance ledger
-  if (!isAdvance && !data.isNull && navigator.onLine && currentUser) {
-    postInvoiceToLedger(data).catch(e => console.warn('Finance ledger auto-post:', e));
-  }
-
   // Create/refresh the customer_payments entry for this invoice's received amount.
   // Uses the check-then-insert-or-update helper (not a raw insert) so resubmitting a
   // draft that already has a payment row from its original submission updates that
@@ -8375,10 +8408,6 @@ async function doSubmit(data) {
         }, undefined);
         if (!r.ok) { console.warn('customer_payments auto-create/update failed:', r.error); return; }
         if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-        if (typeof _rpAutoRefreshFinanceTab === 'function') {
-          var _npDate = parseDateStr ? parseDateStr(data.date) : data.date;
-          if (_npDate) _rpAutoRefreshFinanceTab(_npDate);
-        }
       } catch(e) {
         console.warn('customer_payments auto-create failed:', e);
         if (typeof Sentry !== 'undefined') Sentry.captureException(e);
@@ -12608,7 +12637,12 @@ function onSearchInv(val) {
 // phone-based lookups like rpSearchByPhone, which filter by phone
 // themselves after getting the full list).
 // ══════════════════════════════════════════════
-function getAllCustomerNames(query) {
+async function getAllCustomerNames(query) {
+  // Wait for the Excel-invoices fetch if one is still in flight — otherwise an
+  // Excel-only customer (no row in `invoices` at all) is silently invisible to
+  // every search box for however long the fetch takes after page load.
+  await loadExcelDBCache();
+
   var rawList = []; // all name+phone pairs before dedup
 
   function addRaw(nm, phone) {
@@ -12667,7 +12701,7 @@ function getAllCustomerNames(query) {
 }
 window.getAllCustomerNames = getAllCustomerNames;
 
-function onSearchName(val) {
+async function onSearchName(val) {
   var drop = document.getElementById('searchNameDrop');
   var q    = val.trim().toLowerCase();
 
@@ -12694,7 +12728,7 @@ function onSearchName(val) {
   }
 
   // Build and show dropdown
-  var matches = getAllCustomerNames(q);
+  var matches = await getAllCustomerNames(q);
 
   if (!matches.length) {
     if(drop) { drop.innerHTML = '<div style="padding:12px 16px;color:#94a3b8;font-family:Montserrat,sans-serif;font-size:0.82rem;">No customers found</div>'; drop.style.display = ''; }
@@ -12773,7 +12807,7 @@ function getFilteredDB() {
   return database;
 }
 
-function onDbNameSearch(val) {
+async function onDbNameSearch(val) {
   _dbExactName = null; // user is typing — clear exact-match lock
   var drop = document.getElementById('dbNameDrop');
   var q    = val.trim().toLowerCase();
@@ -12785,7 +12819,7 @@ function onDbNameSearch(val) {
   }
 
   // Show dropdown of matching names
-  var matches = getAllCustomerNames(q);
+  var matches = await getAllCustomerNames(q);
 
   if (!matches.length) {
     if(drop) { drop.innerHTML = '<div style="padding:10px 14px;color:#94a3b8;font-family:Montserrat,sans-serif;font-size:0.8rem;">No customers found</div>'; drop.style.display = ''; }
@@ -12845,8 +12879,11 @@ async function diagnoseMissingRows() {
   var btn = document.querySelector('[onclick="diagnoseMissingRows()"]');
   if (btn) { btn.textContent = '⏳ Scanning...'; btn.disabled = true; }
 
-  // Ensure cache is loaded
-  if (_excelDBCache === null) await loadExcelDBCache();
+  // Ensure cache is loaded — always await, even if a fetch is already in flight
+  // (checking `_excelDBCache === null` here used to be a no-op guard: the value
+  // flips to a non-null [] almost immediately after the fetch starts, well before
+  // the real rows arrive, so this never actually waited for the fetch to finish).
+  await loadExcelDBCache();
 
   // Collect all numeric order_nums
   var allNums = [];
@@ -13515,7 +13552,10 @@ async function saveDraft() {
   var _draftNum = data.invNum && data.invNum !== 'INV-' ? data.invNum : ('INV-' + invoiceCounter);
   var _numExists = database.some(function(inv){ return inv.invNum === _draftNum && !inv.isDraft; })
     || draftsDB.some(function(inv){ return inv.invNum === _draftNum && inv.invNum !== (draftsDB[_editingDraftIdx||0]||{}).invNum; })
-    || (_excelDBCache||[]).some(function(inv){ return ('INV-'+inv.order_num) === _draftNum; });
+    || (_excelDBCache||[]).some(function(inv){ return ('INV-'+inv.order_num) === _draftNum; })
+    // Only for a brand-new draft — an existing draft being re-saved under its own
+    // number would otherwise always "conflict" with its own live copy.
+    || (_editingDraftIdx === null && await _liveInvNumConflict(_draftNum));
   if (_numExists) {
     invoiceCounter++;
     localStorage.setItem('inv_counter', invoiceCounter);
@@ -13612,13 +13652,13 @@ function setHistAutoOrderNum() {
   if (el) el.value = invoiceCounter;
 }
 
-function onHistNameInput(val) {
+async function onHistNameInput(val) {
   var drop = document.getElementById('histNameDrop');
   if (!drop) return;
   var q = (val || '').trim().toLowerCase();
   if (q.length < 1) { drop.style.display = 'none'; return; }
 
-  var matches = getAllCustomerNames(q);
+  var matches = await getAllCustomerNames(q);
 
   if (matches.length === 0) { drop.style.display = 'none'; return; }
 
@@ -16159,9 +16199,24 @@ async function ctrlBootSync() {
 // TABS
 // ══════════════════════════════════════════════
 // ── Load excel_invoices into cache for DB tab (once per session) ──
-async function loadExcelDBCache() {
-  if (_excelDBCache !== null) return; // already loaded
+// Returns a promise that resolves once _excelDBCache holds real data. Safe to call
+// repeatedly/concurrently: a call made while a fetch is already in flight attaches to
+// that same promise instead of starting a second fetch or resolving early with [].
+function loadExcelDBCache() {
+  // Check the in-flight promise FIRST. _fetchExcelDBCache() sets _excelDBCache to []
+  // synchronously (as a "give up and stop retrying" fallback for its own early-exit
+  // paths) well before the real rows arrive, so a `_excelDBCache !== null` check alone
+  // would look "already loaded" the instant a fetch starts and defeat this entirely.
+  if (_excelDBCacheLoadPromise) return _excelDBCacheLoadPromise; // fetch already in flight
+  if (_excelDBCache !== null) return Promise.resolve(); // truly already loaded, nothing pending
 
+  _excelDBCacheLoadPromise = _fetchExcelDBCache().finally(function() {
+    _excelDBCacheLoadPromise = null;
+  });
+  return _excelDBCacheLoadPromise;
+}
+
+async function _fetchExcelDBCache() {
   // Full cache short-circuit — check for a full cached dataset first
   var _exFullCacheTs = parseInt(localStorage.getItem('pcnc_excel_full_ts')||'0');
   var _exFullCacheAge = Date.now() - _exFullCacheTs;
@@ -16713,7 +16768,7 @@ async function rpSearchByName(val) {
     if (!q) rpClearPanel();
     return;
   }
-  var matches = getAllCustomerNames(q).slice(0, 15);
+  var matches = (await getAllCustomerNames(q)).slice(0, 15);
   if (!matches.length) { drop.style.display = 'none'; return; }
   drop.innerHTML = matches.map(function(c) {
     var eName = encodeURIComponent(c.name);
@@ -16738,7 +16793,7 @@ async function rpSearchByInv(val) {
   clearTimeout(window._rpInvTimer);
   var q = val.trim().toUpperCase().replace(/^[A-Za-z]+-/,'');
   if (!q) { rpClearPanel(); return; }
-  window._rpInvTimer = setTimeout(function() {
+  window._rpInvTimer = setTimeout(async function() {
     document.getElementById('rpNameDropdown').style.display = 'none';
     var found = database.find(function(inv) {
       return (inv.invNum||'').replace(/^[A-Za-z]+-/,'').toUpperCase() === q;
@@ -16747,6 +16802,7 @@ async function rpSearchByInv(val) {
       rpSelectCustomer(encodeURIComponent(found.custName), encodeURIComponent(found.phone||''));
       return;
     }
+    await loadExcelDBCache();
     if (Array.isArray(_excelDBCache)) {
       var foundEx = _excelDBCache.find(function(r) {
         return String(r.order_num||'').replace(/^[A-Za-z]+-/,'').toUpperCase() === q;
@@ -16782,7 +16838,7 @@ async function rpSearchByPhone(val) {
     if (!q) rpClearPanel();
     return;
   }
-  var list = getAllCustomerNames();
+  var list = await getAllCustomerNames();
   var matches = list.filter(function(c){ return (c.phone||'').replace(/[^0-9]/g,'').includes(q); }).slice(0, 15);
   if (!matches.length) { drop.style.display = 'none'; return; }
   drop.innerHTML = matches.map(function(c) {
@@ -17032,27 +17088,11 @@ async function rpAddEntry() {
     var res = await sb.from('customer_payments').insert(payRow);
     if (res.error) throw res.error;
 
-    // Also post to finance_ledger if it's a real payment (not bad debt)
-    if (type === 'payment') {
-      await sb.from('finance_ledger').insert({
-        entry_date: date,
-        entry_type: 'invoice_income',
-        category: 'Sheets Cutting',
-        amount: amount,
-        note: 'Payment — ' + _rpCurrentCustomer.name,
-        source: 'customer_payment',
-        created_by: currentUser || 'unknown'
-      });
-    }
-
     status.textContent = '✅ Entry added successfully!'; status.style.color = '#059669';
     document.getElementById('rpEntryAmount').value = '';
     await rpRenderCustomerPanel(_rpCurrentCustomer.name, _rpCurrentCustomer.phone);
     if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
     if (typeof renderSummary === 'function') renderSummary();
-    if (type === 'payment' && typeof _rpAutoRefreshFinanceTab === 'function') {
-      _rpAutoRefreshFinanceTab(date);
-    }
 
   } catch(e) {
     console.error('rpAddEntry error:', e);
@@ -17352,46 +17392,6 @@ async function rpDeleteExcelBd(orderNum, encodedName) {
     await rpRenderCustomerPanel(name, _rpCurrentCustomer ? _rpCurrentCustomer.phone : '');
     toast && toast('✅ Bad debt deleted.');
   } catch(e) { console.error('[rpDeleteExcelBd:excel_invoices update]', e); alert('Failed: ' + (e.message||e)); }
-}
-
-async function _rpAutoRefreshFinanceTab(paymentDate) {
-  try {
-    console.log('[RP-REFRESH] called for date:', paymentDate);
-    if (typeof sb === 'undefined' || !sb) { console.log('[RP-REFRESH] no sb'); return; }
-
-    var cpRes = await sb.from('customer_payments')
-      .select('amount,customer_name')
-      .eq('payment_date', paymentDate)
-      .eq('type', 'payment');
-    if (cpRes.error) { console.log('[RP-REFRESH] cpRes error:', cpRes.error); return; }
-    var total = (cpRes.data || []).reduce(function(s, p) { return s + (parseFloat(p.amount)||0); }, 0);
-    var rounded = Math.round(total);
-    console.log('[RP-REFRESH] total from customer_payments:', rounded);
-
-    if (typeof _finLedgerLocal !== 'undefined') {
-      var localIdx = _finLedgerLocal.findIndex(function(e) {
-        return e.entry_date === paymentDate && e.entry_type === 'income' && e.category === 'Sheets Cutting' && !e._deleted;
-      });
-      console.log('[RP-REFRESH] _finLedgerLocal entry index:', localIdx, localIdx !== -1 ? 'amount was: ' + _finLedgerLocal[localIdx].amount : 'not found');
-      if (localIdx !== -1) {
-        _finLedgerLocal[localIdx].amount = rounded;
-        if (typeof _savefinLocal === 'function') _savefinLocal();
-        console.log('[RP-REFRESH] cache updated to:', rounded);
-      }
-    }
-
-    var _dEl = document.getElementById('dailyDate');
-    var _cEl = document.getElementById('dailyCat');
-    var _tEl = document.getElementById('dailyType');
-    console.log('[RP-REFRESH] Finance tab date:', _dEl ? _dEl.value : 'no element', 'cat:', _cEl ? _cEl.value : 'no element', 'type:', _tEl ? _tEl.value : 'no element');
-    if (!_dEl || !_cEl || !_tEl) { console.log('[RP-REFRESH] Finance tab elements not found'); return; }
-    if (_tEl.value !== 'income' || _cEl.value !== 'Sheets Cutting') { console.log('[RP-REFRESH] Finance tab not on Sheets Cutting - skipping UI update'); return; }
-    if (_dEl.value !== paymentDate) { console.log('[RP-REFRESH] Finance tab date mismatch:', _dEl.value, '!==', paymentDate); return; }
-
-    console.log('[RP-REFRESH] calling onDailyCatChange');
-    if (typeof onDailyCatChange === 'function') onDailyCatChange();
-
-  } catch(e) { console.warn('[RP-REFRESH] error:', e); }
 }
 
 async function rpLookupByDate(dateVal) {
@@ -20497,11 +20497,19 @@ async function refreshOfflineCache() {
   try {
     // Fetch full cache from Supabase (no source filter — all entries for all devices)
     // Note: manual entries sync via flushFinLedgerPending — no reverse sync needed here
-    const { data, error } = await sb.from('finance_ledger').select('*').order('entry_date', { ascending: true });
-    if (error || !data) return;
-    localStorage.setItem(FIN_CACHE_KEY, JSON.stringify(data));
+    // Paginated in batches of 1000 — an unbounded select() silently caps at 1000 rows.
+    const batchSize = 1000;
+    let allData = [], from = 0, done = false;
+    while (!done) {
+      const { data, error } = await sb.from('finance_ledger').select('*').order('entry_date', { ascending: true }).range(from, from + batchSize - 1);
+      if (error) { console.warn('Offline cache refresh page error:', error); return; }
+      allData = allData.concat(data || []);
+      if (!data || data.length < batchSize) done = true;
+      else from += batchSize;
+    }
+    localStorage.setItem(FIN_CACHE_KEY, JSON.stringify(allData));
     localStorage.setItem(FIN_CACHE_TS_KEY, Date.now().toString());
-    console.log('Offline cache refreshed:', data.length, 'entries');
+    console.log('Offline cache refreshed:', allData.length, 'entries');
   } catch(e) {
     console.warn('Offline cache refresh failed:', e);
   }
@@ -20712,18 +20720,25 @@ async function fetchFinanceEntries(filters = {}) {
   let supaEntries = [];
   if (sb && navigator.onLine) {
     try {
-      let q = sb.from('finance_ledger').select('*').order('entry_date', { ascending: true });
-      // Online: fetch ALL sources — manual entries are already synced to Supabase,
-      // so we skip _finLedgerLocal entirely to prevent double-count after re-sync.
-      if (filters.type) q = q.eq('entry_type', filters.type);
-      if (dateFrom)     q = q.gte('entry_date', dateFrom);
-      if (dateTo)       q = q.lte('entry_date', dateTo);
-      const { data, error } = await q;
-      if (!error) {
-        supaEntries = data || [];
-        // Trigger background cache refresh if stale
-        if (shouldRefreshCache()) refreshOfflineCache();
+      // Paginate in batches of 1000 — Supabase silently caps an unbounded select()
+      // at 1000 rows with no error, which previously truncated all-time views
+      // (Ledger "All Years", P&L "All") once finance_ledger grew past 1000 rows.
+      const batchSize = 1000;
+      let from = 0, done = false;
+      while (!done) {
+        let q = sb.from('finance_ledger').select('*').order('entry_date', { ascending: true });
+        if (filters.type) q = q.eq('entry_type', filters.type);
+        if (dateFrom)     q = q.gte('entry_date', dateFrom);
+        if (dateTo)       q = q.lte('entry_date', dateTo);
+        q = q.range(from, from + batchSize - 1);
+        const { data, error } = await q;
+        if (error) { console.warn('fetchFinanceEntries page fetch error:', error); break; }
+        supaEntries = supaEntries.concat(data || []);
+        if (!data || data.length < batchSize) done = true;
+        else from += batchSize;
       }
+      // Trigger background cache refresh if stale
+      if (shouldRefreshCache()) refreshOfflineCache();
     } catch(e) {
       console.warn('fetchFinanceEntries Supabase error — trying offline cache:', e);
       supaEntries = _getFilteredCache(dateFrom, dateTo, filters.type);
@@ -21045,35 +21060,6 @@ setInterval(() => {
     flushFinLedgerPending();
   }
 }, 10000);
-
-// ─── AUTO-POST INVOICE INCOME ───
-// Called from submitInvoice flow — posts RECEIVED amount (not total bill) as Sheets Cutting income.
-// 2025 dates are BLOCKED: those amounts already live in Supabase as historical_daily from DAILY_2025.
-// Deletes any existing entry for this invNum first to avoid duplicates on re-submission.
-async function postInvoiceToLedger(inv) {
-  if (!sb || !inv) return;
-  const invDate = inv.date || new Date().toISOString().split('T')[0];
-  // BLOCK: 2025 dates fully covered by historical_daily — never write invoice entries for them
-  if (invDate.slice(0, 4) === '2025') return;
-  const amount = parseFloat(inv.received) || 0;
-  if (!amount) return;
-  try {
-    // Remove any existing ledger entry for this invoice (safe upsert via ref_id)
-    await sb.from('finance_ledger').delete().eq('ref_id', inv.invNum).eq('source', 'invoice');
-    await sb.from('finance_ledger').insert({
-      entry_date:  invDate,
-      entry_type:  'invoice_income',
-      category:    'Sheets Cutting',
-      amount:      amount,
-      note:        'Invoice ' + (inv.invNum || '') + ' (received)',
-      source:      'invoice',
-      created_by:  currentUser || 'unknown',
-      ref_id:      inv.invNum || null
-    });
-  } catch(e) {
-    console.warn('postInvoiceToLedger failed:', e);
-  }
-}
 
 // ─── RENDER RECENT ENTRIES (cascading Year → Month → Type) ───
 let _recentEntriesCache = [];
@@ -21788,8 +21774,12 @@ async function exportLedgerCSV() {
 
     if (btn) btn.textContent = '⏳ Fetching data...';
 
-    var res = await sb.from('finance_ledger').select('*').order('entry_date', { ascending: true });
-    var rows = res.data || [];
+    // Same calculation path as the on-screen Ledger/Dashboard — applies the same
+    // historical/2025-dedup exclusions and the same source==='invoice' live
+    // cross-check against invoices.received, so the export always matches
+    // whatever is shown on screen at the moment it's generated.
+    var rows = await fetchEntriesWithCorrectInvoiceAmounts({});
+    rows.sort(function(a,b){ return (a.entry_date||'').localeCompare(b.entry_date||''); });
 
     if (rows.length === 0) { alert('No finance data found.'); if (btn) { btn.textContent = origText; btn.disabled = false; } return; }
 
@@ -21831,9 +21821,9 @@ async function exportLedgerCSV() {
       var totalIncome = 0, totalExpense = 0;
       mRows.forEach(function(r) {
         var amt = parseFloat(r.amount) || 0;
-        var type = (r.entry_type || r.type || 'other').toLowerCase();
-        if (type === 'income' || type === 'credit' || type === 'invoice_income') totalIncome += amt;
-        else totalExpense += amt;
+        var type = (r.entry_type || r.type || '').toLowerCase();
+        if (type === 'income' || type === 'invoice_income') totalIncome += amt;
+        else if (type === 'monthly_expense' || type === 'onetime_expense' || type === 'debt_paid' || type === 'savings') totalExpense += amt;
       });
       var net = totalIncome - totalExpense;
       var numCols = ordered.length;
@@ -21916,7 +21906,8 @@ async function exportLedgerCSV() {
       mRows.forEach(function(r) {
         var amt = parseFloat(r.amount)||0;
         var type = (r.entry_type||r.type||'').toLowerCase();
-        if (type==='income'||type==='credit'||type==='invoice_income') inc+=amt; else exp+=amt;
+        if (type==='income'||type==='invoice_income') inc+=amt;
+        else if (type==='monthly_expense'||type==='onetime_expense'||type==='debt_paid'||type==='savings') exp+=amt;
       });
       grandIncome += inc; grandExpense += exp;
       var net = inc - exp;
@@ -21959,62 +21950,12 @@ async function exportLedgerCSV() {
   }
 }
 
-// ─── HELPER: fetch finance entries and correct invoice_income amounts from invoices table ───
+// ─── HELPER: fetch finance entries ───
+// finance_ledger is now a clean, independent two-source table (historical_daily +
+// manual only) — every row is trusted exactly as saved, permanently. No entries
+// here are ever cross-validated against invoices/customer_payments after the fact.
 async function fetchEntriesWithCorrectInvoiceAmounts(filters = {}) {
-  let entries = await fetchFinanceEntries(filters);
-
-  // Always validate invoice_income entries against the invoices table
-  const invIncEntries = entries.filter(e => e.entry_type === 'invoice_income' || e.source === 'invoice');
-  if (invIncEntries.length > 0 && sb) {
-    try {
-      const dateFrom = filters.monthFrom ? filters.monthFrom + '-01' : '2000-01-01';
-      const dateTo   = filters.monthTo   ? filters.monthTo + '-' + String(lastDayOfMonth(filters.monthTo)).padStart(2,'0') : '2099-12-31';
-      const { data: invRows } = await sb
-        .from('invoices')
-        .select('inv_num, received, date')
-        .gte('date', dateFrom)
-        .lte('date', dateTo);
-
-      const receivedMap = {};
-      (invRows || []).forEach(r => {
-        receivedMap[r.inv_num] = parseFloat(r.received) || 0;
-      });
-
-      entries = entries.map(e => {
-        if (e.entry_type === 'invoice_income' || e.source === 'invoice') {
-          if (!e.ref_id) return { ...e, amount: 0 }; // no ref → drop
-          // If ref_id exists in invoices table → use received amount
-          // If ref_id NOT found in invoices table → invoice was deleted → amount = 0 (will be filtered below)
-          const recv = receivedMap.hasOwnProperty(e.ref_id) ? receivedMap[e.ref_id] : 0;
-          return { ...e, amount: recv };
-        }
-        return e;
-      });
-
-      // Drop any invoice_income with zero amount (deleted invoices or nothing received)
-      // Exception: keep entries with stored amount > 0 (for ledger display purposes)
-      entries = entries.filter(e => {
-        if (e.entry_type === 'invoice_income' || e.source === 'invoice') return (e.amount || 0) > 0;
-        return true;
-      });
-    } catch(err) {
-      // On error, keep invoice_income with their stored amounts rather than dropping entirely
-      entries = entries.map(e => {
-        if ((e.entry_type === 'invoice_income' || e.source === 'invoice') && !e.amount) return null;
-        return e;
-      }).filter(Boolean);
-      console.warn('fetchEntriesWithCorrectInvoiceAmounts error — using stored amounts:', err);
-    }
-  } else if (invIncEntries.length > 0 && !sb) {
-    // No Supabase — keep invoice_income entries with their stored amounts (best available data)
-    // Only drop entries with no amount at all
-    entries = entries.filter(e => {
-      if (e.entry_type === 'invoice_income' || e.source === 'invoice') return (e.amount || 0) > 0;
-      return true;
-    });
-  }
-
-  return entries;
+  return await fetchFinanceEntries(filters);
 }
 
 // ─── P&L REPORT ───
@@ -22702,16 +22643,6 @@ function sAddRecovery(empId, date, amount, note){
   d[empId].push({id:'rec_'+Date.now(), date, amount, note});
   d[empId].sort((a,b)=>a.date.localeCompare(b.date));
   sSaveRecs(d);
-  // Post to Finance Ledger as Income → Recovered Cash/Others
-  const nid = 'rec_sal_'+Date.now();
-  _finLedgerLocal.push({
-    local_id: nid, entry_date: date,
-    entry_type: 'income', category: 'Recovered Cash/Others',
-    amount, note: note||'Staff Loan Recovery — '+empId,
-    source:'manual', created_by:currentUser||'admin', _synced:false
-  });
-  _savefinLocal(); _finPendingSync.push(nid); _saveFinPending();
-  if(navigator.onLine) flushFinLedgerPending();
 }
 
 function sDelRecovery(empId, recId){
@@ -22760,14 +22691,24 @@ function sKey(eid,ym){ return eid+'|'+ym; }
 
 // ── Daily payments helpers ──
 function sDays(){ return JSON.parse(localStorage.getItem(S_DAY)||'{}'); }
-async function sSaveDays(d){
+// changedKey: the single empId|YYYY-MM sub-key that was actually modified. When given,
+// synced via an atomic server-side JSONB merge (merge_shop_setting_subkey) instead of
+// overwriting the whole blob — a full-blob upsert here would silently drop any other
+// key written concurrently (e.g. by a boot-sync refresh landing between two saves).
+async function sSaveDays(d, changedKey){
   localStorage.setItem(S_DAY,JSON.stringify(d));
   if (typeof sb !== 'undefined' && sb) {
     try {
-      await sb.from('shop_settings').upsert(
-        [{ key: 'pcnc_day_v4', value: JSON.stringify(d), updated_at: new Date().toISOString() }],
-        { onConflict: 'key' }
-      );
+      if (changedKey) {
+        await sb.rpc('merge_shop_setting_subkey', {
+          p_key: 'pcnc_day_v4', p_subkey: changedKey, p_value: d[changedKey] || []
+        });
+      } else {
+        await sb.from('shop_settings').upsert(
+          [{ key: 'pcnc_day_v4', value: JSON.stringify(d), updated_at: new Date().toISOString() }],
+          { onConflict: 'key' }
+        );
+      }
     } catch(err) { console.warn('Salary day sync failed:', err); }
   }
 }
@@ -23657,7 +23598,6 @@ function sDWSave(empId, ym){
   const val = el ? (parseFloat(el.value)||0) : 0;
   const rec = sGetRec(empId, ym);
   sSetRec(empId, ym, {...rec, daysWorked: val});
-  sSyncLedger(ym);
   sRenderBar(ym);
 }
 
@@ -23672,7 +23612,6 @@ function sOTSave(empId, ym){
   const updated={...rec, nights, days};
   delete updated.otAmount; // clear any old manual override so nights×rate is used
   sSetRec(empId,ym,updated);
-  sSyncLedger(ym);
   sRenderBar(ym);
   toast('✅ OT saved — '+emp.name);
   // Re-render card so right-side breakdown reflects the saved nights/days
@@ -23713,7 +23652,6 @@ function sSave(empId,ym){
     ...(emp.wageType==='daily' ? { daysWorked: gv('daysWorked') } : {}),
   };
   sSetRec(empId,ym,updated);
-  sSyncLedger(ym);
   toast('✅ Saved — '+emp.name);
   sRenderBar(ym);
   // Re-render the card so the right-side breakdown updates immediately
@@ -23742,8 +23680,7 @@ function sAddDay(empId,ym){
   const days = sDayRecs(empId,ym);
   days.push({ id:'d_'+Date.now(), date, amount:amt, ot_amount, mess, room, note });
   days.sort((a,b)=>a.date.localeCompare(b.date));
-  const d = sDays(); d[sDayKey(empId,ym)] = days; sSaveDays(d);
-  sSyncLedger(ym);
+  const d = sDays(); const _dk = sDayKey(empId,ym); d[_dk] = days; sSaveDays(d, _dk);
   amtEl.value=''; if(noteEl)noteEl.value='';
   ['dayOtAmt_','dayMess_','dayRoom_'].forEach(pfx=>{
     const el=document.getElementById(pfx+empId); if(el) el.value='';
@@ -23761,8 +23698,7 @@ function sDelDay(empId,ym,payId){
   if(!confirm('Delete this payment?')) return;
   const d=sDays(), k=sDayKey(empId,ym);
   d[k]=(d[k]||[]).filter(p=>p.id!==payId);
-  sSaveDays(d);
-  sSyncLedger(ym);
+  sSaveDays(d, k);
   const emps=sEmps(),emp=emps.find(e=>e.id===empId);
   const container=document.getElementById('card_'+empId);
   if(container&&emp) container.outerHTML=sCard(emp,ym);
@@ -23770,54 +23706,6 @@ function sDelDay(empId,ym,payId){
   toast('🗑️ Deleted');
 }
 
-
-// Sync month total to finance ledger
-function sSyncLedger(ym){
-  // Blocked: Jan 2025–May 2026 seeded via historical_daily in Supabase. June 2026+ via Daily Entry.
-  if(ym<'2026-06') return;
-  if(ym>='2026-06') return;
-  const emps=sEmps(); let total=0;
-  emps.forEach(emp=>{
-    const rec=sGetRec(emp.id,ym);
-    // Only count per-date payments whose date actually falls within this month.
-    // Payments stored under the wrong month key (e.g. a May 30 payment saved under
-    // the June key) must not inflate the auto-sync total for the wrong month.
-    const allDayRecs=sDayRecs(emp.id,ym);
-    const inMonthRecs=allDayRecs.filter(p=>p.date&&p.date.slice(0,7)===ym);
-    const dayAmt=inMonthRecs.reduce((s,p)=>{
-      const ot=p.ot_amount!==undefined?(p.ot_amount||0):((p.ot_nights||0)*(emp.nR||0))+((p.ot_days||0)*(emp.dR||0));
-      return s+(p.amount||0)+ot+(p.mess||0)+(p.room||0);
-    },0);
-    total+=dayAmt+(rec.advance||0)+(rec.cash||0);
-  });
-  const lk='sal_lid_'+ym, oldId=localStorage.getItem(lk);
-  if(oldId){ _finLedgerLocal=_finLedgerLocal.filter(e=>e.local_id!==oldId); localStorage.removeItem(lk); }
-  if(total<=0){_savefinLocal();return;}
-
-  // ── DEDUP GUARD: if MONTHLY_2026 seed already has a Salaries entry for this month,
-  //    skip adding a second auto-sync entry — prevents duplicate in the ledger.
-  const ymPrefix = ym+'-';
-  const seedAlreadyHasSalaries = _finLedgerLocal.some(e=>
-    e.source==='seed_2026' &&
-    e.entry_type==='monthly_expense' &&
-    e.category==='Salaries' &&
-    e.entry_date && e.entry_date.startsWith(ymPrefix)
-  );
-  const monthly2026HasSalaries = false; // Salaries removed from MONTHLY_2026; now seeded via _salCleanAndSeed
-  if(seedAlreadyHasSalaries || monthly2026HasSalaries){
-    _savefinLocal(); return;
-  }
-
-  const [y,m]=ym.split('-').map(Number);
-  const lastDay=new Date(y,m,0).getDate();
-  const nid='sal_'+ym+'_'+Date.now();
-  localStorage.setItem(lk,nid);
-  _finLedgerLocal.push({local_id:nid,entry_date:ym+'-'+String(lastDay).padStart(2,'0'),
-    entry_type:'monthly_expense',category:'Salaries',amount:total,
-    note:'Staff Salaries '+ym+' (auto)',source:'manual',created_by:currentUser||'admin',_synced:false});
-  _savefinLocal(); _finPendingSync.push(nid); _saveFinPending();
-  if(navigator.onLine)flushFinLedgerPending();
-}
 
 function sGetAutoAmt(){
   // Returns Total Net Paid for current month from Salaries tab
@@ -29396,13 +29284,13 @@ window.addEventListener('online', async function() {
 
 <script>
 /* ── NEW INVOICE: Customer Name Autocomplete (additive only) ── */
-function onInvCustName(val) {
+async function onInvCustName(val) {
   var drop = document.getElementById('custNameDrop');
   if (!drop) return;
   var q = val.trim().toLowerCase();
   if (!q || q.length < 2) { drop.style.display = 'none'; return; }
 
-  var matches = getAllCustomerNames(q).slice(0, 15);
+  var matches = (await getAllCustomerNames(q)).slice(0, 15);
 
   if (!matches.length) { drop.style.display = 'none'; return; }
 
