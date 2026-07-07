@@ -19403,12 +19403,16 @@ function onDailyCatChange() {
     if (refreshBtn) { refreshBtn.style.display=''; refreshBtn.textContent=isSheetsCutting?'\ud83d\udd04 Refresh from Invoices':'\ud83d\udd04 Refresh from Salaries'; refreshBtn.onclick=fetchAutoAmount; }
     if (autoNote) autoNote.style.display = 'none';
 
-    // For past dates: check if a manual entry already exists in finance_ledger.
+    // For past dates (and today): check if a manual entry already exists in finance_ledger.
     // If yes, show it green with pen icon instead of auto-fetching from invoices/salaries.
+    // Inclusive of today (matches isPastOrToday below) — excluding today here meant a
+    // same-day manual save would get silently hidden behind a blind fetchAutoAmount()
+    // the moment you navigated away and back, and re-saving while it showed the wrong
+    // (often 0) auto-fetched value would overwrite the real saved entry.
     // EXCEPTION: Salaries always re-fetches from sDays() — the local cache may contain
     // an incorrect monthly total from the previous bug; sDays is always the source of truth.
     const today = new Date().toISOString().split('T')[0];
-    const isPast = date && date < today;
+    const isPast = date && date <= today;
     if (isPast && !isStaffSalaries) {
       // Check local cache first
       const existingLocal = _finLedgerLocal.find(e =>
