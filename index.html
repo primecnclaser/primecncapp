@@ -13301,7 +13301,13 @@ function _showNameChooser(digits, existingName, enteredName) {
   ]);
 }
 
-// Bulk rename: update all records oldName -> newName
+// Bulk rename: update all records oldName -> newName.
+// Uses the same audited RPC chain Settings' adminApplyEdit() uses
+// (update_customer_name, update_customer_phone, rename_customer_in_drafts)
+// instead of the old 2-table exact-match approach, which missed
+// customer_payments/edit_access_grants/drafts and could fail on case-only
+// name differences. No merge-warning step here \u2014 Kamran confirmed this
+// flow should apply directly once old/new is chosen.
 async function _applyNameChoice(digits, oldName, newName) {
   // 1. Fill form with chosen name immediately
   var nameEl = document.getElementById('custName');
@@ -13328,34 +13334,46 @@ async function _applyNameChoice(digits, oldName, newName) {
   }
 
   try {
-    // 2. Update excel_invoices
-    await sb.from('excel_invoices')
-      .update({ customer_name: newName })
-      .eq('customer_name', oldName);
+    // 2. Rename across invoices, excel_invoices, customer_payments, edit_access_grants
+    var _rpc = await sb.rpc('update_customer_name', { p_old_name: oldName, p_new_name: newName });
+    if (_rpc.error) throw _rpc.error;
 
-    // 3. Update invoices table
-    await sb.from('invoices')
-      .update({ cust_name: newName })
-      .eq('cust_name', oldName);
+    // 3. Normalize phone (same digits that triggered the conflict) across the
+    // same 4 tables, in case any row under the old name had a stale/blank phone.
+    try {
+      await sb.rpc('update_customer_phone', { p_name: newName, p_phone: digits });
+    } catch(_phoneErr) { console.warn('[_applyNameChoice] phone normalize failed', _phoneErr); }
 
-    // 4. Update local database array in memory
+    // 4. Rename matching draft entries \u2014 atomic, targeted JSONB update inside
+    // the RPC (never a wholesale client-side read-modify-write).
+    var draftRenameCount = 0;
+    try {
+      var _draftRpc = await sb.rpc('rename_customer_in_drafts', { p_old_name: oldName, p_new_name: newName });
+      draftRenameCount = _draftRpc.data || 0;
+    } catch(_draftErr) { console.warn('[_applyNameChoice] draft rename failed', _draftErr); }
+
+    // 5. Refresh local in-memory state immediately so this device's own open
+    // tab reflects the new name right away, matching adminApplyEdit()'s pattern.
+    var oldKey = oldName.trim().toLowerCase();
     database.forEach(function(inv) {
-      if ((inv.custName || '').toLowerCase().trim() === oldName.toLowerCase().trim()) {
-        inv.custName = newName;
-      }
+      if ((inv.custName || '').trim().toLowerCase() === oldKey) inv.custName = newName;
     });
+    localStorage.setItem('inv_database', JSON.stringify(database));
 
-    // 5. Update excel cache in memory
     if (Array.isArray(_excelDBCache)) {
       _excelDBCache.forEach(function(r) {
-        if ((r.customer_name || '').toLowerCase().trim() === oldName.toLowerCase().trim()) {
-          r.customer_name = newName;
-        }
+        if ((r.customer_name || '').trim().toLowerCase() === oldKey) r.customer_name = newName;
       });
     }
 
+    draftsDB.forEach(function(d) {
+      if ((d.custName || '').trim().toLowerCase() === oldKey) d.custName = newName;
+    });
+    localStorage.setItem('inv_drafts', JSON.stringify(draftsDB));
 
-    toast('\u2705 Renamed "' + oldName + '" \u2192 "' + newName + '" in all records');
+    var totalRows = (_rpc.data && _rpc.data[0] && _rpc.data[0].total) || 0;
+    toast('\u2705 Renamed "' + oldName + '" \u2192 "' + newName + '" \u2014 ' + totalRows + ' record(s)'
+      + (draftRenameCount > 0 ? ' + ' + draftRenameCount + ' draft(s)' : ''));
     if (typeof renderDB === 'function') renderDB();
     if (typeof renderSummary === 'function') renderSummary();
 
