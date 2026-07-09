@@ -5558,6 +5558,47 @@ let _excelDBCacheLoadPromise = null;
 const EXCEL_INDEX_KEY = 'pcnc_excel_index';
 const EXCEL_INDEX_TS_KEY = 'pcnc_excel_index_ts';
 const EXCEL_INDEX_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+// After a customer rename, the in-memory _excelDBCache patch alone doesn't
+// survive an app restart — _fetchExcelDBCache() loads pcnc_excel_full /
+// pcnc_excel_index straight from localStorage and skips the network fetch
+// entirely whenever they're under the 24h TTL, so a renamed-away old name
+// would silently resurface. Patches both persisted blobs in place (reads
+// independently of _excelDBCache, since a rename can happen before the
+// Excel cache is ever loaded this session). Called from both rename paths
+// (Settings' adminApplyEdit and New Invoice's _applyNameChoice).
+function _patchExcelCacheCustomerName(oldName, newName) {
+  var oldKey = (oldName || '').trim().toLowerCase();
+  if (!oldKey || !newName) return;
+
+  try {
+    var fullRaw = localStorage.getItem('pcnc_excel_full');
+    if (fullRaw) {
+      var fullData = JSON.parse(fullRaw);
+      if (Array.isArray(fullData)) {
+        var fullChanged = false;
+        fullData.forEach(function(r) {
+          if ((r.customer_name || '').trim().toLowerCase() === oldKey) { r.customer_name = newName; fullChanged = true; }
+        });
+        if (fullChanged) localStorage.setItem('pcnc_excel_full', JSON.stringify(fullData));
+      }
+    }
+  } catch(e) { console.warn('[_patchExcelCacheCustomerName] pcnc_excel_full', e); }
+
+  try {
+    var idxRaw = localStorage.getItem(EXCEL_INDEX_KEY);
+    if (idxRaw) {
+      var idxData = JSON.parse(idxRaw);
+      if (Array.isArray(idxData)) {
+        var idxChanged = false;
+        idxData.forEach(function(r) {
+          if ((r.n || '').trim().toLowerCase() === oldKey) { r.n = newName; idxChanged = true; }
+        });
+        if (idxChanged) localStorage.setItem(EXCEL_INDEX_KEY, JSON.stringify(idxData));
+      }
+    }
+  } catch(e) { console.warn('[_patchExcelCacheCustomerName] pcnc_excel_index', e); }
+}
 let _editingDraftIdx = null;    // index in draftsDB when editing a draft
 let _dbPage = 1;               // pagination page for submitted tab
 var _dbPageSize = 50;
@@ -6351,6 +6392,7 @@ async function adminApplyEdit() {
       (_excelDBCache || []).forEach(function(r) {
         if ((r.customer_name||'').trim().toLowerCase() === oldKey) r.customer_name = newName;
       });
+      _patchExcelCacheCustomerName(oldName, newName);
 
       (draftsDB || []).forEach(function(d) {
         if ((d.custName||'').trim().toLowerCase() === oldKey) d.custName = newName;
@@ -13365,6 +13407,7 @@ async function _applyNameChoice(digits, oldName, newName) {
         if ((r.customer_name || '').trim().toLowerCase() === oldKey) r.customer_name = newName;
       });
     }
+    _patchExcelCacheCustomerName(oldName, newName);
 
     draftsDB.forEach(function(d) {
       if ((d.custName || '').trim().toLowerCase() === oldKey) d.custName = newName;
