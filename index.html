@@ -23295,6 +23295,34 @@ function sAllMonthsCard(emp){
   </div>`;
 }
 
+// Per-employee month picker — lets you view one employee's breakdown for any of
+// their own active months without changing the page-wide month/leaving their card.
+// Reuses sMonthRange (same helper sLifetime/sShowHistory use) so the option list
+// matches join→leave periods exactly; no new month-range logic.
+function sCardMonthOptions(emp, selectedYM){
+  const periods = emp.periods || [{joinDate:emp.joinDate||'',leftDate:emp.leftDate||''}];
+  const allMonths = [];
+  periods.forEach(p=>{
+    const endYM = p.leftDate ? p.leftDate.slice(0,7) : new Date().toISOString().slice(0,7);
+    sMonthRange(p.joinDate, endYM).forEach(m=>{ if(!allMonths.includes(m)) allMonths.push(m); });
+  });
+  return allMonths.slice().reverse().map(m=>{
+    const [y,mn] = m.split('-').map(Number);
+    const label = new Date(y,mn-1,1).toLocaleString('default',{month:'short'})+' '+y;
+    return `<option value="${m}"${m===selectedYM?' selected':''} style="color:#1e293b;background:#fff;">${label}</option>`;
+  }).join('');
+}
+
+// Re-renders a single employee's card for a newly-picked month, in place —
+// goes through the exact same sCard()→sCalcV2() path as the page-wide month view.
+function sCardMonthChange(empId, newYM){
+  const emp = sEmps().find(e=>e.id===empId);
+  if(!emp) return;
+  const el = document.getElementById('card_'+empId);
+  if(!el) return;
+  el.outerHTML = sCard(emp, newYM);
+}
+
 function sCard(emp,ym){
   const rec  = sGetRec(emp.id,ym);
   const c    = sCalcV2(emp,rec,emp.id,ym);
@@ -23369,7 +23397,10 @@ function sCard(emp,ym){
         </div>
         <div style="font-size:0.68rem;color:${isLocked?'#94a3b8':'#a7f3d0'};">${emp.title||'Staff'} &nbsp;|&nbsp; ${emp.wageType==='daily'?'Daily: Rs. '+fmt(emp.dailyRate||0)+'/day × '+(rec.daysWorked||0)+' days':'Basic: Rs. '+fmt(c.basic)+'/mo'} &nbsp;(${(()=>{const [y,mn]=ym.split('-').map(Number);return new Date(y,mn-1,1).toLocaleString('default',{month:'long'})+' '+y;})()} )</div>
       </div>
-      <div style="display:flex;gap:6px;">
+      <div style="display:flex;gap:6px;align-items:center;">
+        <select onchange="sCardMonthChange('${emp.id}', this.value)" title="View this employee's breakdown for a different month" style="padding:5px 8px;border-radius:7px;border:1.5px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.12);color:#fff;font-family:'Montserrat',sans-serif;font-size:0.68rem;font-weight:700;cursor:pointer;outline:none;">
+          ${sCardMonthOptions(emp, ym)}
+        </select>
         <button onclick="sPdfOne('${emp.id}','pdf')" style="padding:5px 10px;border-radius:7px;border:1.5px solid rgba(165,180,252,0.7);background:rgba(99,102,241,0.2);color:#c7d2fe;font-family:'Montserrat',sans-serif;font-size:0.68rem;font-weight:700;cursor:pointer;">💾 Save as PDF</button>
         <button onclick="sPdfOne('${emp.id}','print')" style="padding:5px 10px;border-radius:7px;border:1.5px solid rgba(255,255,255,0.35);background:transparent;color:#fff;font-family:'Montserrat',sans-serif;font-size:0.68rem;font-weight:700;cursor:pointer;">🖨️ Print</button>
         <button onclick="sOpenEdit('${emp.id}','${ym}')" style="padding:5px 12px;border-radius:7px;border:1.5px solid rgba(255,255,255,0.35);background:transparent;color:#fff;font-family:'Montserrat',sans-serif;font-size:0.7rem;font-weight:700;cursor:pointer;">✏️ Edit</button>
