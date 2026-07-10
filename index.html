@@ -10150,11 +10150,12 @@ async function renderSummary() {
     </div>
   `;
 
-  // Await a fresh cache before rendering so mobile has manual entries synced from desktop
-  (async () => {
-    if (typeof refreshOfflineCache === 'function' && navigator.onLine) await refreshOfflineCache();
-    _renderGeneralSummary(totalRemaining, totalBadDebt);
-  })();
+  // Refresh the offline cache in the background — not awaited. _renderGeneralSummary()
+  // does its own live fetches when online and never consumes this cache's result;
+  // this call only keeps the offline fallback warm for later, so it shouldn't block
+  // the general summary render behind an extra full finance_ledger fetch.
+  if (typeof refreshOfflineCache === 'function' && navigator.onLine) refreshOfflineCache();
+  _renderGeneralSummary(totalRemaining, totalBadDebt);
 }
 
 // Caches the last fully-computed Remaining in Market so Phase 1 shows the
@@ -10467,15 +10468,20 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
   })() : Promise.resolve());
 
   let cashInHand = null;
+  // Shared by both the Cash-in-Hand calc below AND the This-Month-Expense calc
+  // further down — previously each called fetchEntriesWithCorrectInvoiceAmounts({})
+  // separately (same table, same all-time unfiltered fetch, run twice). Fetching
+  // once and reusing the result for both is a pure dedupe — same rows, same math.
+  let allEntries = null;
   const p2 = (async () => {
     try {
-      const isInc = e => e.entry_type==='income' || e.entry_type==='invoice_income';
-      const isExp = e => ['monthly_expense','onetime_expense','debt_paid','savings'].includes(e.entry_type);
-
       // fetchEntriesWithCorrectInvoiceAmounts returns:
       // - Desktop: _finLedgerLocal entries (includes manual) + Supabase non-manual
       // - Mobile: [] local + Supabase non-manual (missing manual since neq source=manual)
-      const allEntries = await fetchEntriesWithCorrectInvoiceAmounts({});
+      allEntries = await fetchEntriesWithCorrectInvoiceAmounts({});
+
+      const isInc = e => e.entry_type==='income' || e.entry_type==='invoice_income';
+      const isExp = e => ['monthly_expense','onetime_expense','debt_paid','savings'].includes(e.entry_type);
       cashInHand = allEntries.filter(isInc).reduce((s,e)=>s+(e.amount||0),0)
                  - allEntries.filter(isExp).reduce((s,e)=>s+(e.amount||0),0);
 
@@ -10501,71 +10507,115 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
 
   await Promise.all([p1, p2]);
 
-  // ── Current Month Cash Collection (Sheets Cutting + Scrap) ──
+  // ── Current Month Cash Collection (Sheets Cutting + Scrap) + Running Expense
+  //    + Bad Debt — four independent calculations, now run via Promise.all
+  //    instead of one after another. ──
   const _nowYM = new Date().toISOString().slice(0, 7); // e.g. "2026-06"
   const _mFirstDay = _nowYM + '-01';
   const _mLastDay2 = new Date(new Date(_mFirstDay).getFullYear(), new Date(_mFirstDay).getMonth()+1, 0).getDate();
   const _mLastDay  = _nowYM + '-' + String(_mLastDay2).padStart(2,'0');
   let _curMonthCutting = 0;
   let _curMonthScrap   = 0;
-  try {
-    if (sb && navigator.onLine) {
-      // Sheets Cutting — from finance_ledger to match Finance tab exactly
-      try {
-        const _scMonth = await sb.from('finance_ledger')
-          .select('amount')
-          .gte('entry_date', _mFirstDay)
-          .lte('entry_date', _mLastDay)
-          .eq('category', 'Sheets Cutting')
-          .eq('entry_type', 'income')
-          .neq('source', 'historical_daily');
-        (_scMonth.data || []).forEach(function(e){ _curMonthCutting += (parseFloat(e.amount)||0); });
-      } catch(_scMe) { console.warn('[curMonth SC] finance_ledger fetch:', _scMe); }
+  let _curMonthExpense      = 0;
+  let _curMonthSheetExpense = 0;
+  var displayBadDebt = totalBadDebt;
 
-      // Scrap — still from finance_ledger (no customer_payments for scrap)
-      try {
-        const _scrapRes = await sb.from('finance_ledger')
-          .select('amount')
-          .gte('entry_date', _mFirstDay)
-          .lte('entry_date', _mLastDay)
-          .eq('category', 'Scrap')
-          .in('entry_type', ['income', 'invoice_income']);
-        (_scrapRes.data || []).forEach(function(e){ _curMonthScrap += (parseFloat(e.amount)||0); });
-      } catch(_scrapE) { console.warn('[curMonth scrap] fetch:', _scrapE); }
-    } else {
-      // Offline — use _finLedgerLocal for Sheets Cutting (matches Finance tab)
-      (_finLedgerLocal||[]).forEach(function(e){
-        if (!e.entry_date || e.entry_date.slice(0,7) !== _nowYM) return;
-        if (e.category === 'Sheets Cutting' && (e.entry_type === 'income' || e.entry_type === 'invoice_income')) {
-          _curMonthCutting += (parseFloat(e.amount)||0);
-        }
-      });
-      // Scrap offline — from _finLedgerLocal
-      (_finLedgerLocal||[]).forEach(function(e){
-        if (!e.entry_date || e.entry_date.slice(0,7) !== _nowYM) return;
-        if (e.category === 'Scrap' && (e.entry_type === 'income' || e.entry_type === 'invoice_income')) {
-          _curMonthScrap += (parseFloat(e.amount)||0);
-        }
-      });
-    }
-  } catch(_ce) { console.warn('[curMonth cutting] error:', _ce); }
-  const _curMonthTotal = _curMonthCutting + _curMonthScrap;
+  const pCutting = (async () => {
+    try {
+      if (sb && navigator.onLine) {
+        // Sheets Cutting — from finance_ledger to match Finance tab exactly
+        try {
+          const _scMonth = await sb.from('finance_ledger')
+            .select('amount')
+            .gte('entry_date', _mFirstDay)
+            .lte('entry_date', _mLastDay)
+            .eq('category', 'Sheets Cutting')
+            .eq('entry_type', 'income')
+            .neq('source', 'historical_daily');
+          (_scMonth.data || []).forEach(function(e){ _curMonthCutting += (parseFloat(e.amount)||0); });
+        } catch(_scMe) { console.warn('[curMonth SC] finance_ledger fetch:', _scMe); }
+      } else {
+        // Offline — use _finLedgerLocal for Sheets Cutting (matches Finance tab)
+        (_finLedgerLocal||[]).forEach(function(e){
+          if (!e.entry_date || e.entry_date.slice(0,7) !== _nowYM) return;
+          if (e.category === 'Sheets Cutting' && (e.entry_type === 'income' || e.entry_type === 'invoice_income')) {
+            _curMonthCutting += (parseFloat(e.amount)||0);
+          }
+        });
+      }
+    } catch(_ce) { console.warn('[curMonth cutting] error:', _ce); }
+  })();
+
+  const pScrap = (async () => {
+    try {
+      if (sb && navigator.onLine) {
+        // Scrap — still from finance_ledger (no customer_payments for scrap)
+        try {
+          const _scrapRes = await sb.from('finance_ledger')
+            .select('amount')
+            .gte('entry_date', _mFirstDay)
+            .lte('entry_date', _mLastDay)
+            .eq('category', 'Scrap')
+            .in('entry_type', ['income', 'invoice_income']);
+          (_scrapRes.data || []).forEach(function(e){ _curMonthScrap += (parseFloat(e.amount)||0); });
+        } catch(_scrapE) { console.warn('[curMonth scrap] fetch:', _scrapE); }
+      } else {
+        // Scrap offline — from _finLedgerLocal
+        (_finLedgerLocal||[]).forEach(function(e){
+          if (!e.entry_date || e.entry_date.slice(0,7) !== _nowYM) return;
+          if (e.category === 'Scrap' && (e.entry_type === 'income' || e.entry_type === 'invoice_income')) {
+            _curMonthScrap += (parseFloat(e.amount)||0);
+          }
+        });
+      }
+    } catch(_ce2) { console.warn('[curMonth scrap outer] error:', _ce2); }
+  })();
 
   // ── Current Month Running Expense ──
   // Single source of truth: fetchEntriesWithCorrectInvoiceAmounts already
   // returns correctly deduped data matching the Finance tab Dashboard.
-  let _curMonthExpense      = 0;
-  let _curMonthSheetExpense = 0;
-  try {
-    const _expEntries = await fetchEntriesWithCorrectInvoiceAmounts({});
-    _expEntries.forEach(function(e) {
-      if (!e.entry_date || e.entry_date.slice(0,7) !== _nowYM) return;
-      if (e.entry_type === 'monthly_expense') {
-        _curMonthExpense += (e.amount || 0);
-        if (e.category === 'Sheets') _curMonthSheetExpense += (e.amount || 0);
-      }
-    });
-  } catch(_xe) { console.warn('[curMonth expense] error:', _xe); }
+  // Reuses `allEntries` fetched by p2 above instead of fetching it again.
+  const pExpense = (async () => {
+    try {
+      const _expEntries = allEntries || [];
+      _expEntries.forEach(function(e) {
+        if (!e.entry_date || e.entry_date.slice(0,7) !== _nowYM) return;
+        if (e.entry_type === 'monthly_expense') {
+          _curMonthExpense += (e.amount || 0);
+          if (e.category === 'Sheets') _curMonthSheetExpense += (e.amount || 0);
+        }
+      });
+    } catch(_xe) { console.warn('[curMonth expense] error:', _xe); }
+  })();
+
+  // Read bad debt directly from customer_payments — single source of truth.
+  // Reuses the raw rows buildAllCustomerSummaries() already fetched (same table,
+  // same rows, same `type === 'bad_debt'` filter) instead of re-querying — the sum
+  // of all matching rows is identical whether computed here or there.
+  const pBadDebt = (async () => {
+    if (Array.isArray(_allCustomerPaymentsRawCache)) {
+      displayBadDebt = _allCustomerPaymentsRawCache.reduce(function(s, p) {
+        return p.type === 'bad_debt' ? s + (parseFloat(p.amount) || 0) : s;
+      }, 0);
+    } else if (typeof sb !== 'undefined' && sb && navigator.onLine) {
+      // Fallback — raw cache not populated yet (e.g. buildAllCustomerSummaries
+      // hasn't run this session) — preserve original live-query behavior.
+      try {
+        var _bdRes = await sb.from('customer_payments')
+          .select('amount')
+          .eq('type', 'bad_debt');
+        if (!_bdRes.error && _bdRes.data) {
+          displayBadDebt = _bdRes.data.reduce(function(s, p) {
+            return s + (parseFloat(p.amount) || 0);
+          }, 0);
+        }
+      } catch(_bdE) { console.warn('Bad debt fetch error:', _bdE); }
+    }
+  })();
+
+  await Promise.all([pCutting, pScrap, pExpense, pBadDebt]);
+
+  const _curMonthTotal = _curMonthCutting + _curMonthScrap;
   const _curMonthExpenseWithoutSheet = _curMonthExpense - _curMonthSheetExpense;
 
   // ── Step 4: Compute unified remaining + bad debt from both tables ──
@@ -10578,20 +10628,6 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
   Object.keys(newInvCustMap).forEach(k => { mergedRemaining[k] = (mergedRemaining[k]||0) + newInvCustMap[k]; });
   const unifiedRemaining = Object.values(mergedRemaining).filter(v => v > 0).reduce((s,v) => s+v, 0);
   const displayRemaining = totalRemaining;
-  // Read bad debt directly from customer_payments — single source of truth
-  var displayBadDebt = totalBadDebt;
-  if (typeof sb !== 'undefined' && sb && navigator.onLine) {
-    try {
-      var _bdRes = await sb.from('customer_payments')
-        .select('amount')
-        .eq('type', 'bad_debt');
-      if (!_bdRes.error && _bdRes.data) {
-        displayBadDebt = _bdRes.data.reduce(function(s, p) {
-          return s + (parseFloat(p.amount) || 0);
-        }, 0);
-      }
-    } catch(_bdE) { console.warn('Bad debt fetch error:', _bdE); }
-  }
 
   // ── Step 5: Final render with all data loaded ──
   _cachedRemainingInMarket = displayRemaining;
@@ -16553,6 +16589,10 @@ async function rpGetCustomerSummary(name) {
 }
 
 var _allCustomerSummaryCache = null;
+// Raw customer_payments rows from the last buildAllCustomerSummaries() fetch —
+// reused by _renderGeneralSummary()'s Bad Debt card so it doesn't need its own
+// re-query of the same table. Invalidated together with _allCustomerSummaryCache.
+var _allCustomerPaymentsRawCache = null;
 
 // ── PRODUCTION TAB ─────────────────────────────────────────────
 
@@ -16729,19 +16769,62 @@ async function buildAllCustomerSummaries() {
   var summaries = {};
   function getKey(name) { return (name||'').toLowerCase().trim(); }
 
-  var newRows = [];
-  if (typeof sb !== 'undefined' && sb) {
-    try {
-      var nOffset = 0, nBatchSize = 1000, nDone = false;
-      while (!nDone) {
-        var nRes = await sb.from('invoices').select('cust_name,phone,total,discount').range(nOffset, nOffset + nBatchSize - 1);
-        var batch = nRes.data || [];
-        newRows = newRows.concat(batch);
-        if (batch.length < nBatchSize) nDone = true;
-        else nOffset += nBatchSize;
-      }
-    } catch(e) { console.warn('buildAllCustomerSummaries new invoices:', e); }
-  }
+  // The three fetches below are fully independent (different tables, no shared
+  // state) — run them in parallel via Promise.all instead of one-after-another.
+  var fetchNewRows = async function() {
+    var newRows = [];
+    if (typeof sb !== 'undefined' && sb) {
+      try {
+        var nOffset = 0, nBatchSize = 1000, nDone = false;
+        while (!nDone) {
+          var nRes = await sb.from('invoices').select('cust_name,phone,total,discount').range(nOffset, nOffset + nBatchSize - 1);
+          var batch = nRes.data || [];
+          newRows = newRows.concat(batch);
+          if (batch.length < nBatchSize) nDone = true;
+          else nOffset += nBatchSize;
+        }
+      } catch(e) { console.warn('buildAllCustomerSummaries new invoices:', e); }
+    }
+    return newRows;
+  };
+
+  var fetchExRows = async function() {
+    var exRows = [];
+    if (typeof sb !== 'undefined' && sb) {
+      try {
+        var exOffset = 0, exBatchSize = 1000, exDone = false;
+        while (!exDone) {
+          var eRes = await sb.from('excel_invoices').select('customer_name,phone,total_bill,discount').range(exOffset, exOffset + exBatchSize - 1);
+          var batch = eRes.data || [];
+          exRows = exRows.concat(batch);
+          if (batch.length < exBatchSize) exDone = true;
+          else exOffset += exBatchSize;
+        }
+      } catch(e) { console.warn('buildAllCustomerSummaries excel invoices:', e); }
+    }
+    return exRows;
+  };
+
+  var fetchPayRows = async function() {
+    var payRows = [];
+    if (typeof sb !== 'undefined' && sb) {
+      try {
+        var pOffset = 0, pBatchSize = 1000, pDone = false;
+        while (!pDone) {
+          var pRes = await sb.from('customer_payments').select('customer_name,phone,amount,type').range(pOffset, pOffset + pBatchSize - 1);
+          var batch = pRes.data || [];
+          payRows = payRows.concat(batch);
+          if (batch.length < pBatchSize) pDone = true;
+          else pOffset += pBatchSize;
+        }
+      } catch(e) { console.warn('buildAllCustomerSummaries payments:', e); }
+    }
+    return payRows;
+  };
+
+  var _bacsResults = await Promise.all([fetchNewRows(), fetchExRows(), fetchPayRows()]);
+  var newRows = _bacsResults[0], exRows = _bacsResults[1], payRows = _bacsResults[2];
+
   newRows.forEach(function(r){
     if (!r.cust_name) return;
     var k = getKey(r.cust_name);
@@ -16751,19 +16834,6 @@ async function buildAllCustomerSummaries() {
     if (!summaries[k].phone && r.phone) summaries[k].phone = r.phone;
   });
 
-  var exRows = [];
-  if (typeof sb !== 'undefined' && sb) {
-    try {
-      var exOffset = 0, exBatchSize = 1000, exDone = false;
-      while (!exDone) {
-        var eRes = await sb.from('excel_invoices').select('customer_name,phone,total_bill,discount').range(exOffset, exOffset + exBatchSize - 1);
-        var batch = eRes.data || [];
-        exRows = exRows.concat(batch);
-        if (batch.length < exBatchSize) exDone = true;
-        else exOffset += exBatchSize;
-      }
-    } catch(e) { console.warn('buildAllCustomerSummaries excel invoices:', e); }
-  }
   exRows.forEach(function(r){
     if (!r.customer_name) return;
     var k = getKey(r.customer_name);
@@ -16773,19 +16843,6 @@ async function buildAllCustomerSummaries() {
     if (!summaries[k].phone && r.phone) summaries[k].phone = r.phone;
   });
 
-  var payRows = [];
-  if (typeof sb !== 'undefined' && sb) {
-    try {
-      var pOffset = 0, pBatchSize = 1000, pDone = false;
-      while (!pDone) {
-        var pRes = await sb.from('customer_payments').select('customer_name,phone,amount,type').range(pOffset, pOffset + pBatchSize - 1);
-        var batch = pRes.data || [];
-        payRows = payRows.concat(batch);
-        if (batch.length < pBatchSize) pDone = true;
-        else pOffset += pBatchSize;
-      }
-    } catch(e) { console.warn('buildAllCustomerSummaries payments:', e); }
-  }
   payRows.forEach(function(p){
     if (!p.customer_name) return;
     var k = getKey(p.customer_name);
@@ -16802,11 +16859,13 @@ async function buildAllCustomerSummaries() {
   });
 
   _allCustomerSummaryCache = summaries;
+  _allCustomerPaymentsRawCache = payRows;
   return summaries;
 }
 
 function _rpInvalidateSummaryCache() {
   _allCustomerSummaryCache = null;
+  _allCustomerPaymentsRawCache = null;
 }
 
 function rpClearSearch() {
