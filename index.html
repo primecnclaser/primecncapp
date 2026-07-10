@@ -2692,6 +2692,27 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         </div>
       </div>
 
+      <div class="cust-rate-row" id="custRateRow" style="padding:8px 14px;background:#f0fdf4;border-bottom:1.5px solid #bbf7d0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <label style="font-size:0.65rem;font-weight:700;color:#065f46;text-transform:uppercase;letter-spacing:0.6px;white-space:nowrap;">💰 Customer Rates</label>
+        <div style="display:flex;align-items:center;gap:3px;">
+          <span style="font-size:0.72rem;font-weight:700;color:#065f46;">14G</span>
+          <input type="number" id="custRate14g" placeholder="—" min="0" style="width:58px;padding:3px 5px;border:1.5px solid #86efac;border-radius:5px;font-family:'Montserrat',sans-serif;font-size:0.82rem;outline:none;" oninput="onCustRateFieldInput(this)" onblur="onCustRateFieldBlur(this,'rate_14g')">
+        </div>
+        <div style="display:flex;align-items:center;gap:3px;">
+          <span style="font-size:0.72rem;font-weight:700;color:#065f46;">16G</span>
+          <input type="number" id="custRate16g" placeholder="—" min="0" style="width:58px;padding:3px 5px;border:1.5px solid #86efac;border-radius:5px;font-family:'Montserrat',sans-serif;font-size:0.82rem;outline:none;" oninput="onCustRateFieldInput(this)" onblur="onCustRateFieldBlur(this,'rate_16g')">
+        </div>
+        <div style="display:flex;align-items:center;gap:3px;">
+          <span style="font-size:0.72rem;font-weight:700;color:#065f46;">18G</span>
+          <input type="number" id="custRate18g" placeholder="—" min="0" style="width:58px;padding:3px 5px;border:1.5px solid #86efac;border-radius:5px;font-family:'Montserrat',sans-serif;font-size:0.82rem;outline:none;" oninput="onCustRateFieldInput(this)" onblur="onCustRateFieldBlur(this,'rate_18g')">
+        </div>
+        <div style="display:flex;align-items:center;gap:3px;">
+          <span style="font-size:0.72rem;font-weight:700;color:#065f46;">Kg</span>
+          <input type="number" id="custRateKg" placeholder="—" min="0" style="width:58px;padding:3px 5px;border:1.5px solid #86efac;border-radius:5px;font-family:'Montserrat',sans-serif;font-size:0.82rem;outline:none;" oninput="onCustRateFieldInput(this)" onblur="onCustRateFieldBlur(this,'rate_kg')">
+        </div>
+        <span id="custRateStatus" style="font-size:0.68rem;color:#64748b;"></span>
+      </div>
+
       <div class="delivery-row">
         <label>📦 Order Delivery Date</label>
         <input type="date" id="deliveryDate">
@@ -7204,6 +7225,11 @@ function init() {
   setInvoiceNumber();
   ctrlBootSync();
   loadLogo();
+  // Warm the per-customer rates cache in the background so it's usually
+  // already loaded by the time someone types a phone number in New Invoice —
+  // without this, the very first phone lookup of a session has to wait on a
+  // live fetch before the rate area / gauge auto-fill can resolve.
+  if (typeof _loadCustRatesCache === 'function') _loadCustRatesCache();
   // Re-classify all existing records — ensures advance/submitted status is always accurate
   let reclassified = false;
   database = database.map(inv => {
@@ -7500,7 +7526,22 @@ function onGaugeChange(sel, rowIdx) {
     wrap.style.display = 'none';
     customInp.value    = '';
     sel.style.display  = '';
-    if (GAUGE_RATES[val] !== undefined) {
+    if (window._custRateResolved) {
+      // Identified customer — read from THEIR rate area only, no fallback
+      // to the global GAUGE_RATES default. Blank customer field -> blank rate.
+      var _custFieldId = val === '14' ? 'custRate14g' : val === '16' ? 'custRate16g' : val === '18' ? 'custRate18g' : '';
+      var _custFieldEl = _custFieldId ? document.getElementById(_custFieldId) : null;
+      var _custVal = _custFieldEl ? _custFieldEl.value : '';
+      if (_custVal !== '') {
+        rateInput.value       = _custVal;
+        rateInput.style.color = '#1a7a4a';
+        rateInput.title       = 'Auto-filled from customer’s saved Gauge ' + val + ' rate. You can edit manually.';
+      } else {
+        rateInput.value       = '';
+        rateInput.style.color = '';
+        rateInput.title       = '';
+      }
+    } else if (GAUGE_RATES[val] !== undefined) {
       rateInput.value       = GAUGE_RATES[val];
       rateInput.style.color = '#1a7a4a';
       rateInput.title       = 'Auto-filled from Gauge ' + val + '. You can edit manually.';
@@ -7681,13 +7722,30 @@ function onKgInput(el, i) {
     // Hide gauge — not needed for kg mode
     if (gaugeEl) { gaugeEl.style.display = 'none'; gaugeEl.value = ''; }
     if (gaugeWr) gaugeWr.style.display = 'none';
-    // Auto-fill rate from Kg standard rate
-    const kgRate = (GAUGE_RATES && GAUGE_RATES['kg']) ? GAUGE_RATES['kg'] : 0;
-    if (rateInp && kgRate > 0) {
-      rateInp.value          = kgRate;
-      rateInp.style.color    = '#b7650a';
-      rateInp.title          = 'Auto-filled from Kg standard rate. You can edit manually.';
-      rateInp.dataset.kgAuto = '1';
+    // Auto-fill rate from Kg standard rate — or, for an identified customer,
+    // from THEIR saved Kg rate instead (blank stays blank, no fallback).
+    if (window._custRateResolved) {
+      const _custKgEl = document.getElementById('custRateKg');
+      const _custKgVal = _custKgEl ? _custKgEl.value : '';
+      if (rateInp) {
+        if (_custKgVal !== '') {
+          rateInp.value          = _custKgVal;
+          rateInp.style.color    = '#b7650a';
+          rateInp.title          = 'Auto-filled from customer’s saved Kg rate. You can edit manually.';
+          rateInp.dataset.kgAuto = '1';
+        } else if (rateInp.dataset.kgAuto === '1') {
+          rateInp.value = ''; rateInp.style.color = ''; rateInp.title = '';
+          delete rateInp.dataset.kgAuto;
+        }
+      }
+    } else {
+      const kgRate = (GAUGE_RATES && GAUGE_RATES['kg']) ? GAUGE_RATES['kg'] : 0;
+      if (rateInp && kgRate > 0) {
+        rateInp.value          = kgRate;
+        rateInp.style.color    = '#b7650a';
+        rateInp.title          = 'Auto-filled from Kg standard rate. You can edit manually.';
+        rateInp.dataset.kgAuto = '1';
+      }
     }
   } else {
     [foot, inch, sooter, foot2, inch2, sooter2].forEach(f => {
@@ -9917,6 +9975,9 @@ async function renderSummary() {
   const monV  = (document.getElementById('summaryMonth2') || {}).value || '';
   const cards = document.getElementById('summaryCards2');
   if (!cards) return;
+  const _scModeLabel = mode === 'day'   ? "Day's Collection"
+                      : mode === 'year' ? "Year's Collection"
+                      : "Month's Collection";
   // Hide any open customer list when filters change
   const sl = document.getElementById('summaryList');
   if (sl) { sl.style.display = 'none'; sl.dataset.type = ''; }
@@ -10149,7 +10210,7 @@ async function renderSummary() {
       <div class="s-card-val">Rs. ${fmt(totalBill)}</div>
     </div>
     <div class="s-card sc-received">
-      <div class="s-card-label">✅ ${navigator.onLine ? 'Total Collected (Sheets Cutting)' : 'Total Collected (Offline Est.)'}</div>
+      <div class="s-card-label">✅ ${navigator.onLine ? (_scModeLabel + ' (Recorded)') : (_scModeLabel + ' (Offline Est.)')}</div>
       <div class="s-card-val">Rs. ${fmt(_scTotal)}</div>
     </div>
   `;
@@ -13356,6 +13417,13 @@ function lookupCustomerByPhone(digits) {
       lockCustField('custArea', 'custAreaLabel', 'Area / Address');
       filled = true;
     }
+    // Only an actual matched-existing customer counts as "identified" for
+    // rate purposes \u2014 a brand-new phone with no prior record must keep the
+    // exact existing global GAUGE_RATES behavior (no regression), so this
+    // call is intentionally inside the `if (match)` block only. Fired before
+    // the toast so it never depends on the notification call succeeding.
+    if (typeof _resolveAndPopulateCustRates === 'function') _resolveAndPopulateCustRates(digits);
+
     if (filled) toast('\u2705 Customer: ' + (match.custName || match.phone));
   }
 }
@@ -13442,6 +13510,10 @@ async function _applyNameChoice(digits, oldName, newName) {
   var nameEl = document.getElementById('custName');
   var areaEl = document.getElementById('custArea');
   if (nameEl) { nameEl.value = newName; lockCustField('custName', 'custNameLabel', 'Customer Name'); }
+
+  // Conflict is now resolved ("same person" confirmed) — safe to populate
+  // this customer's saved rates using the phone digits that identified them.
+  if (typeof _resolveAndPopulateCustRates === 'function') _resolveAndPopulateCustRates(digits);
 
   // Fill area from existing match if available
   var allRecords = database.concat(draftsDB);
@@ -13549,6 +13621,10 @@ function unlockAllCustFields() {
   if (areaLbl) areaLbl.innerHTML = 'Area / Address';
   if (nameBtn) nameBtn.style.display = 'none';
   if (areaBtn) areaBtn.style.display = 'none';
+  // Reset per-customer rate area — single choke point so every caller
+  // (direct unlock, Clear All Fields, and lookupCustomerByPhone's own
+  // reset-before-search) clears stale rates for the previous customer.
+  if (typeof _resetCustRateArea === 'function') _resetCustRateArea();
 }
 
 function clearAllCustomerFields() {
@@ -13562,6 +13638,156 @@ function clearAllCustomerFields() {
   if (phoneEl) phoneEl.value = '';
   if (areaEl)  areaEl.value  = '';
   if (nameEl)  nameEl.focus();
+}
+
+// ══════════════════════════════════════════════
+// PER-CUSTOMER DEFAULT RATES (14G/16G/18G/Kg)
+// ══════════════════════════════════════════════
+// window._custRateResolved — true once the customer for THIS invoice is
+// identified (phone matched or newly-seen, no unresolved conflict). Gauge
+// auto-fill in item rows branches on this: resolved -> read customer's rate
+// fields (blank stays blank, no GAUGE_RATES fallback); not resolved -> the
+// existing global GAUGE_RATES behavior, completely untouched.
+window._custRateResolved = false;
+// id of the existing customer_rates row for the resolved customer, if any —
+// null means no row exists yet (first time this customer's rates are set).
+window._custRateRowId = null;
+
+let _custRatesCache = null; // in-memory copy of the whole (small) table
+
+async function _loadCustRatesCache(force) {
+  if (!force && Array.isArray(_custRatesCache)) return _custRatesCache;
+  if (typeof sb === 'undefined' || !sb || !navigator.onLine) { _custRatesCache = _custRatesCache || []; return _custRatesCache; }
+  try {
+    var res = await sb.from('customer_rates').select('id,customer_name,phone,rate_14g,rate_16g,rate_18g,rate_kg');
+    if (res.error) throw res.error;
+    _custRatesCache = res.data || [];
+  } catch(e) { console.warn('[_loadCustRatesCache]', e); _custRatesCache = _custRatesCache || []; }
+  return _custRatesCache;
+}
+
+// Identical suffix-match rule to lookupCustomerByPhone() — same phone,
+// same identity, on purpose. Not a separate matching scheme.
+function _findCustRateRow(digits) {
+  if (!Array.isArray(_custRatesCache)) return null;
+  for (var i = _custRatesCache.length - 1; i >= 0; i--) {
+    var r = _custRatesCache[i];
+    if (!r.phone) continue;
+    var stored = r.phone.replace(/\D/g,'');
+    if (stored === digits || stored === '0'+digits || stored.slice(-digits.length) === digits) return r;
+  }
+  return null;
+}
+
+function _fillCustRateFields(row) {
+  var f14 = document.getElementById('custRate14g');
+  var f16 = document.getElementById('custRate16g');
+  var f18 = document.getElementById('custRate18g');
+  var fKg = document.getElementById('custRateKg');
+  if (f14) f14.value = (row && row.rate_14g != null) ? row.rate_14g : '';
+  if (f16) f16.value = (row && row.rate_16g != null) ? row.rate_16g : '';
+  if (f18) f18.value = (row && row.rate_18g != null) ? row.rate_18g : '';
+  if (fKg) fKg.value = (row && row.rate_kg  != null) ? row.rate_kg  : '';
+  var statusEl = document.getElementById('custRateStatus');
+  if (statusEl) { statusEl.textContent = row ? '' : 'ℹ️ No saved rates yet'; statusEl.style.color = '#64748b'; }
+}
+
+// Resets the rate area for a new/cleared customer — single choke point,
+// called from unlockAllCustFields() so every reset path (Clear All Fields,
+// individual field unlock, phone re-entry) is covered.
+function _resetCustRateArea() {
+  window._custRateResolved = false;
+  window._custRateRowId = null;
+  ['custRate14g','custRate16g','custRate18g','custRateKg'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  var statusEl = document.getElementById('custRateStatus');
+  if (statusEl) { statusEl.textContent = ''; }
+}
+
+// Called once a customer's phone identity is settled with no pending
+// conflict (from lookupCustomerByPhone and from _applyNameChoice's
+// "same person" path). Never called while a conflict modal is open.
+async function _resolveAndPopulateCustRates(digits) {
+  if (!digits || digits.length < 7) return;
+  await _loadCustRatesCache();
+  var row = _findCustRateRow(digits);
+  window._custRateResolved = true;
+  window._custRateRowId = row ? row.id : null;
+  _fillCustRateFields(row);
+}
+
+function onCustRateFieldInput(el) {
+  var statusEl = document.getElementById('custRateStatus');
+  if (statusEl) { statusEl.textContent = '✏️ unsaved change'; statusEl.style.color = '#b45309'; }
+}
+
+// Manual save only — no auto-learning from invoice submission. Persists the
+// edited field as this customer's new permanent default (upsert by id if we
+// already have their row, else insert).
+// Serializes saves — without this, blurring two blank rate fields in quick
+// succession on a brand-new customer (no row yet) can race: both read
+// window._custRateRowId as null and both attempt an INSERT, the second
+// colliding with the phone unique index and silently failing to persist.
+// Chaining onto this promise forces each save to wait for the previous one
+// (and its _custRateRowId assignment) to finish first.
+window._custRateSaveChain = Promise.resolve();
+
+async function onCustRateFieldBlur(el, dbCol) {
+  var statusEl = document.getElementById('custRateStatus');
+  var nameEl = document.getElementById('custName');
+  var phoneEl = document.getElementById('custPhone');
+  var name = (nameEl && nameEl.value || '').trim();
+  var digits = (phoneEl && phoneEl.value || '').replace(/\D/g,'');
+
+  if (!window._custRateResolved) {
+    if (statusEl && el.value !== '') { statusEl.textContent = '⚠️ Enter customer name + phone first'; statusEl.style.color = '#dc2626'; }
+    return;
+  }
+  if (!name) return;
+
+  var raw = el.value;
+  var val = raw === '' ? null : parseFloat(raw);
+  if (raw !== '' && (isNaN(val) || val < 0)) { return; }
+
+  if (typeof sb === 'undefined' || !sb || !navigator.onLine) {
+    if (statusEl) { statusEl.textContent = '⚠️ Offline — rate not saved'; statusEl.style.color = '#dc2626'; }
+    return;
+  }
+
+  if (statusEl) { statusEl.textContent = '⏳ Saving...'; statusEl.style.color = '#64748b'; }
+
+  window._custRateSaveChain = window._custRateSaveChain.then(function() {
+    return _saveCustRateField(dbCol, val, name, digits, statusEl);
+  });
+  await window._custRateSaveChain;
+}
+
+async function _saveCustRateField(dbCol, val, name, digits, statusEl) {
+  try {
+    if (window._custRateRowId) {
+      var upd = { updated_at: new Date().toISOString() };
+      upd[dbCol] = val;
+      if (name) upd.customer_name = name;
+      var res = await sb.from('customer_rates').update(upd).eq('id', window._custRateRowId);
+      if (res.error) throw res.error;
+    } else {
+      var newRow = {
+        customer_name: name,
+        phone: digits || null,
+        created_by: (typeof currentUser !== 'undefined' && currentUser) || 'unknown'
+      };
+      newRow[dbCol] = val;
+      var ins = await sb.from('customer_rates').insert(newRow).select('id').single();
+      if (ins.error) throw ins.error;
+      window._custRateRowId = ins.data.id;
+    }
+    _custRatesCache = null; // invalidate so the next lookup (any invoice) sees this write
+    if (statusEl) { statusEl.textContent = '✅ Saved as default'; statusEl.style.color = '#059669'; }
+  } catch(e) {
+    console.error('[onCustRateFieldBlur]', e);
+    if (statusEl) { statusEl.textContent = '❌ Save failed'; statusEl.style.color = '#dc2626'; }
+  }
 }
 
 // ══════════════════════════════════════════════
