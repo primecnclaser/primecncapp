@@ -6970,8 +6970,16 @@ async function loadFromSupabase(silent) {
     }
     try {
       let exMaxNum = 0;
+      // Await the shared excel cache loader first (idempotent — if a fetch is
+      // already in flight elsewhere in the boot sequence, this attaches to
+      // that same promise instead of starting a second one; if it already
+      // resolved, this returns immediately). This is what actually eliminates
+      // the redundant order_num-only paginated fetch below on cold boot.
+      if (typeof loadExcelDBCache === 'function') {
+        try { await loadExcelDBCache(); } catch(_eDb) { console.warn('[loadFromSupabase] loadExcelDBCache (counter check):', _eDb); }
+      }
       if (_excelDBCache && _excelDBCache.length > 0) {
-        // Use already-loaded cache — zero extra requests
+        // Cache loaded — zero extra requests.
         // NOTE: cached order_num is normalized to "INV-1234" by loadExcelDBCache(),
         // so extract trailing digits rather than parseInt() the raw string.
         _excelDBCache.forEach(function(r) {
@@ -6980,7 +6988,7 @@ async function loadFromSupabase(silent) {
           if (Number.isFinite(n) && n < 100000 && n > exMaxNum) exMaxNum = n;
         });
       } else {
-        // Cache not loaded yet — fall back to paginated fetch (original logic)
+        // Cache still unavailable (loadExcelDBCache failed/empty) — fall back to paginated fetch
         let exFrom = 0, exDone = false;
         while (!exDone) {
           const { data: exPage } = await sb
@@ -7242,6 +7250,15 @@ function init() {
   });
 }
 
+// ── Boot-chain timeout helper — races a promise against a fixed budget.
+// Does NOT cancel the underlying request; the raced-away promise keeps
+// running in the background and still resolves normally (updating
+// database/localStorage/UI whenever it actually completes). This only
+// stops the boot sequence from blocking on it indefinitely.
+function _bootTimeout(ms) {
+  return new Promise(function(resolve) { setTimeout(function(){ resolve('__TIMEOUT__'); }, ms); });
+}
+
 // Auto-restore session if previously logged in
 window.addEventListener('load', async () => {
   var _newSess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
@@ -7299,18 +7316,45 @@ window.addEventListener('load', async () => {
         } catch(e) { console.warn('[mobile bg sync]', e); }
       })();
     } else if (navigator.onLine) {
-      // Desktop: existing behavior — full sync before showing the app.
-      if (_pendingUpdates.length > 0) {
-        setSyncStatus('syncing', '⟳ Syncing pending updates...');
-        await flushPendingUpdates();
-      }
-      if (pendingQueue.length > 0) {
-        setSyncStatus('syncing', '⟳ Syncing pending invoices...');
-        await flushPendingQueue();
-      }
-      await loadFromSupabase();
-      fixExcelInvoiceDates(); // fix specific invoice dates
+      // Desktop: mirrors the mobile pattern above — render immediately from
+      // localStorage cache, sync in the background. Previously this branch
+      // awaited the full flush+sync chain before calling init(), blocking
+      // first paint on network; database is already populated synchronously
+      // from localStorage above, so init() doesn't need fresh data to run.
+      setSyncStatus('syncing', '⟳ Syncing...');
       init();
+
+      // Independent of the invoices sync below — fired in parallel, unblocked.
+      Promise.race([loadExcelDBCache(), _bootTimeout(9000)]).then(function(r) {
+        if (r === '__TIMEOUT__') setSyncStatus('offline', '● Slow connection — showing cached data');
+      });
+      fixExcelInvoiceDates(); // fix specific invoice dates — independent, fire-and-forget
+
+      (async () => {
+        try {
+          if (_pendingUpdates.length > 0) {
+            setSyncStatus('syncing', '⟳ Syncing pending updates...');
+            await flushPendingUpdates();
+          }
+          if (pendingQueue.length > 0) {
+            setSyncStatus('syncing', '⟳ Syncing pending invoices...');
+            await flushPendingQueue();
+          }
+          var _lfsPromise = loadFromSupabase();
+          var _lfsRace = await Promise.race([_lfsPromise.then(function(){ return '__DONE__'; }), _bootTimeout(9000)]);
+          if (_lfsRace === '__TIMEOUT__') {
+            setSyncStatus('offline', '● Slow connection — showing cached data');
+            // Real fetch keeps running in the background — re-render once it actually lands.
+            _lfsPromise.then(function() {
+              if (typeof renderDB === 'function') { renderDB(); updateDBCount(); }
+              if (typeof setInvoiceNumber === 'function') setInvoiceNumber();
+            }).catch(function(e){ console.warn('[desktop bg sync] delayed loadFromSupabase:', e); });
+          } else {
+            if (typeof renderDB === 'function') { renderDB(); updateDBCount(); }
+            if (typeof setInvoiceNumber === 'function') setInvoiceNumber();
+          }
+        } catch(e) { console.warn('[desktop bg sync]', e); }
+      })();
     } else {
       // Offline: use local data.
       setSyncStatus('offline', '● Offline — saved locally');
@@ -27415,14 +27459,48 @@ async function _authInit() {
           } catch(e) { console.warn('[authInit mobile bg sync]', e); }
         })();
       } else {
-        // Desktop: full sync before init (matches legacy behavior).
-        try {
-          if (typeof window.flushPendingUpdates === 'function' && window._pendingUpdates && window._pendingUpdates.length) await window.flushPendingUpdates();
-          if (typeof window.flushPendingQueue === 'function' && window.pendingQueue && window.pendingQueue.length) await window.flushPendingQueue();
-          if (typeof window.loadFromSupabase === 'function') await window.loadFromSupabase();
-          if (typeof window.fixExcelInvoiceDates === 'function') window.fixExcelInvoiceDates();
-        } catch(e) { console.warn('[authInit desktop sync]', e); }
+        // Desktop: mirrors the mobile branch above — init immediately from
+        // cached data, sync in the background. Previously this awaited the
+        // full flush+sync chain before init(), blocking first paint on
+        // network (window.database was already hydrated from localStorage
+        // just above, so init() doesn't need fresh data to run).
         if (typeof window.init === 'function') window.init();
+
+        // Independent of the invoices sync below — fired in parallel, unblocked.
+        if (typeof window.loadExcelDBCache === 'function') {
+          var _exPromise = window.loadExcelDBCache();
+          if (typeof window._bootTimeout === 'function') {
+            Promise.race([_exPromise, window._bootTimeout(9000)]).then(function(r) {
+              if (r === '__TIMEOUT__' && typeof window.setSyncStatus === 'function') window.setSyncStatus('offline', '● Slow connection — showing cached data');
+            });
+          }
+        }
+
+        (async function() {
+          try {
+            if (typeof window.flushPendingUpdates === 'function' && window._pendingUpdates && window._pendingUpdates.length) await window.flushPendingUpdates();
+            if (typeof window.flushPendingQueue === 'function' && window.pendingQueue && window.pendingQueue.length) await window.flushPendingQueue();
+            if (typeof window.fixExcelInvoiceDates === 'function') window.fixExcelInvoiceDates(); // independent, fire-and-forget
+            if (typeof window.loadFromSupabase === 'function') {
+              var _lfsPromise = window.loadFromSupabase();
+              var _lfsDone = _lfsPromise.then(function(){ return '__DONE__'; });
+              var _lfsRace = (typeof window._bootTimeout === 'function')
+                ? await Promise.race([_lfsDone, window._bootTimeout(9000)])
+                : await _lfsDone;
+              if (_lfsRace === '__TIMEOUT__') {
+                if (typeof window.setSyncStatus === 'function') window.setSyncStatus('offline', '● Slow connection — showing cached data');
+                // Real fetch keeps running in the background — re-render once it actually lands.
+                _lfsPromise.then(function() {
+                  if (typeof window.renderDB === 'function') { window.renderDB(); window.updateDBCount(); }
+                  if (typeof window.setInvoiceNumber === 'function') window.setInvoiceNumber();
+                }).catch(function(e){ console.warn('[authInit desktop bg sync] delayed loadFromSupabase:', e); });
+              } else {
+                if (typeof window.renderDB === 'function') { window.renderDB(); window.updateDBCount(); }
+                if (typeof window.setInvoiceNumber === 'function') window.setInvoiceNumber();
+              }
+            }
+          } catch(e) { console.warn('[authInit desktop sync]', e); }
+        })();
       }
     } else {
       // Offline — use local data only.
