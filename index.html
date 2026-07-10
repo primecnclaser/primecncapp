@@ -8790,7 +8790,11 @@ async function _silentPDFFromHtml(htmlStr, filename) {
   try { await _loadHtml2Pdf(); } catch(e) { console.error('[_silentPDFFromHtml]', e); toast('⚠ PDF library failed to load'); return; }
   var _fname  = filename || 'Prime-CNC.pdf';
   var _orient = _getPageOrientation(htmlStr);
-  htmlStr = htmlStr.replace(/@page\s*\{[^}]*\}/g, '@page{size:A4 ' + _orient + ';margin:10mm;}');
+  // NOTE: no longer rewriting the CSS @page{margin} rule here. html2canvas
+  // rasterizes the DOM as displayed — it does not honor @page print-CSS —
+  // so that rule was inert for this path and only created a second,
+  // conflicting margin definition alongside html2pdf's own `margin` option
+  // below (the one that actually controls the generated PDF's margins).
 
   // Embed Jameel Noori font as absolute URL so popup window can load it
   var _fontBase = window.location.href.replace(/\/[^\/]*$/, '/');
@@ -8845,7 +8849,7 @@ async function _silentPDFFromHtml(htmlStr, filename) {
     +     'image:{type:"jpeg",quality:0.98},'
     +     'html2canvas:{scale:3,useCORS:true,logging:false,allowTaint:true,backgroundColor:"#ffffff",windowWidth:794},'
     +     'jsPDF:{unit:"mm",format:"a4",orientation:orient,compress:true},'
-    +     'pagebreak:{mode:["avoid-all","css","legacy"]}'
+    +     'pagebreak:{mode:["css","legacy"]}'
     +   '};'
     +   'html2pdf().set(_opt).from(document.body).toPdf().get("pdf").then(function(pdf){'
     +     'var total=pdf.internal.getNumberOfPages();'
@@ -11181,8 +11185,11 @@ function _printHeaderCSS(s) {
     +'.gs{height:'+sh+'px;background:linear-gradient(90deg,'+sc1+','+sc2+','+sc3+','+sc2+','+sc1+');width:100%;}'
     // Jameel Noori Nastaliq — all variants + external CDN fallback
     +'@font-face{font-family:"JameelNooriNastaliq";font-display:block;src:url("JameelNooriNastaleeq.ttf") format("truetype")}@font-face{font-family:"Jameel Noori Nastaleeq";font-display:block;src:url("JameelNooriNastaleeq.ttf") format("truetype")}'
+    // A row marked avoid-break already keeps its own cells together — a
+    // separate td/th rule here was redundant and, stacked with a third
+    // (non-!important) rule in the salary report's own styling, was the
+    // over-constrained CSS that tripped up html2pdf's page slicer.
     +'tr{page-break-inside:avoid!important;-webkit-column-break-inside:avoid!important;break-inside:avoid!important;}'
-    +'td,th{page-break-inside:avoid!important;}'
     +'thead{display:table-header-group;}'
     +'tfoot{display:table-footer-group;}';
 }
@@ -24458,7 +24465,7 @@ function salPdfExport(mode){
   +'thead tr:last-child td{background:#334155;color:#64748b;padding:2px 10px;font-size:0.6rem;text-align:right;}'
   +'thead tr:last-child td:first-child{text-align:left;}'
   +'tbody tr:nth-child(even){background:#f8fafc;}'
-  +'tbody td{padding:7px 10px;font-size:8pt;border-bottom:1px solid #e2e8f0;text-align:right;page-break-inside:avoid;break-inside:avoid;}'
+  +'tbody td{padding:7px 10px;font-size:8pt;border-bottom:1px solid #e2e8f0;text-align:right;}'
   +'tbody td:first-child{text-align:left;font-weight:600;}'
   +'tfoot td{background:#1e293b;color:#fff;padding:9px 10px;font-size:0.8rem;font-weight:700;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
   +'tfoot td:first-child{text-align:left;}'
