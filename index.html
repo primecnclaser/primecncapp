@@ -207,7 +207,7 @@ body {
   flex: 1;
   min-width: 0;
 }
-#invoiceTab, #databaseTab, #searchTab, #summaryTab, #financeTab, #settingsTab, #paymentTab, #productionTab {
+#invoiceTab, #databaseTab, #searchTab, #summaryTab, #financeTab, #settingsTab, #paymentTab, #productionTab, #inventoryTab {
   width: 100%;
   margin: 0;
   padding: 0;
@@ -223,7 +223,8 @@ body {
 .auth-applying-permissions #summaryTab,
 .auth-applying-permissions #settingsTab,
 .auth-applying-permissions #productionTab,
-.auth-applying-permissions #financeTab {
+.auth-applying-permissions #financeTab,
+.auth-applying-permissions #inventoryTab {
   display: none !important;
 }
 
@@ -309,6 +310,15 @@ body {
   background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
   color: #fff; border-color: #7c3aed;
   box-shadow: 0 4px 16px rgba(124,58,237,0.35);
+}
+
+/* Tab — Inventory: amber */
+.tab.tab-inventory { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+.tab.tab-inventory:hover:not(.active) { background: #fde68a; color: #78350f; border-color: #f59e0b; }
+.tab.tab-inventory.active {
+  background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+  color: #fff; border-color: #d97706;
+  box-shadow: 0 4px 16px rgba(217,119,6,0.35);
 }
 
 /* Tab 6 — Settings: purple */
@@ -2613,6 +2623,8 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         <div class="tab-sub-item" onclick="_activateSubItem(this);switchFinTab('plreport',this)">📈 P&L Report</div>
       </div>
 
+      <div class="tab tab-inventory" onclick="switchTab('inventory',this)">📦 Inventory</div>
+
       <div class="tab tab-settings" onclick="switchTab('settings',this)">⚙️ Settings</div>
       <div class="tab-sub-list" id="sublist-settings">
         <div class="tab-sub-item active" onclick="_activateSubItem(this);switchSettingsTab('invoice',this)">⚙️ General</div>
@@ -4268,6 +4280,118 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
   </div>
 </div>
 
+<!-- INVENTORY TAB -->
+<div id="inventoryTab" style="display:none;">
+  <div class="db-panel">
+    <div style="padding:4px 0 16px 0;">
+
+      <!-- Combined summary -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div style="font-family:Montserrat,sans-serif;font-weight:800;font-size:1.1rem;color:#1e293b;">📦 Iron Sheet Inventory</div>
+        <div id="invTrackingSince" style="font-family:Montserrat,sans-serif;font-size:0.75rem;color:#92400e;background:#fef3c7;border:1.5px solid #fcd34d;border-radius:20px;padding:4px 14px;font-weight:700;">Tracking since: —</div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px;">
+        <div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px;">
+          <div style="font-size:0.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Total Purchased (Kg)</div>
+          <div id="invTotalPurchasedKg" style="font-size:1.4rem;font-weight:800;color:#1e293b;font-family:Montserrat,sans-serif;">—</div>
+        </div>
+        <div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px;">
+          <div style="font-size:0.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Total Consumed (Kg)</div>
+          <div id="invTotalConsumedKg" style="font-size:1.4rem;font-weight:800;color:#b45309;font-family:Montserrat,sans-serif;">—</div>
+        </div>
+        <div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px;">
+          <div style="font-size:0.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Remaining in Shop (Kg)</div>
+          <div id="invRemainingKg" style="font-size:1.4rem;font-weight:800;color:#059669;font-family:Montserrat,sans-serif;">—</div>
+        </div>
+        <div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px;">
+          <div style="font-size:0.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Combined Ratio (Kg / Sq.Ft)</div>
+          <div id="invCombinedRatio" style="font-size:1.4rem;font-weight:800;color:#4c1d95;font-family:Montserrat,sans-serif;">—</div>
+        </div>
+      </div>
+
+      <!-- Purchase entry form -->
+      <div style="background:#fff;border-radius:14px;border:1.5px solid #d97706;padding:20px;box-shadow:0 2px 16px rgba(30,41,59,0.08);margin-bottom:20px;">
+        <div style="font-family:'Playfair Display',serif;font-size:1.05rem;font-weight:700;color:#92400e;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid #fde68a;">📥 Add Purchase</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:12px;">
+          <div>
+            <label style="display:block;font-size:0.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px;">Gauge <span style="color:#dc2626">*</span></label>
+            <select id="invPurchGauge" style="width:100%;padding:8px 10px;border:1.5px solid #cbd5e1;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.88rem;">
+              <option value="14">14G</option>
+              <option value="16">16G</option>
+              <option value="18">18G</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:0.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px;">No. of Sheets <span style="color:#dc2626">*</span></label>
+            <input type="number" id="invPurchSheets" min="1" placeholder="0" oninput="invUpdateSqftPreview()" style="width:100%;padding:8px 10px;border:1.5px solid #cbd5e1;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.88rem;">
+          </div>
+          <div>
+            <label style="display:block;font-size:0.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px;">Size <span style="color:#dc2626">*</span></label>
+            <select id="invPurchSize" onchange="invOnSizeChange()" style="width:100%;padding:8px 10px;border:1.5px solid #cbd5e1;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.88rem;"></select>
+          </div>
+          <div id="invAddSizeWrap" style="display:none;grid-column:1 / -1;background:#fffbeb;border:1.5px dashed #f59e0b;border-radius:8px;padding:10px;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;align-items:end;">
+              <div>
+                <label style="display:block;font-size:0.6rem;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:4px;">Label</label>
+                <input type="text" id="invNewSizeLabel" placeholder="e.g. 5x9" style="width:100%;padding:6px 8px;border:1.5px solid #fcd34d;border-radius:6px;font-family:Montserrat,sans-serif;font-size:0.82rem;">
+              </div>
+              <div>
+                <label style="display:block;font-size:0.6rem;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:4px;">Length (ft)</label>
+                <input type="number" id="invNewSizeLength" step="0.01" style="width:100%;padding:6px 8px;border:1.5px solid #fcd34d;border-radius:6px;font-family:Montserrat,sans-serif;font-size:0.82rem;">
+              </div>
+              <div>
+                <label style="display:block;font-size:0.6rem;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:4px;">Width (ft)</label>
+                <input type="number" id="invNewSizeWidth" step="0.01" style="width:100%;padding:6px 8px;border:1.5px solid #fcd34d;border-radius:6px;font-family:Montserrat,sans-serif;font-size:0.82rem;">
+              </div>
+              <button onclick="invSaveNewSize()" style="padding:7px 14px;background:#d97706;color:#fff;border:none;border-radius:6px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;">Save Size</button>
+              <button onclick="invCancelNewSize()" style="padding:7px 14px;background:#fff;color:#92400e;border:1.5px solid #d97706;border-radius:6px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;">Cancel</button>
+            </div>
+          </div>
+          <div>
+            <label style="display:block;font-size:0.65rem;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px;">Sq.Ft <span style="font-size:0.58rem;color:#059669;">● auto</span></label>
+            <input type="text" id="invPurchSqft" readonly style="width:100%;padding:8px 10px;border:1.5px solid #6ee7b7;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.88rem;color:#059669;font-weight:700;background:#f0fdf4;">
+          </div>
+          <div>
+            <label style="display:block;font-size:0.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px;">Weight (Kg) <span style="color:#dc2626">*</span></label>
+            <input type="number" id="invPurchKg" min="0" step="0.01" placeholder="0" style="width:100%;padding:8px 10px;border:1.5px solid #cbd5e1;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.88rem;">
+          </div>
+          <div>
+            <label style="display:block;font-size:0.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px;">Purchase Date</label>
+            <input type="date" id="invPurchDate" style="width:100%;padding:8px 10px;border:1.5px solid #cbd5e1;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.88rem;">
+          </div>
+          <div style="grid-column:1 / -1;">
+            <label style="display:block;font-size:0.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px;">Note</label>
+            <input type="text" id="invPurchNote" placeholder="Optional note" style="width:100%;padding:8px 10px;border:1.5px solid #cbd5e1;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.88rem;">
+          </div>
+        </div>
+        <button id="invSavePurchaseBtn" onclick="invSavePurchase()" style="padding:9px 22px;background:#d97706;color:#fff;border:none;border-radius:8px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;cursor:pointer;">💾 Save Purchase</button>
+        <span id="invPurchStatus" style="margin-left:12px;font-size:0.78rem;font-family:Montserrat,sans-serif;"></span>
+      </div>
+
+      <!-- Purchase history -->
+      <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;color:#475569;margin-bottom:8px;">Recent Purchases</div>
+      <div class="table-wrap" style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;font-family:Montserrat,sans-serif;">
+          <thead>
+            <tr style="background:#f8fafc;">
+              <th style="text-align:left;padding:8px 12px;">Date</th>
+              <th style="text-align:left;padding:8px 12px;">Gauge</th>
+              <th style="text-align:left;padding:8px 12px;">Sheets</th>
+              <th style="text-align:left;padding:8px 12px;">Size</th>
+              <th style="text-align:right;padding:8px 12px;">Sq.Ft</th>
+              <th style="text-align:right;padding:8px 12px;">Kg</th>
+              <th style="text-align:left;padding:8px 12px;">Note</th>
+            </tr>
+          </thead>
+          <tbody id="invPurchaseHistoryBody"><tr><td colspan="7" style="text-align:center;padding:14px;color:#94a3b8;">Loading...</td></tr></tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <!-- FINANCE TAB -->
   <div id="financeTab" style="display:none">
     <!-- ── OFFLINE SUPPORT: Pending invoice notice ── -->
@@ -5365,10 +5489,16 @@ async function _syncToHO() {
       }
     });
 
-    // Process invoices
+    // Process invoices — invoices.date is free-text (e.g. "07 Jul 2026"), not
+    // ISO, so it must go through parseDateStr() first. Without this, every
+    // row's slice(0,7) produced garbage that always failed validation below,
+    // silently zeroing total_billed/total_collection/total_invoices in every
+    // synced month while finance_ledger-derived fields (a real date column)
+    // synced correctly — found via a real end-to-end HO sync test.
     (invData || []).forEach(function(inv) {
       if (!inv.date) return;
-      var mk = inv.date.slice(0, 7);
+      var isoDate = parseDateStr(inv.date);
+      var mk = isoDate.slice(0, 7);
       var mkParts = mk.split('-');
       if (mkParts.length < 2 || isNaN(parseInt(mkParts[1])) || parseInt(mkParts[1]) < 1 || parseInt(mkParts[1]) > 12) return;
       var m = getMonth(mk);
@@ -7256,7 +7386,7 @@ function init() {
     updateDBCount();
     if (typeof seedLedger2026 === 'function') seedLedger2026();
     // Restore last tab — default to Summary on first load (Problem 1 fix).
-    var _validTabs = ['summary', 'invoice', 'search', 'database', 'finance', 'settings', 'payment', 'production'];
+    var _validTabs = ['summary', 'invoice', 'search', 'database', 'finance', 'settings', 'payment', 'production', 'inventory'];
     var _lastTab   = localStorage.getItem('last_active_tab') || 'summary';
     if (_validTabs.indexOf(_lastTab) === -1) _lastTab = 'summary';
     var _tabEl = document.querySelector('.tab.tab-' + _lastTab);
@@ -16732,6 +16862,7 @@ function switchTab(tab, el) {
   document.getElementById('settingsTab').style.display = tab === 'settings' ? '' : 'none';
   document.getElementById('paymentTab').style.display  = tab === 'payment'  ? '' : 'none';
   document.getElementById('productionTab').style.display = tab === 'production' ? '' : 'none';
+  document.getElementById('inventoryTab').style.display = tab === 'inventory' ? '' : 'none';
   if (tab === 'database') {
     var _excelCacheAge = window._excelCacheLoadedAt ? (Date.now() - window._excelCacheLoadedAt) : Infinity;
     if (_excelDBCache === null || _excelCacheAge > 5 * 60 * 1000) {
@@ -16746,6 +16877,7 @@ function switchTab(tab, el) {
   if (tab === 'search')   { _searchPage = 1; renderSearchTab(); }
   if (tab === 'summary')  { initSummaryFilters(); renderSummary(); initSqftDropdown(); }
   if (tab === 'finance')  { initFinanceTab(); const _finFirst = document.querySelector('#finSubTabs .fin-sub-tab'); if (_finFirst) _finFirst.click(); }
+  if (tab === 'inventory') { initInventoryTab(); }
   if (tab === 'settings') { ctrlLoad(); const _setFirst = document.querySelector('#setSubTabs .fin-sub-tab'); if (_setFirst) _setFirst.click(); var _s=typeof _authGetSession==='function'&&_authGetSession();if(_s&&_s.role==='admin'&&typeof renderEditAccessPanel==='function')renderEditAccessPanel(); }
   if (tab === 'payment') {
     var _rpSavedName  = sessionStorage.getItem('rp_name')  || '';
@@ -16760,6 +16892,246 @@ function switchTab(tab, el) {
     if (_elInv   && _rpSavedInv)   { _elInv.value   = _rpSavedInv;   sessionStorage.setItem('rp_inv',   _rpSavedInv);   setTimeout(function(){ rpSearchByInv(_rpSavedInv); }, 100); }
   }
   if (tab === 'production') { renderProductionTab(); }
+}
+
+// ══════════════════════════════════════════════
+// INVENTORY TAB — iron sheet stock, combined across all gauges
+// ══════════════════════════════════════════════
+let _invSizesCache = null;
+let _invInitDone = false;
+
+async function initInventoryTab() {
+  var dEl = document.getElementById('invPurchDate');
+  if (dEl && !dEl.value) dEl.value = new Date().toISOString().slice(0, 10);
+  await _invLoadSizes();
+  invUpdateSqftPreview();
+  await invLoadPurchaseHistory();
+  await invComputeAndRenderSummary();
+  _invInitDone = true;
+}
+
+async function _invLoadSizes(force) {
+  if (!force && Array.isArray(_invSizesCache)) { _invPopulateSizeDropdown(); return; }
+  if (typeof sb === 'undefined' || !sb) { _invSizesCache = []; _invPopulateSizeDropdown(); return; }
+  try {
+    var res = await sb.from('inventory_sizes').select('id,label,length_ft,width_ft').order('label');
+    if (res.error) throw res.error;
+    _invSizesCache = res.data || [];
+  } catch(e) { console.warn('[_invLoadSizes]', e); _invSizesCache = _invSizesCache || []; }
+  _invPopulateSizeDropdown();
+}
+
+function _invPopulateSizeDropdown() {
+  var sel = document.getElementById('invPurchSize');
+  if (!sel) return;
+  var keepVal = sel.value;
+  sel.innerHTML = (_invSizesCache || []).map(function(s) {
+    return '<option value="' + s.id + '">' + s.label + ' (' + s.length_ft + '×' + s.width_ft + ' ft)</option>';
+  }).join('') + '<option value="__add_new__">➕ Add new size...</option>';
+  if (keepVal && (_invSizesCache || []).some(function(s){ return s.id === keepVal; })) sel.value = keepVal;
+}
+
+function invOnSizeChange() {
+  var sel = document.getElementById('invPurchSize');
+  var wrap = document.getElementById('invAddSizeWrap');
+  if (sel && sel.value === '__add_new__') {
+    if (wrap) wrap.style.display = '';
+  } else {
+    if (wrap) wrap.style.display = 'none';
+    invUpdateSqftPreview();
+  }
+}
+
+function invCancelNewSize() {
+  var wrap = document.getElementById('invAddSizeWrap');
+  if (wrap) wrap.style.display = 'none';
+  var sel = document.getElementById('invPurchSize');
+  if (sel && Array.isArray(_invSizesCache) && _invSizesCache.length) sel.value = _invSizesCache[0].id;
+  invUpdateSqftPreview();
+}
+
+async function invSaveNewSize() {
+  var label = (document.getElementById('invNewSizeLabel').value || '').trim();
+  var length = parseFloat(document.getElementById('invNewSizeLength').value);
+  var width = parseFloat(document.getElementById('invNewSizeWidth').value);
+  if (!label) { toast('⚠️ Enter a size label'); return; }
+  if (!length || length <= 0 || !width || width <= 0) { toast('⚠️ Enter valid length and width'); return; }
+  if (typeof sb === 'undefined' || !sb) { toast('⚠️ Not connected to database'); return; }
+  try {
+    var res = await sb.from('inventory_sizes').insert({ label: label, length_ft: length, width_ft: width, is_custom: true }).select('id').single();
+    if (res.error) throw res.error;
+    await _invLoadSizes(true);
+    var sel = document.getElementById('invPurchSize');
+    if (sel) sel.value = res.data.id;
+    document.getElementById('invAddSizeWrap').style.display = 'none';
+    document.getElementById('invNewSizeLabel').value = '';
+    document.getElementById('invNewSizeLength').value = '';
+    document.getElementById('invNewSizeWidth').value = '';
+    invUpdateSqftPreview();
+    toast('✅ Size "' + label + '" added');
+  } catch(e) {
+    console.error('[invSaveNewSize]', e);
+    toast('❌ Failed to save size: ' + (e.message || e));
+  }
+}
+
+function invUpdateSqftPreview() {
+  var sel = document.getElementById('invPurchSize');
+  var sheetsEl = document.getElementById('invPurchSheets');
+  var sqftEl = document.getElementById('invPurchSqft');
+  if (!sel || !sqftEl) return;
+  var size = (_invSizesCache || []).find(function(s){ return s.id === sel.value; });
+  var sheets = parseFloat(sheetsEl ? sheetsEl.value : 0) || 0;
+  if (!size) { sqftEl.value = ''; return; }
+  var perSheet = (parseFloat(size.length_ft) || 0) * (parseFloat(size.width_ft) || 0);
+  var total = perSheet * sheets;
+  sqftEl.value = sheets > 0 ? total.toFixed(2) + ' ft² total (' + perSheet.toFixed(2) + ' ft²/sheet)' : perSheet.toFixed(2) + ' ft²/sheet';
+}
+
+async function invSavePurchase() {
+  var statusEl = document.getElementById('invPurchStatus');
+  var gauge = document.getElementById('invPurchGauge').value;
+  var sheets = parseInt(document.getElementById('invPurchSheets').value) || 0;
+  var sizeSel = document.getElementById('invPurchSize');
+  var size = (_invSizesCache || []).find(function(s){ return s.id === sizeSel.value; });
+  var kg = parseFloat(document.getElementById('invPurchKg').value) || 0;
+  var date = document.getElementById('invPurchDate').value;
+  var note = (document.getElementById('invPurchNote').value || '').trim();
+
+  if (!size) { toast('⚠️ Select a size (or add a new one)'); return; }
+  if (sheets <= 0) { toast('⚠️ Enter number of sheets'); return; }
+  if (kg <= 0) { toast('⚠️ Enter weight in Kg'); return; }
+  if (!date) { toast('⚠️ Select a purchase date'); return; }
+  if (typeof sb === 'undefined' || !sb) { toast('⚠️ Not connected to database'); return; }
+
+  var perSheet = (parseFloat(size.length_ft) || 0) * (parseFloat(size.width_ft) || 0);
+  var totalSqft = perSheet * sheets;
+
+  if (statusEl) { statusEl.textContent = '⏳ Saving...'; statusEl.style.color = '#64748b'; }
+  try {
+    var row = {
+      gauge: gauge, sheet_count: sheets, size_label: size.label,
+      length_ft: size.length_ft, width_ft: size.width_ft,
+      sqft_per_sheet: parseFloat(perSheet.toFixed(3)), total_sqft: parseFloat(totalSqft.toFixed(3)),
+      weight_kg: kg, purchase_date: date, note: note || null,
+      created_by: (typeof currentUser !== 'undefined' && currentUser) || 'unknown'
+    };
+    var res = await sb.from('inventory_purchases').insert(row);
+    if (res.error) throw res.error;
+    if (statusEl) { statusEl.textContent = '✅ Purchase saved'; statusEl.style.color = '#059669'; }
+    document.getElementById('invPurchSheets').value = '';
+    document.getElementById('invPurchKg').value = '';
+    document.getElementById('invPurchNote').value = '';
+    invUpdateSqftPreview();
+    await invLoadPurchaseHistory();
+    await invComputeAndRenderSummary();
+  } catch(e) {
+    console.error('[invSavePurchase]', e);
+    if (statusEl) { statusEl.textContent = '❌ Save failed: ' + (e.message || e); statusEl.style.color = '#dc2626'; }
+  }
+}
+
+async function invLoadPurchaseHistory() {
+  var tbody = document.getElementById('invPurchaseHistoryBody');
+  if (!tbody) return;
+  if (typeof sb === 'undefined' || !sb) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:14px;color:#94a3b8;">Not connected</td></tr>'; return; }
+  try {
+    var res = await sb.from('inventory_purchases').select('*').order('purchase_date', { ascending: false }).order('created_at', { ascending: false }).limit(30);
+    if (res.error) throw res.error;
+    var rows = res.data || [];
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:14px;color:#94a3b8;">No purchases yet</td></tr>'; return; }
+    tbody.innerHTML = rows.map(function(r) {
+      return '<tr>'
+        + '<td style="padding:8px 12px;">' + (r.purchase_date || '—') + '</td>'
+        + '<td style="padding:8px 12px;">' + r.gauge + 'G</td>'
+        + '<td style="padding:8px 12px;">' + r.sheet_count + '</td>'
+        + '<td style="padding:8px 12px;">' + (r.size_label || '—') + '</td>'
+        + '<td style="padding:8px 12px;text-align:right;">' + parseFloat(r.total_sqft).toFixed(2) + '</td>'
+        + '<td style="padding:8px 12px;text-align:right;">' + parseFloat(r.weight_kg).toFixed(2) + '</td>'
+        + '<td style="padding:8px 12px;color:#64748b;">' + (r.note || '') + '</td>'
+        + '</tr>';
+    }).join('');
+  } catch(e) {
+    console.error('[invLoadPurchaseHistory]', e);
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:14px;color:#dc2626;">Failed to load</td></tr>';
+  }
+}
+
+// Combined (not per-gauge) stock calculation:
+//   combined_ratio      = SUM(purchases.weight_kg) / SUM(purchases.total_sqft), across ALL gauges
+//   tracking_since       = earliest purchase_date across ALL purchases (any gauge)
+//   total_sqft_consumed  = SUM(invoice_items.sqft * qty) for mode='sqft' rows on invoices dated >= tracking_since
+//   total_kg_consumed    = SUM(invoice_items.kg) for mode='kg' rows (direct, no conversion)
+//                          + total_sqft_consumed * combined_ratio
+//   remaining_kg         = total_purchased_kg - total_kg_consumed
+async function invComputeAndRenderSummary() {
+  var elPurchased = document.getElementById('invTotalPurchasedKg');
+  var elConsumed  = document.getElementById('invTotalConsumedKg');
+  var elRemaining = document.getElementById('invRemainingKg');
+  var elRatio     = document.getElementById('invCombinedRatio');
+  var elSince     = document.getElementById('invTrackingSince');
+  if (!elPurchased) return;
+
+  if (typeof sb === 'undefined' || !sb) return;
+
+  try {
+    var pRes = await sb.from('inventory_purchases').select('weight_kg,total_sqft,purchase_date');
+    if (pRes.error) throw pRes.error;
+    var purchases = pRes.data || [];
+
+    if (!purchases.length) {
+      elPurchased.textContent = '0.00';
+      elConsumed.textContent = '0.00';
+      elRemaining.textContent = '0.00';
+      elRatio.textContent = '—';
+      elSince.textContent = 'Tracking since: — (add a purchase to begin)';
+      return;
+    }
+
+    var totalPurchasedKg   = purchases.reduce(function(s,p){ return s + (parseFloat(p.weight_kg) || 0); }, 0);
+    var totalPurchasedSqft = purchases.reduce(function(s,p){ return s + (parseFloat(p.total_sqft) || 0); }, 0);
+    var combinedRatio = totalPurchasedSqft > 0 ? (totalPurchasedKg / totalPurchasedSqft) : null;
+    var trackingSince = purchases.reduce(function(min,p){ return (!min || p.purchase_date < min) ? p.purchase_date : min; }, null);
+
+    elSince.textContent = 'Tracking since: ' + (trackingSince ? new Date(trackingSince + 'T00:00:00').toLocaleDateString('en-PK',{day:'2-digit',month:'short',year:'numeric'}) : '—');
+
+    // Pull all invoices (id + free-text date) and all invoice_items, then filter
+    // client-side using parseDateStr() — invoices.date is stored as e.g.
+    // "07 Jul 2026", not ISO, so it can't be compared/filtered server-side.
+    var invRes = await sb.from('invoices').select('id,date');
+    if (invRes.error) throw invRes.error;
+    var isoDateByInvoiceId = {};
+    (invRes.data || []).forEach(function(inv) {
+      if (!inv.date) return;
+      isoDateByInvoiceId[inv.id] = parseDateStr(inv.date);
+    });
+
+    var itemsRes = await sb.from('invoice_items').select('invoice_id,gauge,sqft,qty,kg,mode');
+    if (itemsRes.error) throw itemsRes.error;
+
+    var totalSqftConsumed = 0;
+    var totalKgFromKgMode = 0;
+    (itemsRes.data || []).forEach(function(it) {
+      var isoDate = isoDateByInvoiceId[it.invoice_id];
+      if (!isoDate || isoDate < trackingSince) return; // before tracking start — excluded
+      if (it.mode === 'kg') {
+        totalKgFromKgMode += (parseFloat(it.kg) || 0);
+      } else {
+        totalSqftConsumed += (parseFloat(it.sqft) || 0) * (parseFloat(it.qty) || 0);
+      }
+    });
+
+    var totalKgFromSqft = combinedRatio != null ? totalSqftConsumed * combinedRatio : 0;
+    var totalConsumedKg = totalKgFromKgMode + totalKgFromSqft;
+    var remainingKg = totalPurchasedKg - totalConsumedKg;
+
+    elPurchased.textContent = totalPurchasedKg.toFixed(2);
+    elConsumed.textContent  = totalConsumedKg.toFixed(2);
+    elRemaining.textContent = remainingKg.toFixed(2);
+    elRatio.textContent     = combinedRatio != null ? combinedRatio.toFixed(4) : '—';
+  } catch(e) {
+    console.error('[invComputeAndRenderSummary]', e);
+  }
 }
 
 // ══════════════════════════════════════════════
