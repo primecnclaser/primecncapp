@@ -10342,22 +10342,29 @@ async function renderSummary() {
   });
 
   var allSummaries = await buildAllCustomerSummaries();
-  var custActualRemaining = {};
-  var custBadDebt = {};
+  // Remaining in Market = sum of remaining>0 customers only. calcCustomerRemaining()
+  // already nets bad debt into `.remaining` once (billed - discount - paid - badDebt)
+  // — do NOT subtract it again here. This previously did subtract it a second time
+  // (via an "effectiveBD" step), which silently deflated this card versus every
+  // other consumer of buildAllCustomerSummaries() in this app — the Remaining-in-
+  // Market drill-down list (showCustList('remaining')), Receive Payment tab, Search/
+  // customer detail, PDF/CSV exports, and syncToHO() all already sum `.remaining`
+  // as-is with no second subtraction. Confirmed via real production data: the old
+  // formula was off by Rs 32,474 today, traced to one customer (bad debt clamped a
+  // second time against their already-net remaining), and could even go negative
+  // for customers with a credit balance and zero recorded bad debt.
   Object.keys(allSummaries).forEach(function(key) {
-    var s = allSummaries[key];
-    custActualRemaining[key] = s.remaining;
-    custBadDebt[key] = s.totalBadDebt;
+    var r = allSummaries[key].remaining;
+    if (r > 0) totalActualRemaining += r;
   });
+  const totalRemaining = totalActualRemaining;
 
-  Object.keys(custActualRemaining).forEach(function(key) {
-    var bdVal = custBadDebt[key] || 0;
-    var effectiveBD = Math.min(bdVal, custActualRemaining[key]);
-    totalBadDebt += effectiveBD;
-    totalActualRemaining += custActualRemaining[key];
+  // Bad debt total — raw sum across all customers, matching displayBadDebt's
+  // definition below (this value is normally superseded by that more precise
+  // async recompute; kept correct here too since it's this function's fallback).
+  Object.keys(allSummaries).forEach(function(key) {
+    totalBadDebt += allSummaries[key].totalBadDebt || 0;
   });
-
-  const totalRemaining = Math.max(0, totalActualRemaining - totalBadDebt);
 
   filtered.forEach(inv => {
     if (inv.isAdvance && !inv.isNull) {
