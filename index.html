@@ -9056,10 +9056,10 @@ function _injectPDFToPopup(pw, filename) {
 // Downloads an HTML string as PDF using a positioned-off-screen popup.
 // The popup opens beyond the right edge of the display so the user doesn't see it;
 // it auto-closes after the PDF downloads.
-async function _silentPDFFromHtml(htmlStr, filename) {
+async function _silentPDFFromHtml(htmlStr, filename, orientHint) {
   try { await _loadHtml2Pdf(); } catch(e) { console.error('[_silentPDFFromHtml]', e); toast('⚠ PDF library failed to load'); return; }
   var _fname  = filename || 'Prime-CNC.pdf';
-  var _orient = _getPageOrientation(htmlStr);
+  var _orient = orientHint || _getPageOrientation(htmlStr);
   // NOTE: no longer rewriting the CSS @page{margin} rule here. html2canvas
   // rasterizes the DOM as displayed — it does not honor @page print-CSS —
   // so that rule was inert for this path and only created a second,
@@ -9082,7 +9082,11 @@ async function _silentPDFFromHtml(htmlStr, filename) {
   // main.js renders the HTML string in a hidden window and exports PDF natively.
   if (window.electronAPI && typeof window.electronAPI.printToPDF === 'function') {
     if (typeof toast === 'function') toast('⏳ Generating PDF...');
-    window.electronAPI.printToPDF(htmlStr, _fname).then(function(result) {
+    // Pass the computed orientation through — the @page rule embedded in htmlStr
+    // is now always correct too (see salPdfExport), so a native print engine that
+    // honors @page (unlike html2canvas below) lays out wide/landscape tables
+    // (7+ columns) correctly instead of clipping them to a portrait page.
+    window.electronAPI.printToPDF(htmlStr, _fname, _orient).then(function(result) {
       if (result && result.success) {
         if (typeof toast === 'function') toast('✅ PDF saved to Downloads: ' + _fname);
       } else {
@@ -9095,7 +9099,13 @@ async function _silentPDFFromHtml(htmlStr, filename) {
   }
 
   // ── BROWSER PATH ──────────────────────────────────────────────
-  var pw = window.open('', '_blank', 'width=794,height=1123,left=80,top=60');
+  // Popup + html2canvas capture width must match orientation — A4 portrait is
+  // 794px wide, A4 landscape is 1123px wide (96dpi). Using the portrait width
+  // for a landscape report (7+ column tables) forces columns to compress far
+  // more than the actual landscape page has room for.
+  var _pdfCapW = _orient === 'landscape' ? 1123 : 794;
+  var _pdfCapH = _orient === 'landscape' ? 794  : 1123;
+  var pw = window.open('', '_blank', 'width='+_pdfCapW+',height='+_pdfCapH+',left=80,top=60');
   if (!pw) { if (typeof toast === 'function') toast('Allow popups in browser to save PDF, then try again.'); return; }
   pw.document.write(htmlStr);
   pw.document.close();
@@ -9111,13 +9121,14 @@ async function _silentPDFFromHtml(htmlStr, filename) {
   _autoScript.textContent = '(function(){'
     + 'var fname=' + JSON.stringify(_fname) + ';'
     + 'var orient=' + JSON.stringify(_orient) + ';'
+    + 'var capW=' + JSON.stringify(_pdfCapW) + ';'
     + 'function doPdf(){'
     +   'document.querySelectorAll("button,.no-print,.print-btn,.pdf-action-bar").forEach(function(el){el.style.display="none";});'
     +   'var _opt={'
     +     'margin:[10,10,15,10],'
     +     'filename:fname,'
     +     'image:{type:"jpeg",quality:0.98},'
-    +     'html2canvas:{scale:3,useCORS:true,logging:false,allowTaint:true,backgroundColor:"#ffffff",windowWidth:794},'
+    +     'html2canvas:{scale:3,useCORS:true,logging:false,allowTaint:true,backgroundColor:"#ffffff",windowWidth:capW},'
     +     'jsPDF:{unit:"mm",format:"a4",orientation:orient,compress:true},'
     +     'pagebreak:{mode:["css","legacy"]}'
     +   '};'
@@ -24706,8 +24717,27 @@ function _sHistToggle(detId, arrId){
   if(arr) arr.textContent=open?'▶':'▼';
 }
 
+// Single source of truth for Salary data. The on-screen card (sCard) and the
+// History/PDF (sShowHistory/salPdfExport) already run the exact same sCalcV2
+// over the exact same localStorage-cached pcnc_emp_v4/pcnc_mon_v4/pcnc_day_v4
+// — they were never two different calculations. The mismatch came from that
+// cache only ever being pulled from Supabase once, at app boot (ctrlBootSync).
+// An open Salaries tab silently drifts stale relative to payments recorded in
+// another session/device/tab. Re-pulling just these 3 keys whenever the tab is
+// opened or a report is generated keeps both views reading the same current
+// snapshot, guaranteeing they agree.
+async function _salSyncFromCloud() {
+  if (typeof sb === 'undefined' || !sb) return;
+  try {
+    var res = await sb.from('shop_settings').select('key,value').in('key', ['pcnc_emp_v4','pcnc_mon_v4','pcnc_day_v4']);
+    if (res.error || !res.data) return;
+    res.data.forEach(function(r) { if (r.value != null) localStorage.setItem(r.key, r.value); });
+  } catch(e) { console.warn('[_salSyncFromCloud]', e); }
+}
+
 // Show month-by-month history modal (for any employee)
-function sShowHistory(empId, _pdfMode){
+async function sShowHistory(empId, _pdfMode){
+  await _salSyncFromCloud();
   const emps=sEmps(), emp=emps.find(e=>e.id===empId); if(!emp) return;
   const periods = emp.periods || [{joinDate:emp.joinDate||'',leftDate:emp.leftDate||''}];
   const _allM = [];
@@ -24949,7 +24979,8 @@ async function _salCleanAndSeed() {
 }
 window._salCleanAndSeed = _salCleanAndSeed;
 
-function salInit(){
+async function salInit(){
+  await _salSyncFromCloud();
   try {
     const empVer = localStorage.getItem('pcnc_emp_ver');
     if(empVer !== 'v14'){
@@ -25142,13 +25173,22 @@ function salPdfExport(mode){
     + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">'+(cardsEl?cardsEl.innerHTML:'')+'<\/div>'
     + tableClone.outerHTML;
 
+  // Salary tables can hit 8 columns (Month, Basic, Gross, Arrears, Net, Received,
+  // Loan Paid Back, Remaining) — decide orientation from the actual table up front
+  // so @page/body width are correct for EVERY export mode (pdf/electron/browser-print),
+  // not just the browser print path. A wrong/stale orientation here is what let a
+  // landscape-shaped table get laid out on a portrait page for native print engines
+  // (Electron's printToPDF) that honor @page, unlike html2canvas which ignores it.
+  var _salOrient   = _getPageOrientation(contentHtml);
+  var _salPageW    = _salOrient === 'landscape' ? '297mm' : '210mm';
+
   var _salFname = ('Salary-' + empName.replace(/\s+/g,'-') + '.pdf').replace(/"/g,'');
   var _salHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Salary Report — '+empName+'<\/title>'
   +'<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">'
   +'<style>'
-  +'@page{size:A4 portrait;margin:15mm 10mm;}'
+  +'@page{size:A4 '+_salOrient+';margin:15mm 10mm;}'
   +'*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
-  +'body{font-family:Montserrat,Segoe UI,sans-serif;background:#fff;color:#1e293b;font-size:13px;width:210mm;}'
+  +'body{font-family:Montserrat,Segoe UI,sans-serif;background:#fff;color:#1e293b;font-size:13px;width:'+_salPageW+';}'
   + _printHeaderCSS(_salS)
   +'tfoot{display:table-row-group!important;}'
   +'.page-body{padding:16px 28px;}'
@@ -25172,12 +25212,10 @@ function salPdfExport(mode){
   + _buildPrintFooterHtml(_salS)
   + ''
   +'<\/body><\/html>';
-  if (mode === 'pdf') { _silentPDFFromHtml(_salHtml, _salFname); return; }
+  if (mode === 'pdf') { _silentPDFFromHtml(_salHtml, _salFname, _salOrient); return; }
   if (typeof navigator !== 'undefined' && /Electron\//.test(navigator.userAgent)) { _electronPrintHtml(_salHtml); return; }
   const w = window.open('','_blank','width=900,height=700');
   if (!w) { toast('Allow popups to print'); return; }
-  var _salOrient = _getPageOrientation(_salHtml);
-  _salHtml = _salHtml.replace(/@page\s*\{[^}]*\}/g, '@page{size:A4 '+_salOrient+';margin:15mm 10mm;}');
   w.document.write(_salHtml);
   w.document.close();
   _applyPrintLogo(w, _salS.logo);
