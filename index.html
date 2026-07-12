@@ -5453,6 +5453,13 @@ async function _syncToHO() {
       .eq('branch_id', BRANCH_ID);
     if (invErr) throw invErr;
 
+    // Partner-investment category names are dynamic ("<partner name> Investment"),
+    // one per currently-configured partner — not a fixed string. Same convention
+    // already enforced everywhere else in this file (e.g. _syncPartnerCategories()).
+    var partnerInvCats = new Set(
+      (typeof getPartners === 'function' ? getPartners() : []).map(function(p) { return p.name + ' Investment'; })
+    );
+
     // ── Group by YYYY-MM ──
     var monthMap = {};
 
@@ -5461,7 +5468,9 @@ async function _syncToHO() {
         sheets_cutting: 0, scrap: 0, total_expenses: 0,
         total_invoices: 0, total_billed: 0, total_collection: 0,
         total_sqft: 0, total_kg: 0, bad_debt: 0,
-        remaining_market: 0, cash_in_hand: 0
+        remaining_market: 0, cash_in_hand: 0,
+        loans_investment: 0, partners_investment: 0, other_income: 0,
+        onetime_expense: 0, debt_paid: 0, savings: 0
       };
       return monthMap[mk];
     }
@@ -5476,16 +5485,31 @@ async function _syncToHO() {
       var amt = parseFloat(e.amount) || 0;
       var cat = (e.category || '').trim();
       var et  = (e.entry_type || '').trim();
-      var src = (e.source || '').trim();
 
-      if (et === 'income' && cat === 'Sheets Cutting' && src !== 'historical_daily') {
-        m.sheets_cutting += amt;
-      } else if (et === 'income' && cat === 'Sheets Cutting' && src === 'historical_daily') {
+      // Sheets Cutting counts regardless of source (live-posted or
+      // historical_daily) — both branches did the same thing before, merged
+      // here since the source distinction never actually changed behavior.
+      if (et === 'income' && cat === 'Sheets Cutting') {
         m.sheets_cutting += amt;
       } else if (et === 'income' && cat === 'Scrap') {
         m.scrap += amt;
+      } else if (et === 'income' && cat === 'Loans Investment') {
+        m.loans_investment += amt;
+      } else if (et === 'income' && partnerInvCats.has(cat)) {
+        m.partners_investment += amt;
+      } else if (et === 'income' && cat === 'Other Income') {
+        // Cash Returned/Adjustment and Unidentified Sale Cash have already
+        // been merged into the 'Other Income' category directly in
+        // finance_ledger (confirmed, no special-casing needed here).
+        m.other_income += amt;
       } else if (et === 'monthly_expense') {
         m.total_expenses += amt;
+      } else if (et === 'onetime_expense') {
+        m.onetime_expense += amt;
+      } else if (et === 'debt_paid') {
+        m.debt_paid += amt;
+      } else if (et === 'savings') {
+        m.savings += amt;
       }
     });
 
@@ -5509,6 +5533,28 @@ async function _syncToHO() {
       m.total_kg += parseFloat(inv.total_kg) || 0;
       m.bad_debt += parseFloat(inv.bad_debt) || 0;
     });
+
+    // ── Remaining in Market — the authoritative, bad-debt-adjusted engine
+    // (buildAllCustomerSummaries()), not the naive billed-minus-collected
+    // approximation HO currently computes on its own. This is a whole-
+    // business "as of right now" snapshot, not something with a distinct
+    // historical value per past month — so it's only meaningful for, and
+    // only ever set on, the row for the CURRENT calendar month.
+    var _remainingInMarket = 0;
+    try {
+      // forceFresh=true — never trust a possibly-stale cache for this. This
+      // tab/session may never have received a cache-invalidation for changes
+      // made in a different tab (e.g. a payment recorded elsewhere earlier
+      // today), and a stale Remaining-in-Market figure synced to HO is a real
+      // business-data problem, not just a cosmetic staleness issue.
+      var _custSummaries = await buildAllCustomerSummaries(true);
+      Object.keys(_custSummaries).forEach(function(k) {
+        var r = _custSummaries[k].remaining;
+        if (r > 0) _remainingInMarket += r;
+      });
+    } catch(_rmErr) { console.warn('[syncToHO] remaining-in-market calc failed:', _rmErr); }
+    var _nowYM2 = new Date().toISOString().slice(0, 7); // e.g. "2026-07"
+    getMonth(_nowYM2); // ensure the current month has a row even if untouched by any entry yet
 
     // ── Build upsert rows ──
     var rows = [];
@@ -5534,6 +5580,13 @@ async function _syncToHO() {
         total_income:     parseFloat(income.toFixed(2)),
         total_expenses:   parseFloat(m.total_expenses.toFixed(2)),
         profit_loss:      parseFloat(pl.toFixed(2)),
+        loans_investment:    parseFloat(m.loans_investment.toFixed(2)),
+        partners_investment: parseFloat(m.partners_investment.toFixed(2)),
+        other_income:        parseFloat(m.other_income.toFixed(2)),
+        onetime_expense:     parseFloat(m.onetime_expense.toFixed(2)),
+        debt_paid:           parseFloat(m.debt_paid.toFixed(2)),
+        savings:             parseFloat(m.savings.toFixed(2)),
+        remaining_market:    mk === _nowYM2 ? parseFloat(_remainingInMarket.toFixed(2)) : 0,
         total_sqft:       parseFloat(m.total_sqft.toFixed(2)),
         total_kg:         parseFloat(m.total_kg.toFixed(2)),
         avg_sqft_per_day: parseFloat(avgSqft.toFixed(2)),
@@ -17368,8 +17421,14 @@ async function _prodAdvance(type, id, stage, invNum, encodedName, phone, total) 
   } catch(e) { console.error('[_prodAdvance:invoices update]', e); alert('Failed to update status: ' + (e.message||e)); }
 }
 
-async function buildAllCustomerSummaries() {
-  if (_allCustomerSummaryCache) return _allCustomerSummaryCache;
+// forceFresh=true bypasses the session cache entirely and always refetches —
+// required for callers like _syncToHO() that may run in a browser tab/session
+// that never received a _rpInvalidateSummaryCache() call for mutations made
+// elsewhere (invalidation only clears the cache in the JS heap of the tab
+// that performed the mutation; a separate tab's cache has no way of knowing
+// and would otherwise keep returning a stale value indefinitely).
+async function buildAllCustomerSummaries(forceFresh) {
+  if (_allCustomerSummaryCache && !forceFresh) return _allCustomerSummaryCache;
 
   var summaries = {};
   function getKey(name) { return (name||'').toLowerCase().trim(); }
