@@ -5418,8 +5418,14 @@ async function _masterResync() {
   }
 }
 
-async function _syncToHO() {
-  if (!navigator.onLine) { toast('📵 Cannot sync — offline'); return; }
+// Re-entrancy lock shared by every caller of _syncToHO() — the manual "Sync
+// to HO" button and the 30-minute auto-sync timer below both go through this
+// same function, so guarding here (rather than separately in the timer)
+// guarantees a manual click and an auto-tick can never run concurrently.
+let _hoSyncBusy = false;
+async function _syncToHO(auto) {
+  if (_hoSyncBusy) { if (!auto) toast('⏳ Sync to HO already in progress...'); return; }
+  if (!navigator.onLine) { if (!auto) toast('📵 Cannot sync — offline'); return; }
 
   // Initialize HO Supabase client on first use
   if (!sbHO) {
@@ -5427,13 +5433,16 @@ async function _syncToHO() {
       sbHO = supabase.createClient(HO_SUPA_URL, HO_SUPA_KEY);
     } catch(e) {
       console.error('[syncToHO] Failed to init HO client:', e);
-      toast('⚠ HO sync failed — connection error');
+      if (!auto) toast('⚠ HO sync failed — connection error');
       return;
     }
   }
 
-  setSyncStatus('syncing', '⟳ Syncing to HO...');
-  toast('⟳ Syncing branch data to Head Office...');
+  _hoSyncBusy = true;
+  if (!auto) {
+    setSyncStatus('syncing', '⟳ Syncing to HO...');
+    toast('⟳ Syncing branch data to Head Office...');
+  }
 
   try {
     const BRANCH_ID = 'branch_main';
@@ -5597,8 +5606,7 @@ async function _syncToHO() {
     });
 
     if (!rows.length) {
-      toast('⚠ No data found to sync');
-      setSyncStatus('synced', '● Synced');
+      if (!auto) { toast('⚠ No data found to sync'); setSyncStatus('synced', '● Synced'); }
       return;
     }
 
@@ -5611,14 +5619,16 @@ async function _syncToHO() {
     // ── Log sync success ──
     await sbHO.from('branch_sync_log').insert({
       branch_id:      BRANCH_UUID,
-      sync_type:      'manual',
+      sync_type:      auto ? 'auto' : 'manual',
       sync_status:    'success',
       records_synced: rows.length,
       synced_at:      new Date().toISOString()
     });
 
-    setSyncStatus('synced', '● Synced');
-    toast('✅ ' + rows.length + ' months synced to Head Office');
+    if (!auto) {
+      setSyncStatus('synced', '● Synced');
+      toast('✅ ' + rows.length + ' months synced to Head Office');
+    }
 
   } catch(err) {
     console.error('[syncToHO]', err);
@@ -5626,14 +5636,18 @@ async function _syncToHO() {
     try {
       await sbHO.from('branch_sync_log').insert({
         branch_id:     'ba08fc3a-5b6a-473a-8e69-1867fa54d280',
-        sync_type:     'manual',
+        sync_type:     auto ? 'auto' : 'manual',
         sync_status:   'failed',
         error_message: err.message || 'Unknown error',
         synced_at:     new Date().toISOString()
       });
     } catch(_) { console.error('[_syncToHO:branch_sync_log insert]', _); }
-    setSyncStatus('offline', '● Sync error');
-    toast('⚠ HO sync failed — ' + (err.message || 'check console'));
+    if (!auto) {
+      setSyncStatus('offline', '● Sync error');
+      toast('⚠ HO sync failed — ' + (err.message || 'check console'));
+    }
+  } finally {
+    _hoSyncBusy = false;
   }
 }
 // Fire sync when internet comes back
@@ -5719,6 +5733,21 @@ setInterval(async () => {
   } catch(e) { console.warn('[autoSync]', e); }
   finally { _autoSyncBusy = false; }
 }, 10000);
+
+// ── AUTO-SYNC TO HO every 30 minutes ──
+// Separate, much-lower-frequency timer from the 10s tick above — pushes
+// aggregated branch data to Head Office so HO doesn't rely on someone
+// remembering to click "Sync to HO". Concurrency is guarded inside
+// _syncToHO() itself via _hoSyncBusy, so this can never overlap a manual
+// click or another auto-tick already in flight. TEST-ONLY: set
+// window._HO_AUTOSYNC_TEST_MS before load to override the 30-minute
+// interval for practical verification (e.g. a few seconds).
+var HO_AUTOSYNC_INTERVAL_MS = window._HO_AUTOSYNC_TEST_MS || (30 * 60 * 1000);
+setInterval(function() {
+  if (!navigator.onLine) return; // skip silently — same graceful-degradation pattern as the 10s tick
+  if (typeof sb === 'undefined' || !sb || !currentUser) return; // nothing to sync before login
+  _syncToHO(true);
+}, HO_AUTOSYNC_INTERVAL_MS);
 
 // ══════════════════════════════════════════════
 // SUPABASE CONFIG
