@@ -4855,6 +4855,30 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         </div>
       </div>
 
+      <!-- Settle Final Balance Modal — for Former Employees only. Dispatches to the
+           SAME two atomic mechanisms already used elsewhere (pcnc_day_v4 entry for
+           "owed to employee", sAddRecovery/pcnc_rec_v1 for "employee owes company")
+           instead of a new table, so both directions stay consistent with sLifetime()/
+           sLeftCard()'s existing derived totals — no separate status flag to maintain. -->
+      <div id="salSettleModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:16px;max-width:420px;width:92%;box-shadow:0 24px 60px rgba(0,0,0,0.3);padding:24px;">
+          <h3 style="margin:0 0 4px;font-size:0.95rem;color:#1e293b;">⚖️ Settle Final Balance</h3>
+          <div style="font-size:0.78rem;color:#64748b;margin-bottom:14px;" id="salSettleEmpName"></div>
+          <input type="hidden" id="salSettleEmpId">
+          <input type="hidden" id="salSettleDirection">
+          <div id="salSettleDirLabel" style="padding:10px 12px;border-radius:8px;margin-bottom:14px;font-size:0.85rem;font-weight:700;"></div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div class="fin-field"><label>Amount (Rs.)</label><input type="number" id="salSettleAmt" min="0"></div>
+            <div class="fin-field"><label>Date</label><input type="date" id="salSettleDate"></div>
+            <div class="fin-field"><label>Note (optional)</label><input type="text" id="salSettleNote" placeholder="e.g. cash handed over"></div>
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
+            <button onclick="document.getElementById('salSettleModal').style.display='none';" style="padding:9px 18px;border:1.5px solid #cbd5e1;border-radius:8px;background:#fff;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.82rem;cursor:pointer;">Cancel</button>
+            <button onclick="sSettleFinalConfirm()" style="padding:9px 22px;background:#7c3aed;color:#fff;border:none;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.82rem;cursor:pointer;">✓ Confirm Settlement</button>
+          </div>
+        </div>
+      </div>
+
       <style>
         @media print {
           /* Salary history modal — print handled via popup windows; no main-page overrides needed */
@@ -24616,17 +24640,23 @@ function sAddDay(empId,ym){
   const room      = parseFloat((document.getElementById('dayRoom_'+empId)||{}).value)||0;
   if(!date){ toast('⚠️ Select a date'); return; }
   if(amt<=0 && ot_amount<=0 && mess<=0 && room<=0){ toast('⚠️ Enter at least one amount'); return; }
-  const rec = sGetRec(empId,ym);
-  if(rec.locked){ toast('🔒 Month is locked'); return; }
-  const days = sDayRecs(empId,ym);
+  // Bucket by the ENTERED DATE's own month, not by whichever card happens to be
+  // open. Previously this filed under the currently-viewed month regardless of
+  // the date typed in, which silently mis-attributed backdated/forward-dated
+  // entries (e.g. a payment dated during a former period, entered while looking
+  // at a Rejoin's new-period card) into the wrong month/period's totals.
+  const targetYM = date.slice(0,7);
+  const rec = sGetRec(empId, targetYM);
+  if(rec.locked){ toast('🔒 '+targetYM+' is locked'); return; }
+  const days = sDayRecs(empId, targetYM);
   days.push({ id:'d_'+Date.now(), date, amount:amt, ot_amount, mess, room, note });
   days.sort((a,b)=>a.date.localeCompare(b.date));
-  const d = sDays(); const _dk = sDayKey(empId,ym); d[_dk] = days; sSaveDays(d, _dk);
+  const d = sDays(); const _dk = sDayKey(empId, targetYM); d[_dk] = days; sSaveDays(d, _dk);
   amtEl.value=''; if(noteEl)noteEl.value='';
   ['dayOtAmt_','dayMess_','dayRoom_'].forEach(pfx=>{
     const el=document.getElementById(pfx+empId); if(el) el.value='';
   });
-  toast('✅ Payment added');
+  toast(targetYM===ym ? '✅ Payment added' : '✅ Payment added to '+targetYM+' (matches entered date)');
   // Re-render just this card so right side updates immediately
   const container = document.getElementById('card_'+empId);
   const emps=sEmps(), emp=emps.find(e=>e.id===empId);
@@ -24702,10 +24732,163 @@ function sLeftCard(emp){
           <div style="font-size:0.58rem;font-weight:700;color:${rc};text-transform:uppercase;">${rl}</div>
           <div style="font-size:0.9rem;font-weight:800;color:${rc};">Rs. ${fmt(Math.abs(finalRem))}</div>
         </div>
+        ${finalRem!==0?`<button onclick="event.stopPropagation();sSettleFinal('${emp.id}')" style="padding:6px 12px;border-radius:7px;border:1.5px solid #c4b5fd;background:#f5f3ff;color:#5b21b6;font-family:'Montserrat',sans-serif;font-size:0.7rem;font-weight:700;cursor:pointer;white-space:nowrap;">⚖️ Settle Final Balance</button>`:''}
+        <button onclick="event.stopPropagation();sRejoinEmployee('${emp.id}')" style="padding:6px 12px;border-radius:7px;border:1.5px solid #6ee7b7;background:#f0fdf4;color:#065f46;font-family:'Montserrat',sans-serif;font-size:0.7rem;font-weight:700;cursor:pointer;white-space:nowrap;">🔄 Rejoin</button>
         <span style="font-size:0.68rem;color:#94a3b8;">Click for details →</span>
       </div>
     </div>
   </div>`;
+}
+
+// ── Settle Final Balance (Former Employees) ─────────────────────────────
+// Dispatches to the two ALREADY-atomic mechanisms used elsewhere instead of
+// inventing a third: a pcnc_day_v4 entry (same shape sAddDay writes for
+// active employees) when the company owes the employee, or sAddRecovery()/
+// pcnc_rec_v1 (same mechanism already proven on Talha) when the employee
+// owes the company. Both feed straight back into sLifetime()/sLeftCard()'s
+// existing derived totals, so the badge flips to "Settled" automatically —
+// no separate status flag to write or get out of sync.
+function sSettleFinal(empId){
+  const emps=sEmps(), emp=emps.find(e=>e.id===empId); if(!emp) return;
+  const lib=sLifetime(emp);
+  const lastYM = lib.months && lib.months.length ? lib.months[lib.months.length-1] : null;
+  if(!lastYM){ toast('⚠️ No salary history found for this employee'); return; }
+  const lastRec = sGetRec(empId, lastYM);
+  const lastC = sCalcV2(emp, lastRec, empId, lastYM);
+  const finalRem = lastC.remaining + sEmpRecTotal(empId);
+  if(finalRem===0){ toast('✅ Already settled'); return; }
+  const direction = finalRem>0 ? 'owed_to_emp' : 'emp_owes';
+  document.getElementById('salSettleEmpId').value = empId;
+  document.getElementById('salSettleDirection').value = direction;
+  document.getElementById('salSettleEmpName').textContent = emp.name + ' — ' + (emp.title||'Staff');
+  const lbl = document.getElementById('salSettleDirLabel');
+  if(direction==='owed_to_emp'){
+    lbl.style.background='#fee2e2'; lbl.style.color='#991b1b';
+    lbl.textContent = '💸 Pay ' + emp.name + ' Rs. ' + fmt(finalRem);
+  } else {
+    lbl.style.background='#d1fae5'; lbl.style.color='#065f46';
+    lbl.textContent = '💰 Receive Rs. ' + fmt(Math.abs(finalRem)) + ' from ' + emp.name;
+  }
+  document.getElementById('salSettleAmt').value = Math.abs(finalRem);
+  document.getElementById('salSettleDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('salSettleNote').value = '';
+  document.getElementById('salSettleModal').style.display='flex';
+}
+
+function sSettleFinalConfirm(){
+  const empId = document.getElementById('salSettleEmpId').value;
+  const direction = document.getElementById('salSettleDirection').value;
+  const amt = parseFloat(document.getElementById('salSettleAmt').value)||0;
+  const date = document.getElementById('salSettleDate').value;
+  const note = document.getElementById('salSettleNote').value.trim() || 'Final settlement';
+  if(!empId||!direction){ toast('⚠️ Settlement context lost — reopen and try again'); return; }
+  if(amt<=0){ toast('⚠️ Enter a settlement amount'); return; }
+  if(!date){ toast('⚠️ Select a date'); return; }
+  const emps=sEmps(), emp=emps.find(e=>e.id===empId); if(!emp) return;
+
+  if(direction==='owed_to_emp'){
+    // Same write pcnc_day_v4 shape sAddDay() uses for active employees —
+    // applied to the employee's own last active month, not "today"'s tab.
+    const lib=sLifetime(emp);
+    const lastYM = lib.months && lib.months.length ? lib.months[lib.months.length-1] : null;
+    if(!lastYM){ toast('⚠️ No salary history found'); return; }
+    const days = sDayRecs(empId, lastYM);
+    days.push({ id:'d_'+Date.now(), date, amount:amt, ot_amount:0, mess:0, room:0, note });
+    days.sort((a,b)=>a.date.localeCompare(b.date));
+    const d = sDays(); const dk = sDayKey(empId, lastYM); d[dk] = days; sSaveDays(d, dk);
+  } else {
+    // Same mechanism already proven on Talha (Rs.80,000 recovery entry).
+    sAddRecovery(empId, date, amt, note);
+  }
+
+  document.getElementById('salSettleModal').style.display='none';
+  salRender();
+  toast('✅ Settled — ' + emp.name);
+}
+
+// ── Rejoin as Fresh Record ───────────────────────────────────────────────
+// Opens the SAME Add/Edit modal + save path new employees already use
+// (salOpenAdd()/salSaveEmp()) with fields pre-filled from the old record,
+// but salEmpId left BLANK — salSaveEmp() then generates a brand-new
+// 'e_'+Date.now() id and pushes a new array item via the existing atomic
+// merge_shop_setting_array_item RPC. The old employee's own id/periods are
+// never touched, so their Former Employees record stays exactly as-is.
+// Rejoin — one permanent employee identity per Kamran's confirmed design.
+// Appends a NEW open period {joinDate:today, leftDate:''} onto the SAME
+// existing record (same id, same periods[] array) instead of creating a
+// second record. This is a clean fit with the app's existing data model —
+// confirmed on real data (Hammad already has 2 periods in production):
+//   - sActiveInMonth()/sLeftByMonth() already iterate ALL periods via
+//     periods.some(...), so the employee moves Former → Active the instant
+//     the new open period exists — zero changes to that logic.
+//   - sPrevRemainingAcrossPeriods() already walks backward through periods[]
+//     to find the most recently closed one when the preceding calendar month
+//     isn't itself active, carrying its final remaining forward as the new
+//     period's opening arrear — zero changes needed there either.
+//   - sShowHistory()/salPdfExport() already build their month list by
+//     concatenating sMonthRange() across every period, so the report already
+//     renders old period + gap + new period as one continuous document.
+function sRejoinEmployee(empId){
+  const emps=sEmps(), emp=emps.find(e=>e.id===empId); if(!emp) return;
+  const periods = emp.periods || [{joinDate:emp.joinDate||'', leftDate:emp.leftDate||''}];
+  const lastPeriod = periods[periods.length-1];
+  if(!lastPeriod || !lastPeriod.leftDate){
+    toast('⚠️ '+emp.name+' already has an open period — not a former employee');
+    return;
+  }
+
+  // Same final-balance calc sLeftCard()/sSettleFinal() already use.
+  const lib = sLifetime(emp);
+  const lastYM = lib.months && lib.months.length ? lib.months[lib.months.length-1] : null;
+  let finalRem = 0;
+  if(lastYM){
+    const lastRec = sGetRec(empId, lastYM);
+    const lastC = sCalcV2(emp, lastRec, empId, lastYM);
+    finalRem = lastC.remaining + sEmpRecTotal(empId);
+  }
+  if(finalRem !== 0){
+    const dir = finalRem>0 ? 'owed to them' : 'owed by them';
+    const ok = confirm(emp.name+' still has Rs. '+fmt(Math.abs(finalRem))+' '+dir+' — the arrear will carry forward into their new period. Continue?');
+    if(!ok) return;
+  }
+
+  const newBaseStr = prompt('Confirm Basic Pay for '+emp.name+'\'s new period (Rs.) — their old rate may be outdated:', emp.base||0);
+  if(newBaseStr===null) return; // cancelled
+  const newBase = parseFloat(newBaseStr)||0;
+
+  // Freeze the OLD (closing) period's rate into any of its months that don't
+  // already carry an explicit historic basicSal snapshot — BEFORE changing
+  // emp.base for the new period. sCalcV2's basic-pay fallback chain lands on
+  // the live emp.base for any historic month lacking rec.basicSal, so without
+  // this, updating the rate here would silently reprice the old period's
+  // already-closed months too, corrupting the very arrear this rejoin is
+  // supposed to carry forward untouched. (Confirmed by a real test: without
+  // this fix, a Rs.12,000→15,000 rate change turned a real Rs.19,000 arrear
+  // into Rs.25,000.)
+  if(lastYM){
+    const closingMonths = sMonthRange(lastPeriod.joinDate, lastPeriod.leftDate.slice(0,7));
+    const monBlob = sMons();
+    closingMonths.forEach(ym=>{
+      const k = sKey(empId, ym);
+      if(!monBlob[k] || monBlob[k].basicSal===undefined){
+        monBlob[k] = Object.assign({}, monBlob[k]||{}, { basicSal: emp.base });
+        sSaveMons(monBlob, k);
+      }
+    });
+  }
+
+  const updated = JSON.parse(JSON.stringify(emp));
+  updated.periods.push({ joinDate: new Date().toISOString().slice(0,10), leftDate:'' });
+  updated.base = newBase;
+  updated.status = 'active';
+  updated.leftDate = '';
+
+  const idx = emps.findIndex(e=>e.id===empId);
+  if(idx===-1) return;
+  emps[idx] = updated;
+  sSaveEmps(emps, empId); // same atomic merge_shop_setting_array_item, SAME id — no new record
+  salRender();
+  toast('✅ '+emp.name+' rejoined — new period starts today');
 }
 
 function _sHistToggle(detId, arrId){
