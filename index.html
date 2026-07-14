@@ -8550,6 +8550,13 @@ function classifyAdvance(data) {
 }
 
 async function doSubmit(data) {
+  // Stage D — normalize the stored name to Title Case right before this
+  // invoice is persisted. Deliberately placed here, not in collectData()
+  // or any input/blur handler, so live typing, the phone-conflict
+  // comparison, and the confirmation modal all keep showing exactly what
+  // the user typed — only the actual saved value gets cleaned up.
+  if (data && data.custName) data.custName = _titleCaseCustomerName(data.custName);
+
   // ── RE-EVALUATE advance status from current data (not stored flag) ──
   const isAdvance = classifyAdvance(data);
   // If editing an existing invoice, update it in place
@@ -13641,6 +13648,30 @@ function hideBdEdit(orderNum) {
 }
 
 // ══════════════════════════════════════════════
+// STAGE D — GO-FORWARD TITLE CASE NORMALIZATION
+// Same skip-patterns as Stage C's retroactive classifier, applied only
+// at the final save/write point (doSubmit, _saveCustRateField) — never
+// on live typing, blur handlers, or the phone-conflict comparison,
+// which all keep reading the raw typed value exactly as before.
+// ══════════════════════════════════════════════
+function _titleCaseCustomerName(name) {
+  name = (name || '').trim();
+  if (!name) return name;
+  if (/\.[A-Za-z]/.test(name)) return name;                                    // period+letter (M/S, Pvt., Ltd.)
+  if (/-/.test(name)) return name;                                             // hyphen
+  if (/\b(bin|binti|al-|walad)\b/i.test(name) || /al-/i.test(name)) return name; // bin/binti/al-/walad
+  var letters = name.replace(/[^A-Za-z]/g, '');
+  if (letters.length >= 2 && letters === letters.toUpperCase() && /[A-Z]/.test(letters)) return name; // ALL CAPS
+  if (/\d/.test(name)) return name;                                            // digits
+  if (name.replace(/\s+/g, '').length <= 2) return name;                       // very short
+  // Simple Title Case — "(" is treated as a word boundary too (fixes the
+  // Stage C quirk where "(Ameer Ali)" became "(ameer Ali)").
+  return name.replace(/[^\s(]+/g, function(w) {
+    return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+  });
+}
+
+// ══════════════════════════════════════════════
 // SAVE-TIME CUSTOMER IDENTITY MATCH (confirmed rules)
 // Independent of whether a dropdown suggestion was ever shown/clicked —
 // re-checked against the FINAL name+phone at every save/submit point.
@@ -14187,6 +14218,10 @@ async function onCustRateFieldBlur(el, dbCol) {
 }
 
 async function _saveCustRateField(dbCol, val, name, digits, statusEl) {
+  // Stage D — same normalization, same placement principle as doSubmit():
+  // only at the actual write, never touching the live blur/matching logic
+  // upstream in onCustRateFieldBlur (which keeps using the raw typed name).
+  if (name) name = _titleCaseCustomerName(name);
   try {
     if (window._custRateRowId) {
       var upd = { updated_at: new Date().toISOString() };
@@ -14507,7 +14542,12 @@ function clearHistForm() {
 
 async function addHistoricalInvoice() {
   var date    = (document.getElementById('histDate').value  || '').trim();
-  var name    = (document.getElementById('histName').value  || '').trim();
+  // Stage D — normalize right here at the final write, same principle as
+  // doSubmit()/_saveCustRateField(): this function is the actual submit
+  // handler (not a live input/blur handler), so it's the correct place —
+  // covers the excel_invoices insert and all 4 customer_payments inserts
+  // below, which all reuse this same `name` value.
+  var name    = _titleCaseCustomerName((document.getElementById('histName').value || '').trim());
   var phone   = (document.getElementById('histPhone').value || '').trim();
   var orderNo = (document.getElementById('histOrder').value || '').trim();
   var bill    = parseFloat(document.getElementById('histBill').value)  || 0;
