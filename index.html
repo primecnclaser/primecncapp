@@ -7327,38 +7327,65 @@ async function saveToSupabase(data) {
     }
   }
   try {
-    // 1. Upsert invoice row — safe to call multiple times, won't duplicate
+    // 1. Write the invoice row.
     // Calculate total sqft and kg from items
     var _totalSqft = (data.items || []).reduce(function(s, it) {
       return s + (parseFloat(it.sqft) || 0) * (parseFloat(it.qty) || 1);
     }, 0);
     var _totalKg   = (data.items || []).reduce(function(s, it) { return s + (parseFloat(it.kg)   || 0); }, 0);
 
-    const { data: inv, error: invErr } = await sb
-      .from('invoices')
-      .upsert({
-        inv_num:              data.invNum,
-        date:                 data.date,
-        cust_name:            data.custName || null,
-        phone:                data.phone    || null,
-        area:                 data.area     || null,
-        del_date:             data.delDate  || null,
-        sub_total:            data.total,
-        discount:             data.discount,
-        total:                data.afterDiscount ?? data.total,
-        received:             data.received,
-        remaining:            data.remaining,
-        bad_debt:             parseFloat(data.badDebt) || 0,
-        edited_at:            data.editedAt || null,
-        is_advance:           !!data.isAdvance,
-        extra_charges:        parseFloat(data.extraCharges) || 0,
-        extra_charges_label:  data.extraChargesLabel || 'Extra Charges',
-        total_sqft:           parseFloat(_totalSqft.toFixed(3)) || 0,
-        total_kg:             parseFloat(_totalKg.toFixed(2))   || 0,
-        updated_at:           new Date().toISOString()
-      }, { onConflict: 'inv_num' })
-      .select()
-      .single();
+    var _invoiceRow = {
+      inv_num:              data.invNum,
+      date:                 data.date,
+      cust_name:            data.custName || null,
+      phone:                data.phone    || null,
+      area:                 data.area     || null,
+      del_date:             data.delDate  || null,
+      sub_total:            data.total,
+      discount:             data.discount,
+      total:                data.afterDiscount ?? data.total,
+      received:             data.received,
+      remaining:            data.remaining,
+      bad_debt:             parseFloat(data.badDebt) || 0,
+      edited_at:            data.editedAt || null,
+      is_advance:           !!data.isAdvance,
+      extra_charges:        parseFloat(data.extraCharges) || 0,
+      extra_charges_label:  data.extraChargesLabel || 'Extra Charges',
+      total_sqft:           parseFloat(_totalSqft.toFixed(3)) || 0,
+      total_kg:             parseFloat(_totalKg.toFixed(2))   || 0,
+      updated_at:           new Date().toISOString()
+    };
+
+    var inv, invErr;
+    if (!data._supaId) {
+      // Genuinely new invoice (no known Supabase row yet) — use a real INSERT
+      // instead of upsert(onConflict:'inv_num'), so a colliding number (two
+      // near-simultaneous submissions previewing the same number) raises the
+      // table's real unique-constraint error instead of silently overwriting
+      // someone else's invoice. On that specific error, re-resolve to the next
+      // truly-free number and retry — the insert attempt itself is the atomic
+      // check, so there's no separate pre-check round trip adding latency (and
+      // no widened window for a background refresh to clobber local state) in
+      // the normal, non-colliding case.
+      var _attempts = 0;
+      while (true) {
+        var _ins = await sb.from('invoices').insert(_invoiceRow).select().single();
+        if (!_ins.error) { inv = _ins.data; break; }
+        if (_ins.error.code === '23505' && _attempts < 15) {
+          _attempts++;
+          var _nextNum = await _findNextFreeInvNum(_invoiceRow.inv_num);
+          _invoiceRow.inv_num = _nextNum;
+          data.invNum = _nextNum;
+          if (document.getElementById('invNumber')) document.getElementById('invNumber').textContent = _nextNum;
+          continue;
+        }
+        invErr = _ins.error;
+        break;
+      }
+    } else {
+      var _ups = await sb.from('invoices').upsert(_invoiceRow, { onConflict: 'inv_num' }).select().single();
+      inv = _ups.data; invErr = _ups.error;
+    }
 
     if (invErr) throw invErr;
 
@@ -7639,6 +7666,13 @@ function setDate() {
   if (_d) _d.textContent = fmtDateDisplay(new Date().toISOString().split('T')[0]);
 }
 
+// PREVIEW ONLY — computes and displays the next available invoice number,
+// but does NOT reserve/consume it. Nothing here is written to
+// localStorage['inv_counter']; that key is only ever advanced by a genuine
+// successful submission (doSubmit()) or a genuine draft creation
+// (saveDraft()). This means simply opening New Invoice and navigating away
+// without submitting costs nothing — the same number is shown again next
+// time, since it's recomputed fresh from real data on every call.
 function setInvoiceNumber() {
   // Counter must be higher than any number in database, drafts, AND imported invoices
   const allNums = [...database, ...draftsDB].map(inv => {
@@ -7653,7 +7687,6 @@ function setInvoiceNumber() {
     });
   }
   const maxUsed = allNums.length ? Math.max(...allNums) : 0;
-  // Always sync counter to maxUsed+1 — allows correction if localStorage was corrupted
   // Also check advance invoices explicitly
   var _advNums = database.filter(function(inv){ return inv.isAdvance; }).map(function(inv){
     var m = (inv.invNum||'').match(/(\d+)$/);
@@ -7661,24 +7694,20 @@ function setInvoiceNumber() {
   });
   var _allMax = Math.max(maxUsed, _advNums.length ? Math.max.apply(null, _advNums) : 0);
   invoiceCounter = Math.max(_allMax + 1, 1001);
-  localStorage.setItem('inv_counter', invoiceCounter);
   var _pfx = localStorage.getItem('inv_num_prefix') || 'INV-';
   var _n = document.getElementById('invNumber'); if (_n) _n.textContent = _pfx + invoiceCounter;
   var _ho = document.getElementById('histOrder'); if (_ho) _ho.value = invoiceCounter;
 
-  // Also query Supabase directly to guarantee counter is correct even if
-  // local database array is not yet fully loaded (e.g. draft saved before sync)
-  // Also read drafts_db from localStorage directly (in case draftsDB array not yet populated)
-  // This ensures draft numbers are always counted even at early page load
+  // Also check localStorage's own draft cache directly (in case the in-memory
+  // draftsDB array isn't populated yet this early in boot) — display only.
   try {
-    var _lsDrafts = JSON.parse(localStorage.getItem("drafts_db") || "[]");
+    var _lsDrafts = JSON.parse(localStorage.getItem("inv_drafts") || "[]");
     _lsDrafts.forEach(function(d) {
       var _dm = (d.invNum || "").match(/(\d+)$/);
       if (_dm) {
         var _dn = parseInt(_dm[1]);
         if (_dn >= invoiceCounter) {
           invoiceCounter = _dn + 1;
-          localStorage.setItem("inv_counter", invoiceCounter);
           var _nd = document.getElementById("invNumber");
           if (_nd) _nd.textContent = "INV-" + invoiceCounter;
           var _hod = document.getElementById("histOrder");
@@ -7688,23 +7717,30 @@ function setInvoiceNumber() {
     });
   } catch(_lde) { console.warn("[setInvoiceNumber drafts]", _lde); }
 
-  // Query Supabase for highest submitted invoice number
+  // Query Supabase directly for a preview-accuracy check — display only, still
+  // never persisted. Fetches a batch of recent rows (not just the single most
+  // recent by created_at) and takes the true numeric max among them, since a
+  // form left open a while before submitting means "most recently created"
+  // and "highest number" can genuinely diverge (confirmed in real data).
   if (typeof sb !== "undefined" && sb && navigator.onLine) {
     sb.from("invoices")
       .select("inv_num")
       .order("created_at", { ascending: false })
-      .limit(1)
+      .limit(50)
       .then(function(res) {
-        // Start from current counter (already accounts for local drafts)
         var _base = invoiceCounter;
         if (res.data && res.data.length) {
-          var sbM = (res.data[0].inv_num || "").match(/(\d+)$/);
-          var sbMax = sbM ? parseInt(sbM[1]) : 0;
+          var sbMax = 0;
+          res.data.forEach(function(r) {
+            var sbM = (r.inv_num || "").match(/(\d+)$/);
+            var n = sbM ? parseInt(sbM[1]) : 0;
+            if (n > sbMax) sbMax = n;
+          });
           if (sbMax >= _base) _base = sbMax + 1;
         }
-        // Also check all local draft numbers one more time against this base
+        // Also check local drafts one more time against this base
         try {
-          var _lds2 = JSON.parse(localStorage.getItem("drafts_db") || "[]");
+          var _lds2 = JSON.parse(localStorage.getItem("inv_drafts") || "[]");
           _lds2.forEach(function(d) {
             var _dm2 = (d.invNum || "").match(/(\d+)$/);
             if (_dm2 && parseInt(_dm2[1]) >= _base) _base = parseInt(_dm2[1]) + 1;
@@ -7712,7 +7748,6 @@ function setInvoiceNumber() {
         } catch(_e2) { console.error('[setInvoiceNumber]', _e2); }
         if (_base !== invoiceCounter) {
           invoiceCounter = _base;
-          localStorage.setItem("inv_counter", invoiceCounter);
           var _n2 = document.getElementById("invNumber");
           if (_n2) _n2.textContent = "INV-" + invoiceCounter;
           var _ho2 = document.getElementById("histOrder");
@@ -7740,6 +7775,30 @@ async function _liveInvNumConflict(numStr) {
     }
   } catch(e) { console.warn('[_liveInvNumConflict drafts]', e); }
   return false;
+}
+
+// Starting from `startNum` (e.g. "INV-3460"), returns the first invoice
+// number not already used by a local invoice/draft/excel row or (checked
+// live) an existing Supabase invoices/drafts row. Used at real submission
+// time — both right before a new invoice is pushed locally and again right
+// before the actual cloud write — to keep two near-simultaneous submissions
+// from landing on the same number.
+// `excludeObj` — when called AFTER this invoice has already been pushed
+// into `database` (the late, pre-cloud-write guard), pass the invoice's own
+// object here so the local scan doesn't match itself and treat its own
+// just-reserved number as a conflict on every single submission.
+async function _findNextFreeInvNum(startNum, excludeObj) {
+  var num = startNum;
+  while (
+    database.some(function(d){ return d.invNum === num && d !== excludeObj; }) ||
+    draftsDB.some(function(d){ return d.invNum === num; }) ||
+    (_excelDBCache||[]).some(function(r){ return ('INV-'+r.order_num) === num; }) ||
+    await _liveInvNumConflict(num)
+  ) {
+    var n = parseInt((num.match(/(\d+)$/)||[])[1]);
+    num = 'INV-' + ((Number.isFinite(n) ? n : invoiceCounter) + 1);
+  }
+  return num;
 }
 
 // Gauge → default rate mapping
@@ -8774,24 +8833,20 @@ async function doSubmit(data) {
   // Save locally — always works even offline
   const inv = { ...data, isAdvance: !!isAdvance, savedAt: new Date().toISOString(), deviceId: DEVICE_ID };
 
-  // Duplicate number guard — if this number already exists anywhere, bump counter and reassign
+  // Duplicate number guard — if this number already exists anywhere, bump counter
+  // and reassign. Keeps `inv` AND `data` in sync — a prior version only updated
+  // `inv.invNum`, leaving `data.invNum` (what the real Supabase write and the
+  // customer_payments entry use downstream) silently pointing at the old,
+  // already-conflicting number.
   var _checkNum = inv.invNum;
-  var _alreadyUsed = database.some(function(d){ return d.invNum === _checkNum && d !== inv; })
-    || draftsDB.some(function(d){ return d.invNum === _checkNum; })
-    || (_excelDBCache||[]).some(function(r){ return ('INV-'+r.order_num) === _checkNum; })
-    || await _liveInvNumConflict(_checkNum);
+  var _resolvedNum = await _findNextFreeInvNum(_checkNum);
+  var _alreadyUsed = _resolvedNum !== _checkNum;
   if (_alreadyUsed) {
-    var _safeNum = invoiceCounter;
-    while (
-      database.some(function(d){ return d.invNum === ('INV-'+_safeNum); }) ||
-      draftsDB.some(function(d){ return d.invNum === ('INV-'+_safeNum); }) ||
-      (_excelDBCache||[]).some(function(r){ return r.order_num === String(_safeNum); }) ||
-      await _liveInvNumConflict('INV-'+_safeNum)
-    ) { _safeNum++; }
-    inv.invNum = 'INV-' + _safeNum;
-    invoiceCounter = _safeNum + 1;
+    inv.invNum = _resolvedNum;
+    data.invNum = _resolvedNum;
+    invoiceCounter = parseInt(_resolvedNum.match(/(\d+)$/)[1]) + 1;
     localStorage.setItem('inv_counter', invoiceCounter);
-    if (document.getElementById('invNumber')) document.getElementById('invNumber').textContent = 'INV-' + invoiceCounter;
+    if (document.getElementById('invNumber')) document.getElementById('invNumber').textContent = _resolvedNum;
     toast('⚠️ Invoice number reassigned to ' + inv.invNum + ' to avoid duplicate.');
   }
 
@@ -8805,6 +8860,15 @@ async function doSubmit(data) {
     invoiceCounter++;
     localStorage.setItem('inv_counter', invoiceCounter);
   }
+
+  // Race-condition safety for two near-simultaneous submissions now lives inside
+  // saveToSupabase() itself (a real INSERT + unique-constraint retry for new
+  // invoices) rather than a separate pre-check here — a pre-check adds a network
+  // round trip between the local push and the actual cloud write, which widens
+  // the window where this session's own periodic background refresh can pull a
+  // fresh (not-yet-including-this-invoice) copy of `database` from Supabase and
+  // wipe the just-pushed local entry before it ever reaches the cloud.
+
   clearForm();
   renderDB();
   updateDBCount();
@@ -8840,6 +8904,10 @@ async function doSubmit(data) {
     setSyncStatus('syncing', '● Saving...');
     const supaId = await saveToSupabase(data);
     if (supaId !== null) {
+      // If saveToSupabase() had to retry under a different number (real
+      // collision caught by the DB's unique constraint), keep the local
+      // record's invNum in sync with what actually landed in the cloud.
+      if (inv.invNum !== data.invNum) inv.invNum = data.invNum;
       // Update the local record with supaId
       const idx = database.findIndex(d => d.invNum === data.invNum);
       if (idx !== -1) { database[idx]._supaId = supaId; localStorage.setItem('inv_database', JSON.stringify(database)); }
