@@ -7779,18 +7779,15 @@ async function _liveInvNumConflict(numStr) {
 
 // Starting from `startNum` (e.g. "INV-3460"), returns the first invoice
 // number not already used by a local invoice/draft/excel row or (checked
-// live) an existing Supabase invoices/drafts row. Used at real submission
-// time — both right before a new invoice is pushed locally and again right
-// before the actual cloud write — to keep two near-simultaneous submissions
-// from landing on the same number.
-// `excludeObj` — when called AFTER this invoice has already been pushed
-// into `database` (the late, pre-cloud-write guard), pass the invoice's own
-// object here so the local scan doesn't match itself and treat its own
-// just-reserved number as a conflict on every single submission.
-async function _findNextFreeInvNum(startNum, excludeObj) {
+// live) an existing Supabase invoices/drafts row. Submission-time-only:
+// called from doSubmit()'s pre-push guard (before this invoice is added to
+// `database`) and from saveToSupabase()'s unique-constraint retry — never
+// from the preview shown on form load, which setInvoiceNumber() computes
+// independently.
+async function _findNextFreeInvNum(startNum) {
   var num = startNum;
   while (
-    database.some(function(d){ return d.invNum === num && d !== excludeObj; }) ||
+    database.some(function(d){ return d.invNum === num; }) ||
     draftsDB.some(function(d){ return d.invNum === num; }) ||
     (_excelDBCache||[]).some(function(r){ return ('INV-'+r.order_num) === num; }) ||
     await _liveInvNumConflict(num)
