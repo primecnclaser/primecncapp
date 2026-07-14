@@ -2681,7 +2681,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         <div class="cfield">
           <label id="custNameLabel">Customer Name</label>
           <div style="display:flex;align-items:center;gap:4px;">
-            <input type="text" id="custName" placeholder="Enter full name" style="flex:1;" oninput="onInvCustName(this.value)" autocomplete="off">
+            <input type="text" id="custName" placeholder="Enter full name" style="flex:1;" oninput="onInvCustName(this.value)" onblur="if(typeof _custNameBlurResolveRates === 'function') _custNameBlurResolveRates()" autocomplete="off">
             <button onclick="unlockCustField('custName','custNameLabel','Customer Name')" id="custNameClearBtn" title="Unlock / Clear" style="background:none;border:none;cursor:pointer;color:#c0b8a8;font-size:1rem;line-height:1;padding:0 2px;flex-shrink:0;display:none;" onmouseover="this.style.color='#c0392b'" onmouseout="this.style.color='#c0b8a8'">✕</button>
           </div>
           <!-- NEW: customer name autocomplete dropdown -->
@@ -8389,6 +8389,39 @@ function sendQuote(mode) {
 // ══════════════════════════════════════════════
 async function submitInvoice() {
   const data = collectData();
+
+  // ── Save-time identity check (independent of dropdown click) ──
+  // Re-checks the FINAL name+phone against known customers using the
+  // confirmed rules, right before this invoice is attributed to anyone.
+  // A typed name that was never picked from the dropdown — and never had a
+  // phone typed either — previously skipped matching entirely; this closes
+  // that gap without merging/renaming any existing data.
+  var _custNameFinal = (data.custName || '').trim();
+  if (_custNameFinal) {
+    var _idMatch = _findIdentityMatch(_custNameFinal, data.phone);
+    if (_idMatch) {
+      console.log('[IdentityMatch] submitInvoice — matched existing customer:', _idMatch);
+      if (!data.phone && _idMatch.phone) {
+        data.phone = _idMatch.phone;
+        var _pEl = document.getElementById('custPhone');
+        if (_pEl && !_pEl.value) _pEl.value = _idMatch.phone;
+      }
+      var _aEl = document.getElementById('custArea');
+      if (_aEl && !_aEl.value && _idMatch.area) {
+        _aEl.value = _idMatch.area;
+        data.area = _idMatch.area;
+      }
+      // Also settle per-customer rate resolution for this matched identity —
+      // mirrors what lookupCustomerByPhone already does for phone-typed
+      // matches, extended to the no-phone / typed-not-clicked case.
+      if (!window._custRateResolved && typeof _resolveCustRateIdentity === 'function') {
+        _resolveCustRateIdentity(_custNameFinal, (data.phone || '').replace(/\D/g, ''));
+      }
+    } else {
+      console.log('[IdentityMatch] submitInvoice — no existing match, new customer:', _custNameFinal, data.phone || '(no phone)');
+    }
+  }
+
   const hasPhone    = !!data.phone;
   const hasItem     = data.items.some(x => x.sizes || x.amt > 0);
   const hasReceived = (data.received || 0) > 0;
@@ -13608,6 +13641,55 @@ function hideBdEdit(orderNum) {
 }
 
 // ══════════════════════════════════════════════
+// SAVE-TIME CUSTOMER IDENTITY MATCH (confirmed rules)
+// Independent of whether a dropdown suggestion was ever shown/clicked —
+// re-checked against the FINAL name+phone at every save/submit point.
+//  - same name (case-insensitive) + both no phone       => same customer
+//  - same name + same phone (suffix-tolerant)            => same customer
+//  - same name + different phone, or phone on one side
+//    only                                                 => different customers
+// Does NOT merge/rename any existing data — read-only lookup used to
+// attribute a NEW save to an existing customer when the rules say so.
+// ══════════════════════════════════════════════
+function _phoneMatches(a, b) {
+  if (!a || !b) return false;
+  return a === b || a === '0'+b || b === '0'+a || a.slice(-b.length) === b || b.slice(-a.length) === a;
+}
+
+function _findIdentityMatch(name, phone) {
+  var nameL = (name || '').trim().toLowerCase();
+  if (!nameL) return null;
+  var digits = (phone || '').replace(/\D/g, '');
+
+  function check(candName, candPhoneRaw, candArea) {
+    if ((candName || '').trim().toLowerCase() !== nameL) return null;
+    var candDigits = (candPhoneRaw || '').replace(/\D/g, '');
+    if (digits && candDigits) {
+      return _phoneMatches(digits, candDigits) ? { name: candName, phone: candPhoneRaw, area: candArea || '' } : null;
+    }
+    if (!digits && !candDigits) return { name: candName, phone: '', area: candArea || '' };
+    return null; // one side has a phone, the other doesn't -> different customer
+  }
+
+  var i, hit;
+  var all = (typeof database !== 'undefined' ? database : []).concat(typeof draftsDB !== 'undefined' ? draftsDB : []);
+  for (i = all.length - 1; i >= 0; i--) {
+    var inv = all[i];
+    if (inv.isNull || inv.isNullEntry) continue;
+    hit = check(inv.custName, inv.phone, inv.area);
+    if (hit) return hit;
+  }
+  if (Array.isArray(typeof _excelDBCache !== 'undefined' ? _excelDBCache : null)) {
+    for (i = _excelDBCache.length - 1; i >= 0; i--) {
+      var r = _excelDBCache[i];
+      hit = check(r.customer_name, r.phone, r.area);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+// ══════════════════════════════════════════════
 // AUTO-FILL + LOCK CUSTOMER FROM DB BY PHONE
 // Searches both submitted invoices AND drafts
 // ══════════════════════════════════════════════
@@ -13933,6 +14015,24 @@ function _findCustRateRow(digits) {
   return null;
 }
 
+// Extends the phone-only lookup above with the confirmed same-name-no-phone
+// rule, so a customer who genuinely has no phone number can still have their
+// per-customer rates found/saved. Only matches when BOTH sides have no phone —
+// same name + a phone on either side alone is a different customer (handled
+// by _findCustRateRow above, or falls through to "no match" here).
+function _findCustRateRowByIdentity(name, digits) {
+  if (!Array.isArray(_custRatesCache)) return null;
+  if (digits) return null; // phone-present case is _findCustRateRow's job
+  var nameL = (name || '').trim().toLowerCase();
+  if (!nameL) return null;
+  for (var i = _custRatesCache.length - 1; i >= 0; i--) {
+    var r = _custRatesCache[i];
+    if (r.phone) continue;
+    if ((r.customer_name || '').trim().toLowerCase() === nameL) return r;
+  }
+  return null;
+}
+
 function _fillCustRateFields(row) {
   var f14 = document.getElementById('custRate14g');
   var f16 = document.getElementById('custRate16g');
@@ -13944,6 +14044,55 @@ function _fillCustRateFields(row) {
   if (fKg) fKg.value = (row && row.rate_kg  != null) ? row.rate_kg  : '';
   var statusEl = document.getElementById('custRateStatus');
   if (statusEl) { statusEl.textContent = row ? '' : 'ℹ️ No saved rates yet'; statusEl.style.color = '#64748b'; }
+}
+
+// Same as _fillCustRateFields, but only touches a field if it's currently
+// EMPTY — used by the phone-less resolution paths (name typed/selected with
+// no phone), which can fire after the user has already started typing into
+// one of the rate fields. Never overwrites active/typed input; only fills in
+// what the user hasn't touched yet.
+function _fillCustRateFieldsSafe(row, exceptId) {
+  var map = { custRate14g: 'rate_14g', custRate16g: 'rate_16g', custRate18g: 'rate_18g', custRateKg: 'rate_kg' };
+  Object.keys(map).forEach(function(id) {
+    if (id === exceptId) return; // the field the user is actively editing — never touched
+    var el = document.getElementById(id);
+    if (!el || el.value !== '') return;
+    var v = row && row[map[id]] != null ? row[map[id]] : '';
+    el.value = v;
+  });
+  var statusEl = document.getElementById('custRateStatus');
+  if (statusEl && !statusEl.textContent) { statusEl.textContent = row ? '' : 'ℹ️ No saved rates yet'; statusEl.style.color = '#64748b'; }
+}
+
+// Shared identity+row resolution (no field-filling) used by every save-time
+// / recognition-time check — phone-based first (existing suffix-tolerant
+// rule), falling back to the confirmed same-name-no-phone rule.
+async function _resolveCustRateIdentity(name, digits) {
+  await _loadCustRatesCache();
+  var row = (digits && digits.length >= 7 ? _findCustRateRow(digits) : null) || _findCustRateRowByIdentity(name, digits);
+  window._custRateResolved = true;
+  window._custRateRowId = row ? row.id : null;
+  return row;
+}
+
+// Proactive resolution for the phone-less path — closes the display gap
+// where only a rate-field blur (or a typed phone) could ever trigger
+// _custRateResolved, so a phone-less known customer's saved rates never
+// showed up until the user happened to touch the rate box themselves.
+// Fired from custName's own blur and from selectInvCustName (dropdown
+// pick) — i.e. as soon as the customer is "recognized", not later.
+async function _custNameBlurResolveRates() {
+  if (window._custRateResolved) return;
+  var nameEl = document.getElementById('custName');
+  var phoneEl = document.getElementById('custPhone');
+  var name = (nameEl && nameEl.value || '').trim();
+  var digits = (phoneEl && phoneEl.value || '').replace(/\D/g, '');
+  if (!name || digits) return; // phone-typed case is lookupCustomerByPhone's job
+  var match = _findIdentityMatch(name, '');
+  if (!match) return;
+  var row = await _resolveCustRateIdentity(name, '');
+  console.log('[IdentityMatch] custName blur — resolved phone-less existing customer:', name, '-> rowId', window._custRateRowId);
+  _fillCustRateFieldsSafe(row);
 }
 
 // Resets the rate area for a new/cleared customer — single choke point,
@@ -13993,6 +14142,26 @@ async function onCustRateFieldBlur(el, dbCol) {
   var phoneEl = document.getElementById('custPhone');
   var name = (nameEl && nameEl.value || '').trim();
   var digits = (phoneEl && phoneEl.value || '').replace(/\D/g,'');
+
+  // Save-time identity check for the phone-less path — a typed (not
+  // clicked) name with no phone never fires lookupCustomerByPhone, so it
+  // never gets a chance to resolve against an existing customer. Only
+  // engages here (not already resolved, no phone typed); phone-typed
+  // customers are already resolved by lookupCustomerByPhone's own oninput
+  // handler, untouched. Requires an actual existing match (same confirmed
+  // rules) before flipping resolved — a genuinely brand-new customer must
+  // still keep the global GAUGE_RATES fallback behavior unchanged.
+  if (!window._custRateResolved && name && !digits) {
+    var _existingMatch = _findIdentityMatch(name, '');
+    if (_existingMatch) {
+      var _row = await _resolveCustRateIdentity(name, '');
+      console.log('[IdentityMatch] onCustRateFieldBlur — resolved phone-less existing customer:', name, '-> rowId', window._custRateRowId);
+      // Repopulate the OTHER (untouched) rate fields now that this customer
+      // is recognized — never the field currently being blurred, since its
+      // value is literally what the user just typed/cleared.
+      _fillCustRateFieldsSafe(_row, el.id);
+    }
+  }
 
   if (!window._custRateResolved) {
     if (statusEl && el.value !== '') { statusEl.textContent = '⚠️ Enter customer name + phone first'; statusEl.style.color = '#dc2626'; }
@@ -30530,6 +30699,11 @@ function selectInvCustName(eName, ePhone) {
   if (phoneEl && !phoneEl.value && phone) {
     phoneEl.value = phone;
     if (typeof lookupCustomerByPhone === 'function') lookupCustomerByPhone(phone);
+  } else if (typeof _custNameBlurResolveRates === 'function') {
+    // Phone-less match (or phone already present/handled elsewhere) — same
+    // resolution the typed-name blur path gets, so a phone-less customer's
+    // saved rates still show up even when picked straight from the dropdown.
+    _custNameBlurResolveRates();
   }
 }
 
