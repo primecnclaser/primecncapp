@@ -2004,11 +2004,12 @@ body {
     </div>
 
     <div id="branchSetupChoice">
-      <button class="auth-btn" style="margin-bottom:10px;" onclick="_branchSetupChooseJauharabad()">
-        🏪 Jauharabad (existing branch)
-      </button>
-      <button class="auth-btn" style="background:#475569;" onclick="_branchSetupShowNewBranchForm()">
-        ➕ New Branch
+      <div id="branchSetupLoading" style="font-size:0.8rem;color:#94a3b8;font-family:'Montserrat',sans-serif;text-align:center;padding:10px 0;">
+        ⟳ Loading branches from Head Office...
+      </div>
+      <div id="branchSetupList"></div>
+      <button class="auth-forgot-link" id="branchSetupManualLink" style="display:none;" onclick="_branchSetupShowNewBranchForm()">
+        Enter connection details manually →
       </button>
       <div style="font-size:0.75rem;color:#94a3b8;font-family:'Montserrat',sans-serif;margin-top:14px;line-height:1.5;">
         This only appears once, on a brand-new computer with no prior data.
@@ -5995,11 +5996,6 @@ if (window._branchSetupPending) {
     sb = null;
   }
 }
-
-// Exposed for the branch setup screen's button handlers, which live in a
-// later, separate <script> block (auth system) and can't see this block's
-// top-level const/let bindings otherwise.
-window._JAUHARABAD_DEFAULTS = _JAUHARABAD_DEFAULTS;
 
 // Always-visible branch indicator (header) — the safety net for the
 // reinstall/shared-computer scenario: anyone glancing at the header can
@@ -28803,11 +28799,68 @@ function _authShowPanel(id) {
 window._authShowPanel = _authShowPanel;
 
 // ─── BRANCH SETUP CARD HANDLERS (Mianwali onboarding Phase 1) ────
-function _branchSetupChooseJauharabad() {
-  if (typeof window._saveBranchConfigAndReload === 'function' && window._JAUHARABAD_DEFAULTS) {
-    window._saveBranchConfigAndReload(window._JAUHARABAD_DEFAULTS);
+// Real branch rows fetched from HO at setup time, kept here (rather than
+// stuffed into onclick attributes) so pick buttons can be built dynamically
+// and still reference the exact row they were rendered from.
+window._branchSetupRows = [];
+
+async function _branchSetupLoadDirectory() {
+  var loading = document.getElementById('branchSetupLoading');
+  var list = document.getElementById('branchSetupList');
+  var manualLink = document.getElementById('branchSetupManualLink');
+  if (list) list.innerHTML = '';
+
+  try {
+    // HO_SUPA_URL/HO_SUPA_KEY are hardcoded defaults available unconditionally
+    // (see SUPABASE CONFIG block) — no branch_config needed to reach HO.
+    var _hoClient = supabase.createClient(HO_SUPA_URL, HO_SUPA_KEY);
+    var resp = await _hoClient
+      .from('branches')
+      .select('id, branch_code, branch_name, branch_type, supabase_url, supabase_anon_key')
+      .eq('is_active', true)
+      .order('branch_name', { ascending: true });
+    if (resp.error) throw resp.error;
+    if (!resp.data || !resp.data.length) throw new Error('No active branches returned from HO');
+
+    window._branchSetupRows = resp.data;
+    if (loading) loading.style.display = 'none';
+    resp.data.forEach(function(row, i) {
+      var btn = document.createElement('button');
+      btn.className = 'auth-btn';
+      btn.style.marginBottom = '10px';
+      btn.textContent = '🏪 ' + row.branch_name;
+      btn.onclick = function() { _branchSetupPick(i); };
+      list.appendChild(btn);
+    });
+    if (manualLink) manualLink.style.display = '';
+  } catch (e) {
+    console.error('[branch setup] failed to load branch directory from HO:', e);
+    if (loading) loading.style.display = 'none';
+    if (manualLink) manualLink.style.display = '';
+    // HO unreachable (offline, HO down, etc.) — fall back to manual entry
+    // rather than leaving the user stuck on an empty list.
+    _branchSetupShowNewBranchForm();
+    var manualErr = document.getElementById('branchSetupError');
+    if (manualErr) manualErr.textContent = '⚠ Could not reach Head Office to load the branch list — enter connection details manually.';
   }
 }
+window._branchSetupLoadDirectory = _branchSetupLoadDirectory;
+
+function _branchSetupPick(i) {
+  var row = window._branchSetupRows[i];
+  if (!row) return;
+  if (typeof window._saveBranchConfigAndReload === 'function') {
+    window._saveBranchConfigAndReload({
+      branchId: (row.branch_code || '').toLowerCase(),
+      branchName: row.branch_name,
+      branchUuid: row.id,
+      supaUrl: row.supabase_url,
+      supaKey: row.supabase_anon_key
+    });
+  }
+}
+window._branchSetupPick = _branchSetupPick;
+
 function _branchSetupShowNewBranchForm() {
   var choice = document.getElementById('branchSetupChoice');
   var form = document.getElementById('branchSetupNewForm');
@@ -28850,7 +28903,6 @@ function _branchSetupSaveNewBranch() {
     });
   }
 }
-window._branchSetupChooseJauharabad = _branchSetupChooseJauharabad;
 window._branchSetupShowNewBranchForm = _branchSetupShowNewBranchForm;
 window._branchSetupBackToChoice = _branchSetupBackToChoice;
 window._branchSetupSaveNewBranch = _branchSetupSaveNewBranch;
@@ -28984,6 +29036,7 @@ async function _authInit() {
   if (window._branchSetupPending) {
     _authShowOverlay();
     _authShowPanel('branchSetupCard');
+    _branchSetupLoadDirectory();
     return;
   }
 
