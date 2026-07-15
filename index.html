@@ -25137,6 +25137,17 @@ function sSave(empId,ym){
 // sLockMonth removed — auto-lock Apr2025-Dec2025
 
 // Add daily payment (with optional per-date OT and shop pay)
+// container.outerHTML replacement (used by sAddDay/sDelDay to refresh a
+// card's totals) destroys and recreates every element inside it, including
+// whichever input currently has keyboard focus — the browser then silently
+// moves focus to document.body, so anything the user keeps typing right
+// afterward (without first re-clicking) goes nowhere. Restoring focus to
+// the Cash Amount field after the rebuild fixes that directly.
+function sRefocusAmt(empId){
+  const el = document.getElementById('dayAmt_'+empId);
+  if (el) el.focus();
+}
+
 function sAddDay(empId,ym){
   const dateEl = document.getElementById('dayDate_'+empId);
   const amtEl  = document.getElementById('dayAmt_'+empId);
@@ -25172,6 +25183,7 @@ function sAddDay(empId,ym){
   const emps=sEmps(), emp=emps.find(e=>e.id===empId);
   if(container&&emp) container.outerHTML = sCard(emp,ym);
   sRenderBar(ym);
+  sRefocusAmt(empId);
 }
 
 // Delete daily payment
@@ -25185,6 +25197,7 @@ function sDelDay(empId,ym,payId){
   if(container&&emp) container.outerHTML=sCard(emp,ym);
   sRenderBar(ym);
   toast('🗑️ Deleted');
+  sRefocusAmt(empId);
 }
 
 
