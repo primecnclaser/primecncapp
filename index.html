@@ -1991,6 +1991,54 @@ body {
     <button class="auth-btn" id="setupBtn" onclick="_authDoSetup()">Create Admin Account</button>
   </div>
 
+  <!-- ─── BRANCH SETUP CARD (Mianwali onboarding Phase 1) ─────────
+       Shown ONLY on a genuinely fresh install (no branch_config, no
+       evidence of prior real usage) — see _branchSetupPending in the
+       SUPABASE CONFIG script block. Never shown on an existing
+       Jauharabad install; that case is silently grandfathered in
+       before this overlay logic ever runs. ─────────────────────── -->
+  <div class="auth-card" id="branchSetupCard" style="display:none">
+    <div class="auth-shop-header">
+      <span class="auth-shop-en">First-Time Setup</span>
+      <span class="auth-shop-sub">Which branch is this computer for?</span>
+    </div>
+
+    <div id="branchSetupChoice">
+      <button class="auth-btn" style="margin-bottom:10px;" onclick="_branchSetupChooseJauharabad()">
+        🏪 Jauharabad (existing branch)
+      </button>
+      <button class="auth-btn" style="background:#475569;" onclick="_branchSetupShowNewBranchForm()">
+        ➕ New Branch
+      </button>
+      <div style="font-size:0.75rem;color:#94a3b8;font-family:'Montserrat',sans-serif;margin-top:14px;line-height:1.5;">
+        This only appears once, on a brand-new computer with no prior data.
+        Existing installs are detected automatically and never see this screen.
+      </div>
+    </div>
+
+    <div id="branchSetupNewForm" style="display:none;">
+      <div class="auth-field">
+        <label>Branch Name</label>
+        <input type="text" id="branchSetupName" placeholder="e.g. Mianwali">
+      </div>
+      <div class="auth-field">
+        <label>Branch UUID (from HO's branches table)</label>
+        <input type="text" id="branchSetupUuid" placeholder="e.g. 3f7a1c2e-...">
+      </div>
+      <div class="auth-field">
+        <label>Supabase Project URL</label>
+        <input type="text" id="branchSetupUrl" placeholder="https://xxxxxxxx.supabase.co">
+      </div>
+      <div class="auth-field">
+        <label>Supabase Anon Key</label>
+        <input type="text" id="branchSetupKey" placeholder="eyJhbGciOi...">
+      </div>
+      <div class="auth-error" id="branchSetupError"></div>
+      <button class="auth-btn" onclick="_branchSetupSaveNewBranch()">Save &amp; Continue</button>
+      <button class="auth-forgot-link" onclick="_branchSetupBackToChoice()">← Back</button>
+    </div>
+  </div>
+
   <!-- ─── FORCE PASSWORD CHANGE CARD ───────────────────────────── -->
   <div class="auth-card" id="authForceChangeCard" style="display:none">
     <div class="auth-shop-header">
@@ -2293,7 +2341,7 @@ body {
 <!-- ║  SECTION 8 — USER BAR / HEADER                     ║ -->
 <!-- ═══════════════════════════════════════════════════════ -->
 <div id="userBar">
-  <div id="_ubBrand"><span id="_ubBrandText">⚙️ Complete Shop System</span><span id="_appVersionLabel" style="font-size:0.6rem;font-weight:700;color:#f59e0b;font-family:Montserrat,sans-serif;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:middle;">v1.0.7</span></div>
+  <div id="_ubBrand"><span id="_ubBrandText">⚙️ Complete Shop System</span><span id="_appVersionLabel" style="font-size:0.6rem;font-weight:700;color:#f59e0b;font-family:Montserrat,sans-serif;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:middle;">v1.0.7</span><span id="_branchIndicator" title="Connected branch" style="font-size:0.6rem;font-weight:700;color:#38bdf8;font-family:Montserrat,sans-serif;background:rgba(56,189,248,0.15);border:1px solid rgba(56,189,248,0.4);border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:middle;"></span></div>
   <div id="topShopName"></div>
   <!-- Col 3: all SPAN children — no div:last-child matches inside -->
   <div id="_ubProfile">
@@ -5469,8 +5517,10 @@ async function _syncToHO(auto) {
   }
 
   try {
-    const BRANCH_ID = 'branch_main';
-    const BRANCH_UUID = 'ba08fc3a-5b6a-473a-8e69-1867fa54d280';
+    // Sourced from branch_config (falls back to Jauharabad defaults if
+    // somehow still unset — matches every other read of _branchCfg).
+    const BRANCH_ID = (_branchCfg || _JAUHARABAD_DEFAULTS).branchId;
+    const BRANCH_UUID = (_branchCfg || _JAUHARABAD_DEFAULTS).branchUuid;
 
     // ── Fetch all finance_ledger data ──
     var { data: ledger, error: ledgerErr } = await sb
@@ -5659,7 +5709,7 @@ async function _syncToHO(auto) {
     // Log failure
     try {
       await sbHO.from('branch_sync_log').insert({
-        branch_id:     'ba08fc3a-5b6a-473a-8e69-1867fa54d280',
+        branch_id:     (_branchCfg || _JAUHARABAD_DEFAULTS).branchUuid,
         sync_type:     auto ? 'auto' : 'manual',
         sync_status:   'failed',
         error_message: err.message || 'Unknown error',
@@ -5774,21 +5824,202 @@ setInterval(function() {
 }, HO_AUTOSYNC_INTERVAL_MS);
 
 // ══════════════════════════════════════════════
-// SUPABASE CONFIG
+// SUPABASE CONFIG — branch-runtime-configurable (Mianwali onboarding Phase 1)
 // ══════════════════════════════════════════════
-const SUPA_URL = 'https://jazxyebbbaitvcjeyjly.supabase.co';
-const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imphenh5ZWJiYmFpdHZjamV5amx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTM5NzIsImV4cCI6MjA5Mjc2OTk3Mn0.AcqIU1igypQ68at-v0avF6-V9MxP2GxzTAxc6VhgTNY';
-// Head Office Supabase — aggregation DB
-const HO_SUPA_URL = 'https://tadmvogwkjrrhbzlmyvr.supabase.co';
-const HO_SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhZG12b2d3a2pycmhiemxteXZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2MzY3NTYsImV4cCI6MjA5ODIxMjc1Nn0.01x8LuN_n3MOQCgu9Cy8KQ0jTC2xtP_bMrApOsaqXpw';
+// Jauharabad's real connection details — kept as the hardcoded DEFAULT so any
+// existing Jauharabad install (or a fresh install explicitly choosing
+// "Jauharabad (existing)" on a brand-new machine) needs zero manual entry.
+const _JAUHARABAD_DEFAULTS = {
+  branchId: 'branch_main',
+  branchName: 'Jauharabad',
+  branchUuid: 'ba08fc3a-5b6a-473a-8e69-1867fa54d280',
+  supaUrl: 'https://jazxyebbbaitvcjeyjly.supabase.co',
+  supaKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imphenh5ZWJiYmFpdHZjamV5amx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTM5NzIsImV4cCI6MjA5Mjc2OTk3Mn0.AcqIU1igypQ68at-v0avF6-V9MxP2GxzTAxc6VhgTNY'
+};
+// Head Office Supabase — shared aggregation DB, same for every branch by
+// design (only Kamran's HO login sees cross-branch data). Runtime-
+// configurable via branch_config.hoSupaUrl/hoSupaKey (same pattern as the
+// main connection), but every branch is expected to fall back to this same
+// hardcoded default in practice — there's no per-branch setup-screen field
+// for it, since branches should never need to point HO sync anywhere else.
+// Distinguished per-branch by branch_config.branchUuid (the row in HO's own
+// `branches` table), not by which HO project is being written to.
+const _HO_SUPA_DEFAULTS = {
+  hoSupaUrl: 'https://tadmvogwkjrrhbzlmyvr.supabase.co',
+  hoSupaKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhZG12b2d3a2pycmhiemxteXZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2MzY3NTYsImV4cCI6MjA5ODIxMjc1Nn0.01x8LuN_n3MOQCgu9Cy8KQ0jTC2xtP_bMrApOsaqXpw'
+};
+
+// ── The branch-scoped key list, declared BEFORE detection/migration runs,
+// since the existing-install path needs it to actually copy each key's
+// CURRENT unprefixed value over to its new prefixed name — not just start
+// using the new prefix going forward while leaving the real data orphaned
+// under the old key. Explicit ALLOW-list (not a blanket default) — only
+// these known app keys get prefixed; anything not listed here (Supabase
+// SDK's own internal keys, any future/unknown key) passes through
+// completely untouched.
+var _BRANCH_SCOPED_EXACT = [
+  '_lastActivity','_offlineAuth','_summaryCache','app_version','cash_holders_cache',
+  'cp_pending_sync','drafts_db','excel_pending_queue','fin_ledger_delete',
+  'fin_ledger_local','fin_ledger_pending','inv_accent','inv_address','inv_counter',
+  'inv_database','inv_drafts','inv_drag_free_mode','inv_drag_free_pos',
+  'inv_en_name_font','inv_en_size','inv_footer2','inv_footer_shop_pos',
+  'inv_footer_text','inv_gauge_rates_custom','inv_hdr_cols','inv_hdr_el_styles',
+  'inv_hdr_hidden','inv_hdr_order','inv_header_c1','inv_header_c2','inv_inv_title',
+  'inv_logged_user','inv_logo','inv_logo_bg','inv_num_prefix','inv_partners',
+  'inv_pending_queue','inv_pending_updates','inv_shopemail','inv_shopfb',
+  'inv_shopname_en','inv_shopname_urdu','inv_shopphone','inv_show_email',
+  'inv_show_fb','inv_show_gradbar','inv_show_phone','inv_show_website',
+  'inv_show_whatsapp','inv_stripe_c1','inv_stripe_c2','inv_stripe_c3','inv_stripe_h',
+  'inv_tagline','inv_urdu_font','inv_urdu_name_font','inv_urdu_size','inv_website',
+  'inv_whatsapp','inv_wm_color','inv_wm_enabled','inv_wm_opacity','inv_wm_rotation',
+  'inv_wm_size','inv_wm_text','last_active_tab','manual_inv_pending','pcnc_day_v4',
+  'pcnc_emp_v4','pcnc_emp_ver','pcnc_excel_full','pcnc_excel_full_ts',
+  'pcnc_fin_categories','pcnc_fin_ledger','pcnc_fin_seed_ver','pcnc_mon_v4',
+  'pcnc_rec_v1','pcnc_sal_dedup_ver','shop_display_name','shop_name_color',
+  'shop_name_size','summary_cache','userDisplayName','userEmail','userPhone',
+  'userProfilePhoto'
+];
+var _BRANCH_SCOPED_PREFIXES = [
+  'inv_tmpl_','userDisplayName_','userEmail_','userPhone_',
+  'userProfilePhoto_','userProfilePhotoTime_'
+];
+
+// ── Determine branch identity BEFORE anything else touches localStorage ──
+// `branch_config` and `sb_device_id` are the only two keys that stay global
+// (never branch-prefixed) — branch_config IS what determines the prefix, and
+// sb_device_id identifies the physical computer, not branch data.
+var _branchCfg = null;
+try {
+  var _bcRaw = window.localStorage.getItem('branch_config');
+  if (_bcRaw) _branchCfg = JSON.parse(_bcRaw);
+} catch(e) { console.warn('[branch_config] parse failed, treating as absent', e); _branchCfg = null; }
+
+window._branchSetupPending = false;
+window._branchMigrationLog = null; // populated below only on the migration path — inspectable for testing
+
+if (!_branchCfg) {
+  // No config yet — is this a pre-existing install (predates this feature),
+  // or a genuinely fresh machine? Presence of ANY of these 3 unprefixed
+  // legacy keys means real prior usage: cached invoices, a cached login, or
+  // an invoice counter. No existing Jauharabad computer can have gone a
+  // single day of real use without setting all three — a genuinely fresh
+  // install has none of them.
+  var _existingKeyMarkers = ['inv_database', '_offlineAuth', 'inv_counter'];
+  var _looksLikeExistingInstall = _existingKeyMarkers.some(function(k) {
+    return window.localStorage.getItem(k) !== null;
+  });
+
+  if (_looksLikeExistingInstall) {
+    // Silently grandfather in as Jauharabad. MIGRATE first (copy every
+    // branch-scoped key's current unprefixed value to its new prefixed
+    // name — additive only, the old unprefixed key is left in place
+    // untouched as a safety-net backup, never deleted by this code), THEN
+    // write branch_config so this only ever runs once.
+    var _migratedCount = 0, _migratedKeys = [];
+    _BRANCH_SCOPED_EXACT.forEach(function(k) {
+      var v = window.localStorage.getItem(k);
+      if (v !== null) {
+        window.localStorage.setItem('branch_main__' + k, v);
+        _migratedCount++; _migratedKeys.push(k);
+      }
+    });
+    // Prefix-matched dynamic-suffix keys (e.g. userDisplayName_<userId>) —
+    // must enumerate all actual localStorage keys to find these, since the
+    // exact suffix isn't known in advance.
+    var _allKeys = [];
+    for (var _i = 0; _i < window.localStorage.length; _i++) _allKeys.push(window.localStorage.key(_i));
+    _allKeys.forEach(function(k) {
+      if (k === 'branch_config' || k.indexOf('branch_main__') === 0) return;
+      for (var _p = 0; _p < _BRANCH_SCOPED_PREFIXES.length; _p++) {
+        if (k.indexOf(_BRANCH_SCOPED_PREFIXES[_p]) === 0) {
+          var v2 = window.localStorage.getItem(k);
+          if (v2 !== null) {
+            window.localStorage.setItem('branch_main__' + k, v2);
+            _migratedCount++; _migratedKeys.push(k);
+          }
+          break;
+        }
+      }
+    });
+    window._branchMigrationLog = { migratedCount: _migratedCount, migratedKeys: _migratedKeys };
+
+    _branchCfg = _JAUHARABAD_DEFAULTS;
+    try { window.localStorage.setItem('branch_config', JSON.stringify(_branchCfg)); }
+    catch(e) { console.error('[branch_config] failed to persist grandfathered config', e); }
+  } else {
+    // Genuinely first-ever launch on this computer — the setup screen (added
+    // later in this script) will render and block further boot.
+    window._branchSetupPending = true;
+  }
+}
+
+// ── Transparent localStorage branch-prefixing shim ──
+// Installed AFTER any migration above has already copied real data into the
+// new prefixed keys, so every read from this point on (including the rest
+// of this very script, e.g. `let database = JSON.parse(localStorage.getItem('inv_database')...)`
+// a few lines below) transparently resolves to the correct branch's copy.
+(function() {
+  var _branchId = _branchCfg ? _branchCfg.branchId : null;
+  function _brandKey(key) {
+    if (!_branchId || typeof key !== 'string') return key;
+    if (_BRANCH_SCOPED_EXACT.indexOf(key) !== -1) return _branchId + '__' + key;
+    for (var i = 0; i < _BRANCH_SCOPED_PREFIXES.length; i++) {
+      if (key.indexOf(_BRANCH_SCOPED_PREFIXES[i]) === 0) return _branchId + '__' + key;
+    }
+    return key;
+  }
+  var _origGetItem = Storage.prototype.getItem;
+  var _origSetItem = Storage.prototype.setItem;
+  var _origRemoveItem = Storage.prototype.removeItem;
+  Storage.prototype.getItem = function(key) { return _origGetItem.call(this, _brandKey(key)); };
+  Storage.prototype.setItem = function(key, value) { return _origSetItem.call(this, _brandKey(key), value); };
+  Storage.prototype.removeItem = function(key) { return _origRemoveItem.call(this, _brandKey(key)); };
+})();
+
+const SUPA_URL = (_branchCfg || _JAUHARABAD_DEFAULTS).supaUrl;
+const SUPA_KEY = (_branchCfg || _JAUHARABAD_DEFAULTS).supaKey;
+const HO_SUPA_URL = (_branchCfg && _branchCfg.hoSupaUrl) || _HO_SUPA_DEFAULTS.hoSupaUrl;
+const HO_SUPA_KEY = (_branchCfg && _branchCfg.hoSupaKey) || _HO_SUPA_DEFAULTS.hoSupaKey;
 let sbHO = null; // initialized on first sync
 let sb;
-try {
-  sb = supabase.createClient(SUPA_URL, SUPA_KEY);
-} catch(e) {
-  console.error('Supabase init failed:', e);
-  sb = null;
+if (window._branchSetupPending) {
+  // Setup screen will take over — don't connect anywhere until the user has
+  // told us which branch this is. Every `if (!sb)` / `typeof sb !== 'undefined' && sb`
+  // guard already scattered throughout this file (pre-existing offline-mode
+  // support) correctly no-ops with sb left undefined here.
+} else {
+  try {
+    sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+  } catch(e) {
+    console.error('Supabase init failed:', e);
+    sb = null;
+  }
 }
+
+// Exposed for the branch setup screen's button handlers, which live in a
+// later, separate <script> block (auth system) and can't see this block's
+// top-level const/let bindings otherwise.
+window._JAUHARABAD_DEFAULTS = _JAUHARABAD_DEFAULTS;
+
+// Always-visible branch indicator (header) — the safety net for the
+// reinstall/shared-computer scenario: anyone glancing at the header can
+// confirm which branch's database this computer is actually talking to.
+// Left blank while the setup screen is pending (no branch chosen yet).
+(function() {
+  if (window._branchSetupPending) return;
+  var _biEl = document.getElementById('_branchIndicator');
+  if (_biEl) _biEl.textContent = '📍 ' + (_branchCfg || _JAUHARABAD_DEFAULTS).branchName;
+})();
+function _saveBranchConfigAndReload(cfg) {
+  try {
+    window.localStorage.setItem('branch_config', JSON.stringify(cfg));
+    window.location.reload();
+  } catch(e) {
+    console.error('[branch setup] failed to save config', e);
+    alert('Failed to save branch configuration: ' + (e.message || e));
+  }
+}
+window._saveBranchConfigAndReload = _saveBranchConfigAndReload;
 
 // ══════════════════════════════════════════════
 // STATE
@@ -6632,7 +6863,7 @@ async function adminApplyEdit() {
         requested_at:  new Date().toISOString(),
         reviewed_at:   new Date().toISOString(),
         rows_affected: ((rpcData && rpcData[0] && rpcData[0].total) || 0),
-        branch_id:     'branch_main'
+        branch_id:     (_branchCfg || _JAUHARABAD_DEFAULTS).branchId
       });
     } catch(_logErr) { console.error('[adminApplyEdit log FAILED]', _logErr); toast('⚠ Edit applied but audit log failed'); }
 
@@ -7550,6 +7781,7 @@ function _bootTimeout(ms) {
 
 // Auto-restore session if previously logged in
 window.addEventListener('load', async () => {
+  if (window._branchSetupPending) return; // _authInit() is showing the branch setup screen instead
   var _newSess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
   if (_newSess) return; // new auth system already handling this
   const saved = localStorage.getItem('inv_logged_user');
@@ -8342,8 +8574,8 @@ function sendQuote(mode) {
   if (!data.items || !data.items.some(function(x){ return x.sizes || x.amt > 0; })) {
     toast('❌ Please add items before sending a quote.'); return;
   }
-  var _shopPhone = localStorage.getItem('inv_shopphone') || '0300-1215218';
-  var _shopName = localStorage.getItem('inv_shopname_en') || 'Prime CNC Laser Works Jauharabad';
+  var _shopPhone = localStorage.getItem('inv_shopphone') || '';
+  var _shopName = localStorage.getItem('inv_shopname_en') || ('Prime CNC Laser Works – ' + (_branchCfg || _JAUHARABAD_DEFAULTS).branchName);
   var _quoteRef = 'Q-' + new Date().getFullYear() + '-' + Date.now().toString().slice(-4);
   var _sqft = data.items.reduce(function(s,it){ return s+(parseFloat(it.sqft)||0); }, 0);
   var _kg   = data.items.reduce(function(s,it){ return s+(parseFloat(it.kg)||0); }, 0);
@@ -8363,7 +8595,7 @@ function sendQuote(mode) {
       + 'حتمی رقم پیمائش کے بعد تبدیل ہو سکتی ہے۔\n\n'
       + '━━━━━━━━━━━━━━━━━━\n'
       + _shopName + '\n'
-      + '📞 ' + _shopPhone + '\n'
+      + (_shopPhone ? '📞 ' + _shopPhone + '\n' : '')
       + 'شکریہ 🙏';
     var _url = _waPhone
       ? 'https://wa.me/92' + _waPhone.replace(/^0/,'') + '?text=' + encodeURIComponent(_msg)
@@ -8541,8 +8773,8 @@ async function submitInvoice() {
           // Send WhatsApp after brief delay to allow save
           setTimeout(function() {
             var _waPhone = (data.phone || '').replace(/[^0-9]/g,'');
-            var _shopPhone = localStorage.getItem('inv_shopphone') || '0300-1215218';
-            var _shopName = localStorage.getItem('inv_shopname_en') || 'Prime CNC Laser Works Jauharabad';
+            var _shopPhone = localStorage.getItem('inv_shopphone') || '';
+            var _shopName = localStorage.getItem('inv_shopname_en') || ('Prime CNC Laser Works – ' + (_branchCfg || _JAUHARABAD_DEFAULTS).branchName);
             var _msg = 'Dear ' + (data.custName || 'Customer') + ',\n\n'
               + '📋 Invoice: ' + (data.invNum || '—') + '\n'
               + '📅 Date: ' + (data.date || '') + '\n'
@@ -8552,7 +8784,7 @@ async function submitInvoice() {
               + (data.received > 0 ? '💵 Received: Rs.' + Math.round(data.received).toLocaleString('en-PK') + '\n' : '')
               + '⚠️ Remaining: Rs.' + Math.round(data.remaining||0).toLocaleString('en-PK') + '\n\n'
               + _shopName + '\n'
-              + '📞 ' + _shopPhone;
+              + (_shopPhone ? '📞 ' + _shopPhone : '');
             var _url = _waPhone
               ? 'https://wa.me/92' + _waPhone.replace(/^0/,'') + '?text=' + encodeURIComponent(_msg)
               : 'https://wa.me/?text=' + encodeURIComponent(_msg);
@@ -12106,7 +12338,7 @@ async function exportRemainingExcel() {
   var wsData = [];
 
   // Title row
-  wsData.push(['Prime CNC Laser Works Jauharabad — Remaining in Market', '', '', '', '', '', '']);
+  wsData.push([(localStorage.getItem('inv_shopname_en') || ('Prime CNC Laser Works – ' + (_branchCfg || _JAUHARABAD_DEFAULTS).branchName)) + ' — Remaining in Market', '', '', '', '', '', '']);
   // Date row
   wsData.push(['Generated: ' + today, '', '', '', '', '', '']);
   // Blank row
@@ -13102,6 +13334,8 @@ ${_buildPrintFooterHtml(_ps)}
   if (waBtn) {
     waBtn.onclick = function() {
       var _waPhone = inv.phone ? inv.phone.replace(/[^0-9]/g,'') : '';
+      var _waShopPhone = localStorage.getItem('inv_shopphone') || '';
+      var _waShopName = localStorage.getItem('inv_shopname_en') || ('Prime CNC Laser Works – ' + (_branchCfg || _JAUHARABAD_DEFAULTS).branchName);
       var _waMsg = 'Dear ' + (inv.custName || 'Customer') + ',\n\n'
         + '📋 Invoice: ' + inv.invNum + '\n'
         + '📅 Date: ' + inv.date + '\n'
@@ -13109,8 +13343,8 @@ ${_buildPrintFooterHtml(_ps)}
         + (inv.discount > 0 ? '🏷️ Discount: Rs.' + Math.round(inv.discount).toLocaleString('en-PK') + '\n' : '')
         + '✅ Received: Rs.' + Math.round(inv.received||0).toLocaleString('en-PK') + '\n'
         + '⚠️ Remaining: Rs.' + Math.round(inv.remaining||0).toLocaleString('en-PK') + '\n\n'
-        + 'Prime CNC Laser Works Jauharabad\n'
-        + '📞 0300-1215218';
+        + _waShopName + '\n'
+        + (_waShopPhone ? '📞 ' + _waShopPhone : '');
       var _waUrl = _waPhone
         ? 'https://wa.me/92' + _waPhone.replace(/^0/,'') + '?text=' + encodeURIComponent(_waMsg)
         : 'https://wa.me/?text=' + encodeURIComponent(_waMsg);
@@ -17747,11 +17981,13 @@ async function _prodAdvance(type, id, stage, invNum, encodedName, phone, total) 
     // WhatsApp notification when order is ready
     if (newStage === 'ready' && phone) {
       var _waPhone = String(phone).replace(/[^0-9]/g,'');
+      var _waShopPhone = localStorage.getItem('inv_shopphone') || '';
+      var _waShopName = localStorage.getItem('inv_shopname_en') || ('Prime CNC Laser Works – ' + (_branchCfg || _JAUHARABAD_DEFAULTS).branchName);
       var _waMsg = 'Dear ' + name + ',\n\n'
         + '✅ Your order ' + invNum + ' is ready for pickup!\n\n'
         + '💰 Total Bill: Rs.' + Math.round(parseFloat(total)||0).toLocaleString('en-PK') + '\n\n'
-        + 'Prime CNC Laser Works Jauharabad\n'
-        + '📞 0300-1215218\n\n'
+        + _waShopName + '\n'
+        + (_waShopPhone ? '📞 ' + _waShopPhone + '\n\n' : '\n')
         + 'Please bring this message when collecting your order.';
       var _waUrl = 'https://wa.me/92' + _waPhone.replace(/^0/,'') + '?text=' + encodeURIComponent(_waMsg);
       if (typeof toast === 'function') toast('✅ Order marked ready! Opening WhatsApp...');
@@ -19669,7 +19905,7 @@ async function exportBulkStatementsPDF() {
       }).join('');
 
       return '<div class="cust-page">'
-        + '<div class="stmt-header"><div class="shop-name">Prime CNC Laser Works</div><div class="stmt-label">Customer Statement — '+printDate+'</div></div>'
+        + '<div class="stmt-header"><div class="shop-name">'+(localStorage.getItem('inv_shopname_en') || ('Prime CNC Laser Works – ' + (_branchCfg || _JAUHARABAD_DEFAULTS).branchName))+'</div><div class="stmt-label">Customer Statement — '+printDate+'</div></div>'
         + '<div class="cust-info"><span><strong>'+c.name+'</strong></span>'+(c.phone?'<span>📞 +92-'+c.phone+'</span>':'')+'</div>'
         + '<div class="summary-grid">'
         + '<div class="s-box"><div class="s-label">Total Bills</div><div class="s-val">Rs.'+Math.round(c.totalBilled).toLocaleString('en-PK')+'</div></div>'
@@ -28546,12 +28782,65 @@ function _authHideOverlay() {
   if (el) el.classList.remove('auth-visible');
 }
 function _authShowPanel(id) {
-  ['authLoginCard','authSetupCard','authForceChangeCard','authForgotPwCard','authProfileSetupCard'].forEach(function(p) {
+  ['authLoginCard','authSetupCard','authForceChangeCard','authForgotPwCard','authProfileSetupCard','branchSetupCard'].forEach(function(p) {
     var el = document.getElementById(p);
     if (el) el.style.display = (p === id) ? '' : 'none';
   });
 }
 window._authShowPanel = _authShowPanel;
+
+// ─── BRANCH SETUP CARD HANDLERS (Mianwali onboarding Phase 1) ────
+function _branchSetupChooseJauharabad() {
+  if (typeof window._saveBranchConfigAndReload === 'function' && window._JAUHARABAD_DEFAULTS) {
+    window._saveBranchConfigAndReload(window._JAUHARABAD_DEFAULTS);
+  }
+}
+function _branchSetupShowNewBranchForm() {
+  var choice = document.getElementById('branchSetupChoice');
+  var form = document.getElementById('branchSetupNewForm');
+  if (choice) choice.style.display = 'none';
+  if (form) form.style.display = '';
+}
+function _branchSetupBackToChoice() {
+  var choice = document.getElementById('branchSetupChoice');
+  var form = document.getElementById('branchSetupNewForm');
+  if (form) form.style.display = 'none';
+  if (choice) choice.style.display = '';
+  var err = document.getElementById('branchSetupError');
+  if (err) err.textContent = '';
+}
+function _branchSetupSaveNewBranch() {
+  var name = (document.getElementById('branchSetupName').value || '').trim();
+  var uuid = (document.getElementById('branchSetupUuid').value || '').trim();
+  var url  = (document.getElementById('branchSetupUrl').value  || '').trim();
+  var key  = (document.getElementById('branchSetupKey').value  || '').trim();
+  var err  = document.getElementById('branchSetupError');
+  if (err) err.textContent = '';
+
+  if (!name || !uuid || !url || !key) {
+    if (err) err.textContent = '⚠ Please fill in all fields.';
+    return;
+  }
+  if (!/^https:\/\/[a-z0-9]+\.supabase\.co\/?$/i.test(url)) {
+    if (err) err.textContent = '⚠ Supabase URL doesn\'t look right — expected https://xxxxx.supabase.co';
+    return;
+  }
+  var branchId = 'branch_' + name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  if (!branchId || branchId === 'branch_') {
+    if (err) err.textContent = '⚠ Branch name must contain at least one letter or number.';
+    return;
+  }
+  if (typeof window._saveBranchConfigAndReload === 'function') {
+    window._saveBranchConfigAndReload({
+      branchId: branchId, branchName: name, branchUuid: uuid,
+      supaUrl: url.replace(/\/$/, ''), supaKey: key
+    });
+  }
+}
+window._branchSetupChooseJauharabad = _branchSetupChooseJauharabad;
+window._branchSetupShowNewBranchForm = _branchSetupShowNewBranchForm;
+window._branchSetupBackToChoice = _branchSetupBackToChoice;
+window._branchSetupSaveNewBranch = _branchSetupSaveNewBranch;
 
 // ─── ROLE TAB SWITCHER ────────────────────────────────────────
 function _authSelectRole(role, btn) {
@@ -28675,6 +28964,16 @@ window._authTogglePw = _authTogglePw;
 
 // ─── FIRST-RUN CHECK ─────────────────────────────────────────
 async function _authInit() {
+  // Branch not yet configured on this computer (genuinely fresh install,
+  // no prior-usage evidence) — show the one-time branch setup screen and
+  // stop here. sb is intentionally left undefined in this state (see
+  // SUPABASE CONFIG block), so nothing below this point would work anyway.
+  if (window._branchSetupPending) {
+    _authShowOverlay();
+    _authShowPanel('branchSetupCard');
+    return;
+  }
+
   var sess = _authGetSession();
   if (sess) {
     // Session exists (e.g. page reload while already logged in).
