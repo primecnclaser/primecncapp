@@ -15776,7 +15776,7 @@ function loadInvoiceSettings() {
   const prev = document.getElementById('invPreviewNum'); if (prev) prev.textContent = prefix + (invoiceCounter||1001);
   const pfx = document.getElementById('invPrefixInput');
   if (pfx) pfx.oninput = function(){ const p=document.getElementById('invPreviewNum'); if(p) p.textContent=(this.value||'INV-')+(invoiceCounter||1001); };
-  const sn = document.getElementById('shopNameInput'); if (sn) sn.value = localStorage.getItem('shop_display_name') || '';
+  const sn = document.getElementById('shopNameInput'); if (sn) sn.value = localStorage.getItem('inv_shopname_en') || '';
   const sc = document.getElementById('shopNameColor'); if (sc) sc.value = localStorage.getItem('shop_name_color') || '#1e293b';
   const ss = document.getElementById('shopNameSize');  if (ss) ss.value = localStorage.getItem('shop_name_size')  || '16';
   updateShopNamePreview();
@@ -16005,24 +16005,47 @@ function deletePartner(idx) {
   }
 }
 
+// Single shared refresher for the top app-wide header bar (#topShopName).
+// Called from every place that commits inv_shopname_en/inv_shopname_urdu —
+// Company Name (saveShopName), the hidden legacy panel (ctrlSave), and the
+// Drag Editor (dragEditorSave) — so the bar updates immediately everywhere,
+// with no page reload required.
+function _refreshTopShopName() {
+  var el = document.getElementById('topShopName');
+  if (!el) return;
+  var uh = localStorage.getItem('inv_shopname_urdu') || '';
+  var eh = localStorage.getItem('inv_shopname_en')   || '';
+  var hn = '';
+  if (uh) hn += '<span style="font-family:\'JameelNooriNastaliq\',serif;direction:rtl;font-size:0.95rem;color:#fff;display:block;text-align:center;">'+uh+'</span>';
+  if (eh) hn += '<span style="font-family:\'Playfair Display\',serif;font-size:0.78rem;color:#fff;font-weight:700;display:block;text-align:center;">'+eh+'</span>';
+  el.innerHTML = hn;
+}
+
 async function saveShopName() {
   const name  = ((document.getElementById('shopNameInput')  || {}).value || '').trim();
   const color = (document.getElementById('shopNameColor') || {}).value || '#1e293b';
   const size  = (document.getElementById('shopNameSize')  || {}).value || '16';
-  localStorage.setItem('shop_display_name', name);
-  localStorage.setItem('shop_name_color',   color);
-  localStorage.setItem('shop_name_size',    size);
-  const el = document.getElementById('topShopName');
-  if (el) { var _uh=localStorage.getItem('inv_shopname_urdu')||'',_eh=localStorage.getItem('inv_shopname_en')||'',_hn='';if(_uh)_hn+='<span style="font-family:\'JameelNooriNastaliq\',serif;direction:rtl;font-size:0.95rem;color:#fff;display:block;text-align:center;">'+_uh+'</span>';if(_eh)_hn+='<span style="font-family:\'Playfair Display\',serif;font-size:0.78rem;color:#fff;font-weight:700;display:block;text-align:center;">'+_eh+'</span>';el.innerHTML=_hn; }
+  // inv_shopname_en is the key actually read by the top header, login screen,
+  // invoices/PDFs, WhatsApp messages and statement exports — this field used to
+  // write to the unrelated, unread shop_display_name key instead.
+  localStorage.setItem('inv_shopname_en',  name);
+  localStorage.setItem('shop_name_color',  color);
+  localStorage.setItem('shop_name_size',   size);
+  // Keep the hidden Drag Editor field in sync so it doesn't show a stale value if opened next.
+  var ctrlEnEl = document.getElementById('ctrl_en'); if (ctrlEnEl) ctrlEnEl.value = name;
+  _refreshTopShopName();
   // Save selected fonts
   var uf = (document.getElementById('ctrl_urdu_font') || {}).value || 'JameelNooriNastaliq';
   var ef = (document.getElementById('ctrl_en_font')   || {}).value || 'Playfair Display';
   applyNameFont('urdu', uf);
   applyNameFont('en',   ef);
+  // Refresh the live invoice header/footer preview so it doesn't lag behind the new name.
+  if (typeof applyHeaderToInvoice === 'function') applyHeaderToInvoice();
+  if (typeof applyFooterToInvoice === 'function') applyFooterToInvoice();
   if (typeof sb !== 'undefined' && sb) {
     try {
       var rows = [
-        { key: 'shop_display_name', value: name,  updated_at: new Date().toISOString() },
+        { key: 'shop_name_en',      value: name,  updated_at: new Date().toISOString() },
         { key: 'shop_name_color',   value: color, updated_at: new Date().toISOString() },
         { key: 'shop_name_size',    value: size,  updated_at: new Date().toISOString() },
         { key: 'inv_urdu_name_font', value: uf,   updated_at: new Date().toISOString() },
@@ -16673,7 +16696,7 @@ function ctrlLoad(skipCloudSync) {
         inv_show_whatsapp: map.show_whatsapp,  inv_show_email:    map.show_email,
         inv_show_website:  map.show_website,   inv_show_fb:       map.show_fb,
         inv_show_gradbar:  map.show_gradbar,
-        shop_display_name: map.shop_display_name, shop_name_color:    map.shop_name_color,
+        shop_name_color:   map.shop_name_color,
         shop_name_size:    map.shop_name_size,    inv_urdu_name_font: map.inv_urdu_name_font,
         inv_en_name_font:  map.inv_en_name_font,
         // ── drag-editor layout keys ─────────────────────────────
@@ -16758,13 +16781,7 @@ function ctrlLoad(skipCloudSync) {
       var _editingInv=_invFlds.some(function(i){return document.getElementById(i)===document.activeElement;});
       if (!_editingInv && typeof loadInvoiceSettings === 'function') loadInvoiceSettings();
       // Update topShopName with cloud values
-      var _topEl2 = document.getElementById('topShopName');
-      if (_topEl2) {
-        var _uh2=localStorage.getItem('inv_shopname_urdu')||'',_eh2=localStorage.getItem('inv_shopname_en')||'',_hn2='';
-        if(_uh2)_hn2+='<span style="font-family:\'JameelNooriNastaliq\',serif;direction:rtl;font-size:0.95rem;color:#fff;display:block;text-align:center;">'+_uh2+'</span>';
-        if(_eh2)_hn2+='<span style="font-family:\'Playfair Display\',serif;font-size:0.78rem;color:#fff;font-weight:700;display:block;text-align:center;">'+_eh2+'</span>';
-        _topEl2.innerHTML=_hn2;
-      }
+      _refreshTopShopName();
     });
   }
 }
@@ -16922,6 +16939,7 @@ async function ctrlSave() {
   // Save to localStorage immediately
   localStorage.setItem('inv_shopname_urdu', vals.shop_name_urdu);
   localStorage.setItem('inv_shopname_en',   vals.shop_name_en);
+  _refreshTopShopName();
   localStorage.setItem('inv_shopphone',     vals.shop_phone);
   localStorage.setItem('inv_shopemail',     vals.shop_email);
   localStorage.setItem('inv_shopfb',        vals.shop_fb);
@@ -17259,7 +17277,7 @@ async function ctrlBootSync() {
       inv_show_phone:    map.show_phone,     inv_show_whatsapp: map.show_whatsapp,
       inv_show_email:    map.show_email,     inv_show_website:  map.show_website,
       inv_show_fb:       map.show_fb,        inv_show_gradbar:  map.show_gradbar,
-      shop_display_name: map.shop_display_name, shop_name_color:    map.shop_name_color,
+      shop_name_color:   map.shop_name_color,
       shop_name_size:    map.shop_name_size,    inv_urdu_name_font: map.inv_urdu_name_font,
       inv_en_name_font:  map.inv_en_name_font
     };
@@ -17317,13 +17335,7 @@ async function ctrlBootSync() {
     loadShopSettings();
     if (typeof loadInvoiceSettings === 'function') loadInvoiceSettings();
     // Update topShopName with cloud values
-    var _topEl = document.getElementById('topShopName');
-    if (_topEl) {
-      var _uh=localStorage.getItem('inv_shopname_urdu')||'',_eh=localStorage.getItem('inv_shopname_en')||'',_hn='';
-      if(_uh)_hn+='<span style="font-family:\'JameelNooriNastaliq\',serif;direction:rtl;font-size:0.95rem;color:#fff;display:block;text-align:center;">'+_uh+'</span>';
-      if(_eh)_hn+='<span style="font-family:\'Playfair Display\',serif;font-size:0.78rem;color:#fff;font-weight:700;display:block;text-align:center;">'+_eh+'</span>';
-      _topEl.innerHTML=_hn;
-    }
+    _refreshTopShopName();
   } catch(e) { console.warn('[ctrlBootSync]', e); window._ctrlBootSyncDone = true; }
 }
 
@@ -27223,6 +27235,9 @@ function dragEditorSave() {
   saveText('ctrl_address', 'inv_address',        tx.address);
   saveText('ctrl_footer',  'inv_footer_text',    tx.footer1);
   saveText('ctrl_footer2', 'inv_footer2',        tx.footer2);
+  _refreshTopShopName();
+  // Keep the Company Name field in sync if Settings is open on that tab.
+  var shopNameInputEl = document.getElementById('shopNameInput'); if (shopNameInputEl) shopNameInputEl.value = tx.en || '';
 
   // ── 4. Sync ctrl_ colour pickers ─────────────────────────────
   var sc = function(id,v){ var e=document.getElementById(id); if(e) e.value=v; };
@@ -28117,6 +28132,7 @@ function dragEditorSaveLocal() {
   localStorage.setItem('inv_address',       tx.address  !== undefined ? tx.address  : '');
   localStorage.setItem('inv_footer_text',   tx.footer1  !== undefined ? tx.footer1  : '');
   localStorage.setItem('inv_footer2',       tx.footer2  !== undefined ? tx.footer2  : '');
+  _refreshTopShopName();
   // Free positions + footer position
   localStorage.setItem('inv_drag_free_pos',  JSON.stringify(_dragFreePos));
   localStorage.setItem('inv_drag_free_mode', String(_dragFreeModeOn));
@@ -28347,16 +28363,8 @@ document.addEventListener('DOMContentLoaded',function(){
   r.style.setProperty('--navy2', c2);
   r.style.setProperty('--gold',  acc);
   r.style.setProperty('--gold2', acc);
-  // Restore shop name (+ color + size + font) in top bar
-  var shopName  = localStorage.getItem('shop_display_name') || '';
-  var shopColor = localStorage.getItem('shop_name_color')   || '#1e293b';
-  var shopSize  = localStorage.getItem('shop_name_size')    || '16';
-  var _uf = localStorage.getItem('inv_urdu_name_font') || 'JameelNooriNastaliq';
-  var _ef = localStorage.getItem('inv_en_name_font')   || 'Playfair Display';
-  var _isUrdu = /[؀-ۿ]/.test(shopName);
-  var shopFont = _isUrdu ? ('"' + _uf + '",serif') : ('"' + _ef + '",sans-serif');
-  var el = document.getElementById('topShopName');
-  if (el) { var _uh3=localStorage.getItem('inv_shopname_urdu')||'',_eh3=localStorage.getItem('inv_shopname_en')||'',_hn3='';if(_uh3)_hn3+='<span style="font-family:\'JameelNooriNastaliq\',serif;direction:rtl;font-size:0.95rem;color:#fff;display:block;text-align:center;">'+_uh3+'</span>';if(_eh3)_hn3+='<span style="font-family:\'Playfair Display\',serif;font-size:0.78rem;color:#fff;font-weight:700;display:block;text-align:center;">'+_eh3+'</span>';el.innerHTML=_hn3; }
+  // Restore shop name in top bar
+  _refreshTopShopName();
   setTimeout(function(){_settingsSnapshot();},900);
 });
 
@@ -28795,6 +28803,13 @@ function _authShowPanel(id) {
     var el = document.getElementById(p);
     if (el) el.style.display = (p === id) ? '' : 'none';
   });
+  // Re-evaluate the shop name every time the login card is shown (fresh load,
+  // logout, etc.) so it never shows a stale name left over from an earlier
+  // point in the session.
+  if (id === 'authLoginCard') {
+    var shopEl = document.getElementById('authShopName');
+    if (shopEl) shopEl.textContent = localStorage.getItem('inv_shopname_en') || 'Prime CNC';
+  }
 }
 window._authShowPanel = _authShowPanel;
 
@@ -29133,12 +29148,7 @@ async function _authInit() {
 
   // No session — show login overlay
   _authShowOverlay();
-  _authShowPanel('authLoginCard');
-
-  // Update shop name on login card from saved settings
-  var storedName = localStorage.getItem('inv_shopname_en') || localStorage.getItem('shop_display_name') || 'Prime CNC';
-  var shopEl = document.getElementById('authShopName');
-  if (shopEl && storedName) shopEl.textContent = storedName;
+  _authShowPanel('authLoginCard'); // also refreshes #authShopName from inv_shopname_en
 
   // Check first-run (empty app_users table)
   if (!window.sb) return;
