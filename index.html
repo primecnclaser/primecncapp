@@ -9757,7 +9757,7 @@ async function renderDB() {
         <td>${inv.custName || '—'}</td>
         <td class="mono">${inv.phone || '—'}</td>
         <td class="mono" style="color:#e67e22;font-weight:700;">${inv.invNum}</td>
-        <td class="mono gold">Rs.${fmt(inv.afterDiscount ?? inv.total)}</td>
+        <td class="mono gold">Rs.${fmt((inv.total||0) + (inv.extraCharges||0))}</td>
         <td>
           <div class="db-action-row" style="flex-wrap:wrap;">
             <button class="db-icon-btn submit" title="Submit" onclick="submitDraft(${draftIdx})">✅</button>
@@ -9957,7 +9957,7 @@ async function renderDB() {
         <td>${inv.custName || (inv.isNull ? '<em style="color:#e74c3c">NULL</em>' : '—')}</td>
         <td class="mono">${inv.phone || '—'}</td>
         <td class="mono gold">${inv.invNum}${statusBadge}</td>
-        <td class="mono gold">${inv.isNull ? '<span style="color:#e74c3c">—</span>' : 'Rs.' + fmt(inv.afterDiscount ?? inv.total) + (!_dbHasEditAccess(inv.custName, inv.phone||'') ? ' 🔒' : '')}</td>
+        <td class="mono gold">${inv.isNull ? '<span style="color:#e74c3c">—</span>' : 'Rs.' + fmt((inv.total||0) + (inv.extraCharges||0)) + (!_dbHasEditAccess(inv.custName, inv.phone||'') ? ' 🔒' : '')}</td>
         <td>
           <div class="db-action-row">
             <button class="db-icon-btn" title="View" onclick="viewInvoice(${idx})">👁</button>
@@ -17914,17 +17914,17 @@ async function rpGetCustomerSummary(name) {
 
   // Fetch new invoices
   try {
-    var nRes = await sb.from('invoices').select('inv_num,date,total,discount').ilike('cust_name', name);
+    var nRes = await sb.from('invoices').select('inv_num,date,total,sub_total,extra_charges,discount').ilike('cust_name', name);
     result.newInvs = (nRes.data || []).map(function(r){
-      return { invNum: r.inv_num, date: r.date, total: r.total, discount: r.discount };
+      return { invNum: r.inv_num, date: r.date, total: r.total, subTotal: r.sub_total, extraCharges: r.extra_charges, discount: r.discount };
     });
   } catch(e) { console.warn('rpGetCustomerSummary invoices fetch:', e); }
 
   // Fetch imported invoices
   try {
-    var eRes = await sb.from('excel_invoices').select('order_num,date,total_bill,discount,bad_debt').ilike('customer_name', name);
+    var eRes = await sb.from('excel_invoices').select('order_num,date,total_bill,extra_charges,discount,bad_debt').ilike('customer_name', name);
     result.exInvs = (eRes.data || []).map(function(r){
-      return { order_num: r.order_num, date: r.date, total_bill: r.total_bill, discount: r.discount, bad_debt: r.bad_debt };
+      return { order_num: r.order_num, date: r.date, total_bill: r.total_bill, extraCharges: r.extra_charges, discount: r.discount, bad_debt: r.bad_debt };
     });
   } catch(e) { console.warn('rpGetCustomerSummary excel_invoices fetch:', e); }
 
@@ -17934,13 +17934,14 @@ async function rpGetCustomerSummary(name) {
     result.payments = pRes.data || [];
   } catch(e) { console.warn('rpGetCustomerSummary payments fetch:', e); }
 
-  // Billing totals
+  // Billing totals — "Total Billed" = pre-discount, including extra charges (sub_total + extra_charges),
+  // matching what every other screen means by "Total Bill". Discount is subtracted once, below.
   result.newInvs.forEach(function(inv){
-    result.totalBilled += parseFloat(inv.total)||0;
+    result.totalBilled += (parseFloat(inv.subTotal || inv.total)||0) + (parseFloat(inv.extraCharges)||0);
     result.invoiceDiscountSum += parseFloat(inv.discount)||0;
   });
   result.exInvs.forEach(function(r){
-    result.totalBilled += parseFloat(r.total_bill)||0;
+    result.totalBilled += (parseFloat(r.total_bill)||0) + (parseFloat(r.extraCharges)||0);
     result.invoiceDiscountSum += parseFloat(r.discount)||0;
   });
 
@@ -18156,7 +18157,7 @@ async function buildAllCustomerSummaries(forceFresh) {
       try {
         var nOffset = 0, nBatchSize = 1000, nDone = false;
         while (!nDone) {
-          var nRes = await sb.from('invoices').select('cust_name,phone,total,discount').range(nOffset, nOffset + nBatchSize - 1);
+          var nRes = await sb.from('invoices').select('cust_name,phone,total,sub_total,extra_charges,discount').range(nOffset, nOffset + nBatchSize - 1);
           var batch = nRes.data || [];
           newRows = newRows.concat(batch);
           if (batch.length < nBatchSize) nDone = true;
@@ -18173,7 +18174,7 @@ async function buildAllCustomerSummaries(forceFresh) {
       try {
         var exOffset = 0, exBatchSize = 1000, exDone = false;
         while (!exDone) {
-          var eRes = await sb.from('excel_invoices').select('customer_name,phone,total_bill,discount').range(exOffset, exOffset + exBatchSize - 1);
+          var eRes = await sb.from('excel_invoices').select('customer_name,phone,total_bill,extra_charges,discount').range(exOffset, exOffset + exBatchSize - 1);
           var batch = eRes.data || [];
           exRows = exRows.concat(batch);
           if (batch.length < exBatchSize) exDone = true;
@@ -18208,7 +18209,7 @@ async function buildAllCustomerSummaries(forceFresh) {
     if (!r.cust_name) return;
     var k = getKey(r.cust_name);
     if (!summaries[k]) summaries[k] = { name: r.cust_name, phone: r.phone||'', totalBilled:0, totalDiscount:0, totalPaid:0, totalBadDebt:0 };
-    summaries[k].totalBilled += parseFloat(r.total)||0;
+    summaries[k].totalBilled += (parseFloat(r.sub_total || r.total)||0) + (parseFloat(r.extra_charges)||0);
     summaries[k].totalDiscount += parseFloat(r.discount)||0;
     if (!summaries[k].phone && r.phone) summaries[k].phone = r.phone;
   });
@@ -18217,7 +18218,7 @@ async function buildAllCustomerSummaries(forceFresh) {
     if (!r.customer_name) return;
     var k = getKey(r.customer_name);
     if (!summaries[k]) summaries[k] = { name: r.customer_name, phone: r.phone||'', totalBilled:0, totalDiscount:0, totalPaid:0, totalBadDebt:0 };
-    summaries[k].totalBilled += parseFloat(r.total_bill)||0;
+    summaries[k].totalBilled += (parseFloat(r.total_bill)||0) + (parseFloat(r.extra_charges)||0);
     summaries[k].totalDiscount += parseFloat(r.discount)||0;
     if (!summaries[k].phone && r.phone) summaries[k].phone = r.phone;
   });
