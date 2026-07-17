@@ -9290,58 +9290,185 @@ async function _savePDFEl(el, filename) {
   });
 }
 
+// Builds a complete, self-contained, print-shaped invoice HTML document
+// from a collectData()-shaped data object — the same approach every other
+// working PDF export in this app uses (openInlinePreview/printInlineInvoice,
+// salPdfExport, etc.), instead of capturing the live, fluid desktop DOM
+// directly. Capturing the live DOM via html2canvas was the root cause of
+// real content truncation (missing totals/footer, and on longer invoices,
+// missing item rows and a blank first page) — every path that builds its
+// own isolated document like this one has been reliable, including for
+// Jauharabad's longest real invoice on record (14 items).
+function _buildMainInvoicePrintHtml(data) {
+  const s = _getFullPrintShop();
+  const displayPhone = data.phone ? '+92-' + data.phone : '—';
+
+  const itemRows = (data.items || []).filter(x => x.sizes || x.amt > 0).map((x, i) => {
+    const fisInputs = x.mode === 'kg'
+      ? `<td>—</td><td>—</td><td style="border-right:2px solid #c9a84c">—</td>
+         <td style="font-weight:700;color:#c9a84c;background:#fffbf0">×</td>
+         <td>—</td><td>—</td><td style="border-right:2px solid #c9a84c">—</td>
+         <td style="color:#8a5200;font-weight:600">${x.kg||0}</td>`
+      : `<td>${x.foot||0}</td><td>${x.inch||0}</td><td style="border-right:2px solid #c9a84c">${x.sooter||0}</td>
+         <td style="font-weight:700;color:#c9a84c;background:#fffbf0">×</td>
+         <td>${x.foot2||0}</td><td>${x.inch2||0}</td><td style="border-right:2px solid #c9a84c">${x.sooter2||0}</td>
+         <td>—</td>`;
+    const sqftVal = x.mode === 'kg'
+      ? (x.kg||0).toFixed(2) + ' kg'
+      : (x.sqft||0).toFixed(3) + ' ft²';
+    return `<tr style="background:${i%2===0?'#fdf8f0':'#f5ede0'}">
+      <td style="color:#888;font-family:Montserrat, sans-serif;text-align:center;padding:5px 4px">${i+1}</td>
+      <td style="text-align:center;font-weight:500;padding:5px 4px">${x.sizes||'—'}</td>
+      ${fisInputs}
+      <td style="text-align:center;padding:5px 2px">${x.qty||0}</td>
+      <td style="font-family:Montserrat, sans-serif;text-align:center;padding:5px 2px">${x.gauge||'—'}</td>
+      <td style="font-family:Montserrat, sans-serif;text-align:center;padding:5px 2px">${x.rate||0}</td>
+      <td style="background:#f0faf4;font-weight:600;color:#1a7a4a;font-family:Montserrat, sans-serif;text-align:center;padding:5px 4px">${sqftVal}</td>
+      <td style="font-weight:700;color:#0f1e45;font-family:Montserrat, sans-serif;text-align:right;padding:5px 6px">Rs.${Math.round(x.amt||0).toLocaleString('en-PK')}</td>
+    </tr>`;
+  }).join('');
+
+  const remainingDisp = zeroFloor(data.remaining || 0);
+  const remainColor = (remainingDisp > 0) ? '#c0392b' : '#1a7a4a';
+  const hasExtraCharges = (data.extraCharges || 0) > 0;
+
+  const itemsTableHtml = `
+    <table style="width:100%;border-collapse:collapse;min-width:700px;font-size:0.72rem;">
+      <thead>
+        <tr style="background:#0f1e45;">
+          <th rowspan="2" style="color:rgba(255,255,255,0.85);padding:5px 4px;text-align:center;border-right:1px solid rgba(255,255,255,0.08);font-family:'Montserrat', sans-serif;font-size:0.55rem;text-transform:uppercase;">#</th>
+          <th rowspan="2" style="color:rgba(255,255,255,0.85);padding:5px 4px;text-align:center;border-right:1px solid rgba(255,255,255,0.08);font-family:'JameelNooriNastaliq';direction:rtl;line-height:1.9;font-size:0.7rem;min-width:90px;">تفصیلات</th>
+          <th colspan="3" style="color:rgba(255,255,255,0.85);padding:5px 4px;text-align:center;border-right:1px solid rgba(201,168,76,0.4);font-family:'JameelNooriNastaliq';direction:rtl;line-height:1.9;font-size:0.7rem;border-bottom:1px solid rgba(255,255,255,0.12);">لمبائی ۱</th>
+          <th rowspan="2" style="background:rgba(201,168,76,0.18);color:#f0c96e;font-size:0.9rem;font-family:'Montserrat', sans-serif;padding:0 4px;text-align:center;border-left:2px solid #c9a84c;border-right:2px solid #c9a84c;">×</th>
+          <th colspan="3" style="color:rgba(255,255,255,0.85);padding:5px 4px;text-align:center;border-right:1px solid rgba(201,168,76,0.4);font-family:'JameelNooriNastaliq';direction:rtl;line-height:1.9;font-size:0.7rem;border-bottom:1px solid rgba(255,255,255,0.12);">لمبائی ۲</th>
+          <th rowspan="2" style="color:#f0c96e;padding:5px 2px;text-align:center;font-family:'JameelNooriNastaliq';direction:rtl;line-height:1.9;font-size:0.7rem;">کلو</th>
+          <th rowspan="2" style="color:rgba(255,255,255,0.85);padding:5px 2px;text-align:center;font-family:'JameelNooriNastaliq';direction:rtl;line-height:1.9;font-size:0.7rem;">تعداد</th>
+          <th rowspan="2" style="color:rgba(255,255,255,0.85);padding:5px 2px;text-align:center;font-family:'Montserrat', sans-serif;font-size:0.55rem;text-transform:uppercase;">Gauge</th>
+          <th rowspan="2" style="color:rgba(255,255,255,0.85);padding:5px 2px;text-align:center;font-family:'Montserrat', sans-serif;font-size:0.55rem;text-transform:uppercase;">Rate</th>
+          <th rowspan="2" style="background:rgba(26,122,74,0.12);color:#a8dfc0;padding:5px 2px;text-align:center;font-family:'JameelNooriNastaliq';direction:rtl;line-height:1.9;font-size:0.65rem;">مربع فٹ/کلو</th>
+          <th rowspan="2" style="color:#f0c96e;padding:5px 6px;text-align:right;font-family:'JameelNooriNastaliq';direction:rtl;line-height:1.9;font-size:0.7rem;">رقم</th>
+        </tr>
+        <tr style="background:#0f1e45;">
+          <th style="color:rgba(255,255,255,0.75);padding:3px 2px;text-align:center;font-family:'JameelNooriNastaliq';direction:rtl;line-height:1.8;font-size:0.65rem;border-top:1px solid rgba(255,255,255,0.1);">فٹ</th>
+          <th style="color:rgba(255,255,255,0.75);padding:3px 2px;text-align:center;font-family:'JameelNooriNastaliq';direction:rtl;line-height:1.8;font-size:0.65rem;border-top:1px solid rgba(255,255,255,0.1);border-right:2px solid #c9a84c;">سوتر</th>
+          <th style="color:rgba(255,255,255,0.75);padding:3px 2px;text-align:center;font-family:'JameelNooriNastaliq';direction:rtl;line-height:1.8;font-size:0.65rem;border-top:1px solid rgba(255,255,255,0.1);">فٹ</th>
+          <th style="color:rgba(255,255,255,0.75);padding:3px 2px;text-align:center;font-family:'JameelNooriNastaliq';direction:rtl;line-height:1.8;font-size:0.65rem;border-top:1px solid rgba(255,255,255,0.1);">انچ</th>
+          <th style="color:rgba(255,255,255,0.75);padding:3px 2px;text-align:center;font-family:'JameelNooriNastaliq';direction:rtl;line-height:1.8;font-size:0.65rem;border-top:1px solid rgba(255,255,255,0.1);border-right:1px solid rgba(201,168,76,0.4);">سوتر</th>
+        </tr>
+      </thead>
+      <tbody>${itemRows}</tbody>
+    </table>`;
+
+  // Orientation decided explicitly from the actual item table (15 columns →
+  // landscape), same as salPdfExport() does — not left to auto-detection on
+  // the full document string, which could pick up an unrelated early <tr>.
+  const orient = _getPageOrientation(itemsTableHtml);
+
+  const headerHtml = `
+    <div style="background:linear-gradient(135deg,${s.c1} 0%,${s.c2} 100%);display:grid;grid-template-columns:90px 1fr auto;">
+      <div style="background:#000;border-right:1px solid rgba(201,168,76,0.2);display:flex;align-items:center;justify-content:center;padding:8px;min-height:80px;">
+        ${s.logo ? `<img src="${s.logo}" style="max-width:70px;max-height:55px;object-fit:contain;">` : `<span style="font-size:0.6rem;color:rgba(255,255,255,0.35);text-align:center;">🏪<br>Logo</span>`}
+      </div>
+      <div style="padding:10px 16px;display:flex;flex-direction:column;justify-content:center;gap:3px;">
+        ${s.urdu ? `<div style="font-family:&quot;Jameel Noori Nastaleeq&quot;,JameelNooriNastaliq,&quot;Noto Nastaliq Urdu&quot;;color:${s.accent};font-size:${s.urduSize};font-weight:700;direction:rtl;text-align:right;line-height:2;margin-bottom:10px;">${s.urdu}</div>` : ''}
+        <div style="font-family:'Playfair Display',serif;color:${s.accent};font-size:${s.enSize};font-weight:700;text-align:right;">${s.en||'YOUR SHOP NAME'}</div>
+        <div style="display:flex;justify-content:flex-end;gap:12px;flex-wrap:wrap;margin-top:3px;">
+          ${s.phone ? `<span style="font-size:0.62rem;color:rgba(255,255,255,0.55);font-family:Montserrat, sans-serif;">📞 ${s.phone}</span>` : ''}
+          ${s.email ? `<span style="font-size:0.62rem;color:rgba(255,255,255,0.55);">✉️ ${s.email}</span>` : ''}
+          ${s.fb    ? `<span style="font-size:0.62rem;color:rgba(255,255,255,0.55);">📘 ${s.fb}</span>` : ''}
+        </div>
+      </div>
+      <div style="padding:10px 14px;text-align:right;border-left:1px solid rgba(201,168,76,0.15);min-width:120px;display:flex;flex-direction:column;justify-content:center;gap:5px;">
+        <div style="font-size:0.55rem;color:#8a8a9a;text-transform:uppercase;letter-spacing:1px;">INVOICE #</div>
+        <div style="font-family:Montserrat, sans-serif;color:${s.accent};font-size:1rem;font-weight:500;">${data.invNum}</div>
+        <div style="font-size:0.65rem;color:rgba(255,255,255,0.55);">${data.date}</div>
+      </div>
+    </div>
+    <div style="height:4px;background:linear-gradient(90deg,#c9a84c,#f0c96e,#c9a84c);"></div>`;
+
+  const customerGridHtml = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1.5px solid #d4c5a9;">
+      <div style="padding:8px 12px;border-right:1px solid #d4c5a9;">
+        <div style="font-size:0.6rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Customer Name</div>
+        <div style="font-size:0.9rem;color:#0f1e45;font-weight:500;">${data.custName||'—'}</div>
+      </div>
+      <div style="padding:8px 12px;border-right:1px solid #d4c5a9;">
+        <div style="font-size:0.6rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Phone</div>
+        <div style="font-size:0.9rem;color:#0f1e45;font-weight:500;">${displayPhone}</div>
+      </div>
+      <div style="padding:8px 12px;">
+        <div style="font-size:0.6rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Area / Address</div>
+        <div style="font-size:0.9rem;color:#0f1e45;font-weight:500;">${data.area||'—'}</div>
+      </div>
+    </div>`;
+
+  // Totals — same order/labels/values as the live on-screen form (calcTotals()):
+  // Total Bill, [Extra Charges — only when > 0], Discount, After Discount, Received, Remaining.
+  const extraChargesRowHtml = hasExtraCharges ? `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#f5f3ff;border-bottom:1px solid #d4c5a9;">
+          <span style="font-size:0.7rem;font-weight:600;color:#5b21b6;">${data.extraChargesLabel || 'Extra Charges'}</span>
+          <span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:#5b21b6;">Rs. ${Math.round(data.extraCharges||0).toLocaleString('en-PK')}</span>
+        </div>` : '';
+
+  const totalsHtml = `
+    <div style="border-top:2px solid #0f1e45;display:grid;grid-template-columns:1fr auto;">
+      <div style="padding:10px 14px;border-right:1.5px solid #d4c5a9;">
+        <div style="font-size:0.65rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Bill Received</div>
+        <div style="font-size:0.92rem;font-family:Montserrat, sans-serif;color:#1a7a4a;font-weight:600;">Rs. ${Math.round(data.received||0).toLocaleString('en-PK')}</div>
+        <div style="font-size:0.65rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:3px;">Discount (Rs.)</div>
+        <div style="font-size:0.92rem;font-family:Montserrat, sans-serif;color:#b7650a;font-weight:600;">Rs. ${Math.round(data.discount||0).toLocaleString('en-PK')}</div>
+        ${_gaugeKgPanelHTML(data.items)}
+      </div>
+      <div style="min-width:280px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#0f1e45;border-bottom:1px solid rgba(255,255,255,0.08);">
+          <span style="font-size:0.72rem;font-weight:600;color:#f0c96e;">Total Bill (کل بل)</span>
+          <span style="font-family:Montserrat, sans-serif;font-size:1rem;font-weight:700;color:#f0c96e;">Rs. ${Math.round(data.total||0).toLocaleString('en-PK')}</span>
+        </div>
+        ${extraChargesRowHtml}
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#fff8ee;border-bottom:1px solid #d4c5a9;">
+          <span style="font-size:0.7rem;font-weight:600;color:#b7650a;">Discount</span>
+          <span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:#b7650a;">Rs. ${Math.round(data.discount||0).toLocaleString('en-PK')}</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#f0faf4;border-bottom:1px solid #d4c5a9;">
+          <span style="font-size:0.7rem;font-weight:600;color:#1a7a4a;">After Discount</span>
+          <span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:#1a7a4a;">Rs. ${Math.round(data.afterDiscount||0).toLocaleString('en-PK')}</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#ebebeb;border-bottom:1px solid #d4c5a9;">
+          <span style="font-size:0.7rem;font-weight:600;color:#0f1e45;">وصول شدہ &nbsp;<span style="font-family:'Montserrat', sans-serif;direction:ltr;font-size:0.62rem;">(Received)</span></span>
+          <span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:#1a7a4a;">Rs. ${Math.round(data.received||0).toLocaleString('en-PK')}</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#f5f5f5;">
+          <span style="font-size:0.7rem;font-weight:600;color:#0f1e45;">Remaining (باقی رقم)</span>
+          <span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:${remainColor};">Rs. ${fmt(remainingDisp)}</span>
+        </div>
+      </div>
+    </div>`;
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${data.invNum}</title>
+${_printFonts()}
+<style>
+  @page { size: A4 ${orient}; margin: 10mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: 'Montserrat', sans-serif; background: white; font-size: 0.82rem; width: ${orient === 'landscape' ? '297mm' : '210mm'}; }
+  img { max-width: 100%; height: auto; object-fit: contain; }
+  table { border-collapse: collapse; }
+  .invoice-footer-wrap { page-break-inside: avoid; break-inside: avoid; }
+</style>
+</head><body>
+${headerHtml}
+${customerGridHtml}
+<div style="overflow-x:auto;">${itemsTableHtml}</div>
+${totalsHtml}
+<div class="invoice-footer-wrap">${_buildPrintFooterHtml(s)}</div>
+</body></html>`;
+}
+
 async function _savePDFMainInvoice() {
-  const phone = document.getElementById('shopPhone')?.value;
-  const email = document.getElementById('shopEmail')?.value;
-  const fb    = document.getElementById('shopFb')?.value;
-  if (phone) document.getElementById('printPhone').textContent = '📞 ' + phone;
-  if (email) document.getElementById('printEmail').textContent = '✉️ ' + email;
-  if (fb)    document.getElementById('printFb').textContent    = '📘 ' + fb;
-  document.querySelectorAll('#itemsBody tr[id^="itemRow"]').forEach(tr => {
-    const idx = parseInt(tr.id.replace('itemRow',''));
-    const sizeName = tr.querySelectorAll('input')[0]?.value.trim() || '';
-    const amtEl = document.getElementById('amt' + idx);
-    const amt = parseFloat(amtEl?.textContent?.replace(/[^0-9.]/g,'')) || 0;
-    if (!sizeName && amt === 0) tr.classList.add('empty-row');
-    else tr.classList.remove('empty-row');
-  });
-  const invNum = document.getElementById('invNum')?.value || 'Invoice';
-  const el = document.getElementById('invoiceTab')?.querySelector('.panel');
-  // Hide elements that shouldn't appear in the PDF
-  const actionBar = document.querySelector('.action-bar');
-  const topnav = document.querySelector('.topnav');
-  const tabs = document.querySelector('.tabs');
-  const sidebar = document.querySelector('.tabs-sidebar');
-  if (!el) { window.print(); return; }
+  const data = collectData();
+  if (!data) { toast('❌ No data to export.'); return; }
   try { await _loadHtml2Pdf(); } catch(e) { console.error('[_savePDFMainInvoice]', e); window.print(); return; }
-  if (actionBar) actionBar.style.display = 'none';
-  if (topnav) topnav.style.display = 'none';
-  if (tabs) tabs.style.display = 'none';
-  if (sidebar) sidebar.style.display = 'none';
-  var _mainOrient = _getPageOrientation(el);
-  function _restoreUI() {
-    if (actionBar) actionBar.style.display = '';
-    if (topnav) topnav.style.display = '';
-    if (tabs) tabs.style.display = '';
-    if (sidebar) sidebar.style.display = '';
-  }
-  // Safety net — always restore after 15 seconds even if PDF fails
-  var _restoreTimer = setTimeout(_restoreUI, 15000);
-  html2pdf().set({
-    margin: 5,
-    filename: 'Prime-CNC-' + invNum + '.pdf',
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 3, useCORS: true, logging: false, letterRendering: true, allowTaint: true, backgroundColor: '#ffffff' },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: _mainOrient, compress: true },
-    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-  }).from(el).save().then(function() {
-    clearTimeout(_restoreTimer);
-    _restoreUI();
-  }).catch(function(e) {
-    clearTimeout(_restoreTimer);
-    _restoreUI();
-    console.error('[PDF Error]', e);
-  });
+  const html = _buildMainInvoicePrintHtml(data);
+  _silentPDFFromHtml(html, 'Prime-CNC-' + (data.invNum || 'Invoice') + '.pdf');
 }
 
 // Injects html2pdf into an already-open popup window and auto-downloads PDF
@@ -28628,7 +28755,7 @@ function _mobHideMore() {
       html2canvas: { scale: 2, useCORS: true, logging: false,
                      allowTaint: true, backgroundColor: '#ffffff' },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
-      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+      pagebreak: { mode: ['css', 'legacy'] }
     }).from(el).save();
   };
 })();
