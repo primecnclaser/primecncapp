@@ -11535,9 +11535,10 @@ function _getInvTotalsFromConstants() {
 
   const { iMap, sMap } = getPartnerMaps();
 
+  const _isJauharabad = (_branchCfg || _JAUHARABAD_DEFAULTS).branchId === 'branch_main';
   const sources = [
     {}, // MONTHLY_2025 removed — 2025 investment data now read from Supabase via _invAllEntries
-    typeof MONTHLY_2026 !== 'undefined' ? MONTHLY_2026 : {},
+    (_isJauharabad && typeof MONTHLY_2026 !== 'undefined') ? MONTHLY_2026 : {},
   ];
 
   sources.forEach(monthly => {
