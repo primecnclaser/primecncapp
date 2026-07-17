@@ -5894,6 +5894,14 @@ try {
   if (_bcRaw) _branchCfg = JSON.parse(_bcRaw);
 } catch(e) { console.warn('[branch_config] parse failed, treating as absent', e); _branchCfg = null; }
 
+// Shared gate for every hardcoded Jauharabad-only historical constant
+// (MONTHLY_2026, DAILY_2026, SAL_EXCEL_2025/2026, S_DEFAULTS, etc.) —
+// single source of truth instead of re-deriving this check at each site.
+var _isJauharabadBranch = (_branchCfg || _JAUHARABAD_DEFAULTS).branchId === _JAUHARABAD_DEFAULTS.branchId;
+function _brOnly(dataset) {
+  return _isJauharabadBranch ? dataset : (Array.isArray(dataset) ? [] : {});
+}
+
 window._branchSetupPending = false;
 window._branchMigrationLog = null; // populated below only on the migration path — inspectable for testing
 
@@ -10756,22 +10764,19 @@ async function renderSummary() {
 
   if (is2026) {
     // ── 2026 (up to May 12): orders data from DAILY_2026 ──
+    const _d2026 = (typeof DAILY_2026 !== 'undefined') ? _brOnly(DAILY_2026) : {};
     let totalReceived2026 = 0;
     if (is2026Day && dateV) {
-      const rec = (typeof DAILY_2026 !== 'undefined') ? DAILY_2026[dateV] : null;
+      const rec = _d2026[dateV];
       totalReceived2026 = rec ? rec.sc : 0;
     } else if (is2026Month && monV) {
-      if (typeof DAILY_2026 !== 'undefined') {
-        Object.keys(DAILY_2026).forEach(dk => {
-          if (dk.slice(0,7) === monV) totalReceived2026 += DAILY_2026[dk].sc;
-        });
-      }
+      Object.keys(_d2026).forEach(dk => {
+        if (dk.slice(0,7) === monV) totalReceived2026 += _d2026[dk].sc;
+      });
     } else if (is2026Year) {
-      if (typeof DAILY_2026 !== 'undefined') {
-        Object.keys(DAILY_2026).forEach(dk => {
-          if (dk.slice(0,4) === '2026') totalReceived2026 += DAILY_2026[dk].sc;
-        });
-      }
+      Object.keys(_d2026).forEach(dk => {
+        if (dk.slice(0,4) === '2026') totalReceived2026 += _d2026[dk].sc;
+      });
     }
     (async function() {
       var _ex2026Count = await _fetchExcelOrderCount(mode, dateV, monV, yearV);
@@ -11535,10 +11540,9 @@ function _getInvTotalsFromConstants() {
 
   const { iMap, sMap } = getPartnerMaps();
 
-  const _isJauharabad = (_branchCfg || _JAUHARABAD_DEFAULTS).branchId === 'branch_main';
   const sources = [
     {}, // MONTHLY_2025 removed — 2025 investment data now read from Supabase via _invAllEntries
-    (_isJauharabad && typeof MONTHLY_2026 !== 'undefined') ? MONTHLY_2026 : {},
+    typeof MONTHLY_2026 !== 'undefined' ? _brOnly(MONTHLY_2026) : {},
   ];
 
   sources.forEach(monthly => {
@@ -11580,7 +11584,7 @@ async function renderInvestSavings() {
   // MONTHLY_2026 covers savings on 2026-xx-15 dates — exclude those to avoid double-count.
   // 2025 investment/savings data lives in Supabase as historical_daily (not in any constant).
   const { iMap, sMap } = getPartnerMaps();
-  const m26Keys = typeof MONTHLY_2026 !== 'undefined' ? new Set(Object.keys(MONTHLY_2026)) : new Set();
+  const m26Keys = typeof MONTHLY_2026 !== 'undefined' ? new Set(Object.keys(_brOnly(MONTHLY_2026))) : new Set();
   _invAllEntries.forEach(e => {
     // Skip entries already covered by MONTHLY_2026 constant (same date+type+category key exists there)
     if (e.source === 'historical_daily' && m26Keys.has(e.entry_date)) return;
@@ -11689,7 +11693,7 @@ function toggleInvBreakdown(partnerId) {
   // Read from constants (MONTHLY_2026) + all Supabase ledger entries not already in constants
   const ct = _getInvTotalsFromConstants();
   const { iMap, sMap } = getPartnerMaps();
-  const m26Keys = typeof MONTHLY_2026 !== 'undefined' ? new Set(Object.keys(MONTHLY_2026)) : new Set();
+  const m26Keys = typeof MONTHLY_2026 !== 'undefined' ? new Set(Object.keys(_brOnly(MONTHLY_2026))) : new Set();
   const supaInv = []; const supaSav = [];
   _invAllEntries.forEach(e => {
     if (e.source === 'historical_daily' && m26Keys.has(e.entry_date)) return; // already in constants
@@ -21201,8 +21205,9 @@ function _apply2025LookupValue(date, type, cat, amtInput, badge, info, refreshBt
       // Last day: sum advances from SAL_EXCEL_2025
       let total = 0; const matches = [];
       if (typeof SAL_EXCEL_2025 !== 'undefined') {
+        const _se2025 = _brOnly(SAL_EXCEL_2025);
         sEmps().forEach(emp => {
-          const ex = SAL_EXCEL_2025[emp.id+'|'+ym];
+          const ex = _se2025[emp.id+'|'+ym];
           if (ex && ex.advance > 0) { total += ex.advance; matches.push({name:emp.name, amount:ex.advance}); }
         });
       }
@@ -21272,7 +21277,8 @@ function _apply2026LookupValue(date, type, cat, amtInput, badge, info, refreshBt
   const mname = new Date(y,mo-1,1).toLocaleString('default',{month:'long'})+' '+y;
 
   if (type === 'income' && cat === 'Sheets Cutting') {
-    const rec = (typeof DAILY_2026 !== 'undefined') ? DAILY_2026[date] : null;
+    const _d2026a = (typeof DAILY_2026 !== 'undefined') ? _brOnly(DAILY_2026) : {};
+    const rec = _d2026a[date];
     const amt = rec ? rec.sc : 0;
     if (amtInput) {
       amtInput.value = amt;
@@ -21293,14 +21299,13 @@ function _apply2026LookupValue(date, type, cat, amtInput, badge, info, refreshBt
   }
 
   if (type === 'income' && cat === 'Scrap') {
+    const _d2026b = (typeof DAILY_2026 !== 'undefined') ? _brOnly(DAILY_2026) : {};
     const ym = date.slice(0,7);
     let monthlyScrap = 0;
-    if (typeof DAILY_2026 !== 'undefined') {
-      Object.keys(DAILY_2026).forEach(dk => {
-        if (dk.slice(0,7) === ym) monthlyScrap += (DAILY_2026[dk].sr || 0);
-      });
-    }
-    const dailyRec = (typeof DAILY_2026 !== 'undefined') ? DAILY_2026[date] : null;
+    Object.keys(_d2026b).forEach(dk => {
+      if (dk.slice(0,7) === ym) monthlyScrap += (_d2026b[dk].sr || 0);
+    });
+    const dailyRec = _d2026b[date];
     const dailyAmt = dailyRec ? (dailyRec.sr || 0) : 0;
     const amt = dailyAmt > 0 ? dailyAmt : (date.slice(8,10) === '15' ? monthlyScrap : 0);
     if (amtInput) {
@@ -21345,8 +21350,9 @@ function _apply2026LookupValue(date, type, cat, amtInput, badge, info, refreshBt
       // Last day: sum advances from SAL_EXCEL_2026
       let total = 0; const matches = [];
       if (typeof SAL_EXCEL_2026 !== 'undefined') {
+        const _se2026 = _brOnly(SAL_EXCEL_2026);
         sEmps().forEach(emp => {
-          const ex = SAL_EXCEL_2026[emp.id+'|'+ym];
+          const ex = _se2026[emp.id+'|'+ym];
           if (ex && ex.advance > 0) { total += ex.advance; matches.push({name:emp.name, amount:ex.advance}); }
         });
       }
@@ -21373,7 +21379,7 @@ function _apply2026LookupValue(date, type, cat, amtInput, badge, info, refreshBt
   const refDate   = isMay2026 ? '2026-05-12' : date.slice(0,7) + '-15';
   const ym15      = date.slice(0,7) + '-15';
   const key       = `${type}|${cat}`;
-  const monthRec  = (typeof MONTHLY_2026 !== 'undefined') ? MONTHLY_2026[ym15] : null;
+  const monthRec  = (typeof MONTHLY_2026 !== 'undefined') ? _brOnly(MONTHLY_2026)[ym15] : null;
   const amt       = (monthRec && monthRec[key]) ? monthRec[key] : 0;
 
   if (isMay2026) {
@@ -22108,6 +22114,7 @@ function closeMigrateModal() {
 }
 
 async function runMigration() {
+  if (!_isJauharabadBranch) { toast('Migration only applies to the Jauharabad branch.'); return; }
   if (!sb) { toast('⚠️ No Supabase connection. Check your internet.'); return; }
 
   const startBtn  = document.getElementById('migrateStartBtn');
@@ -22139,8 +22146,9 @@ async function runMigration() {
 
   // DAILY_2026 — per-day Sheets Cutting + Scrap
   if (typeof DAILY_2026 !== 'undefined') {
-    Object.keys(DAILY_2026).sort().forEach(date => {
-      const r = DAILY_2026[date];
+    const _d2026migrate = _brOnly(DAILY_2026);
+    Object.keys(_d2026migrate).sort().forEach(date => {
+      const r = _d2026migrate[date];
       if (r.sc > 0) addEntry(date, 'income', 'Sheets Cutting', r.sc, 'Sheets Cutting — ' + date, 'historical_daily');
       if (r.sr > 0) addEntry(date, 'income', 'Scrap', r.sr, 'Scrap — ' + date.slice(0,7), 'historical_daily');
     });
@@ -22148,8 +22156,9 @@ async function runMigration() {
 
   // MONTHLY_2026 — all non-Sheets-Cutting categories on the 15th
   if (typeof MONTHLY_2026 !== 'undefined') {
-    Object.keys(MONTHLY_2026).sort().forEach(date15 => {
-      const rec = MONTHLY_2026[date15];
+    const _m2026migrate = _brOnly(MONTHLY_2026);
+    Object.keys(_m2026migrate).sort().forEach(date15 => {
+      const rec = _m2026migrate[date15];
       Object.keys(rec).forEach(key => {
         const amount = rec[key];
         if (!amount || amount <= 0) return;
@@ -24221,7 +24230,7 @@ function salSeedRecoveries(){
   }
 }
 
-function sEmps(){ const s=localStorage.getItem(S_EMP); if(!s){localStorage.setItem(S_EMP,JSON.stringify(S_DEFAULTS));return JSON.parse(JSON.stringify(S_DEFAULTS));}return JSON.parse(s); }
+function sEmps(){ const s=localStorage.getItem(S_EMP); if(!s){const d=_brOnly(S_DEFAULTS);localStorage.setItem(S_EMP,JSON.stringify(d));return JSON.parse(JSON.stringify(d));}return JSON.parse(s); }
 // changedId: the single employee id that was actually added/edited. When given, synced
 // via an atomic server-side JSONB array merge (merge_shop_setting_array_item) that
 // replaces just that one employee in place — a full-blob upsert here would silently
@@ -24307,7 +24316,7 @@ function sBaseSal(emp,ym){
   // Check SAL_EXCEL_2026 first for any 2026 month
   if(ym && ym >= '2026-01') {
     const ex26Key = emp.id+'|'+ym;
-    const ex26 = (typeof SAL_EXCEL_2026!=='undefined') ? SAL_EXCEL_2026[ex26Key] : null;
+    const ex26 = (typeof SAL_EXCEL_2026!=='undefined') ? _brOnly(SAL_EXCEL_2026)[ex26Key] : null;
     if(ex26 && ex26.basicSal!==undefined) return ex26.basicSal;
   }
   // Beyond covered data — must be entered manually
@@ -24351,8 +24360,8 @@ function sCalcV2(emp,rec,eid,ym){
 
   // Excel data
   const _excelKey     = eid&&ym ? eid+'|'+ym : null;
-  const _excelRec2026 = _excelKey && typeof SAL_EXCEL_2026!=='undefined' ? SAL_EXCEL_2026[_excelKey] : null;
-  const _excelRec2025 = _excelKey && typeof SAL_EXCEL_2025!=='undefined' ? SAL_EXCEL_2025[_excelKey] : null;
+  const _excelRec2026 = _excelKey && typeof SAL_EXCEL_2026!=='undefined' ? _brOnly(SAL_EXCEL_2026)[_excelKey] : null;
+  const _excelRec2025 = _excelKey && typeof SAL_EXCEL_2025!=='undefined' ? _brOnly(SAL_EXCEL_2025)[_excelKey] : null;
   const _excelRec     = _excelRec2026 || _excelRec2025;
 
   // Basic salary — daily wage overrides fixed basic when emp.wageType==='daily'
@@ -24634,8 +24643,8 @@ function sRenderBar(ym){
 
   function getCalc(emp, m){
     const exKey = emp.id+'|'+m;
-    const ex = ((typeof SAL_EXCEL_2026!=='undefined') ? SAL_EXCEL_2026[exKey] : null)
-              || ((typeof SAL_EXCEL_2025!=='undefined') ? SAL_EXCEL_2025[exKey] : null);
+    const ex = ((typeof SAL_EXCEL_2026!=='undefined') ? _brOnly(SAL_EXCEL_2026)[exKey] : null)
+              || ((typeof SAL_EXCEL_2025!=='undefined') ? _brOnly(SAL_EXCEL_2025)[exKey] : null);
     const rec = sGetRec(emp.id, m);
     const merged = ex ? Object.assign({}, ex, {
       advance: (m >= '2026-01' && rec.advance) ? rec.advance : (ex.advance||0),
@@ -25747,6 +25756,7 @@ function _sMonsEqual(a, b){
 }
 
 function salMigrate(){
+  if (!_isJauharabadBranch) return;
   try {
     const existing = sMons();
     const keep2026 = {};
@@ -25754,7 +25764,7 @@ function salMigrate(){
       const ym = k.split('|')[1]||'';
       if(ym >= '2026-01') keep2026[k] = existing[k];
     }
-    const fresh = Object.assign({}, SAL_EXCEL_2025, (typeof SAL_EXCEL_2026!=='undefined' ? SAL_EXCEL_2026 : {}), keep2026);
+    const fresh = Object.assign({}, _brOnly(SAL_EXCEL_2025), (typeof SAL_EXCEL_2026!=='undefined' ? _brOnly(SAL_EXCEL_2026) : {}), keep2026);
     // Only resave when the merge would actually change something — this used to run
     // unconditionally on every Salaries tab open, which meant every visit re-uploaded
     // the entire pcnc_mon_v4 blob from this session's local cache, silently clobbering
@@ -25768,6 +25778,7 @@ function salMigrate(){
 }
 
 async function _salCleanAndSeed() {
+  if (!_isJauharabadBranch) return;
   const SEED_VER = 'sal_seed_v3';
   if (localStorage.getItem(SEED_VER) === 'done') return;
   if (typeof sb === 'undefined' || !sb) return;
@@ -25838,9 +25849,10 @@ async function salInit(){
     const DEDUP_VER = 'v1';
     if(localStorage.getItem('pcnc_sal_dedup_ver') !== DEDUP_VER) {
       if(typeof MONTHLY_2026 !== 'undefined') {
-        Object.keys(MONTHLY_2026).forEach(date15 => {
+        const _m2026dedup = _brOnly(MONTHLY_2026);
+        Object.keys(_m2026dedup).forEach(date15 => {
           const ym = date15.slice(0,7);
-          if(MONTHLY_2026[date15]['monthly_expense|Salaries'] > 0) {
+          if(_m2026dedup[date15]['monthly_expense|Salaries'] > 0) {
             // Remove any auto-sync entry for this month
             const lk = 'sal_lid_' + ym;
             const oldId = localStorage.getItem(lk);
