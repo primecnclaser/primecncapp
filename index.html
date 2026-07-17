@@ -6287,6 +6287,21 @@ setInterval(window._checkSupabaseConnection, 30000);
 
 const APP_VERSION = '1.0.7';
 
+// Version badge — defaults to APP_VERSION (web/browser), overridden with the
+// real installed version when running in Electron (package.json's version,
+// via preload's getAppVersion IPC) so the badge never drifts from the actual
+// build again.
+(function() {
+  var _vEl = document.getElementById('_appVersionLabel');
+  if (!_vEl) return;
+  _vEl.textContent = 'v' + APP_VERSION;
+  if (window.electronAPI && typeof window.electronAPI.getAppVersion === 'function') {
+    window.electronAPI.getAppVersion().then(function(v) {
+      if (v) _vEl.textContent = 'v' + v;
+    }).catch(function(e) { console.warn('[version badge] getAppVersion failed:', e); });
+  }
+})();
+
 // ── KEYBOARD SHORTCUTS ──────────────────────────────────────────
 document.addEventListener('keydown', function(e) {
   // Ignore if typing in input/textarea
