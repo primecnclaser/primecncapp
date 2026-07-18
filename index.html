@@ -5546,7 +5546,7 @@ async function _syncToHO(auto) {
     // ── Fetch all invoices ──
     var { data: invData, error: invErr } = await sb
       .from('invoices')
-      .select('date, total, received, total_sqft, total_kg, bad_debt')
+      .select('date, total, sub_total, extra_charges, received, total_sqft, total_kg, bad_debt')
       .eq('branch_id', BRANCH_ID);
     if (invErr) throw invErr;
 
@@ -5624,7 +5624,12 @@ async function _syncToHO(auto) {
       if (mkParts.length < 2 || isNaN(parseInt(mkParts[1])) || parseInt(mkParts[1]) < 1 || parseInt(mkParts[1]) > 12) return;
       var m = getMonth(mk);
       m.total_invoices += 1;
-      m.total_billed += parseFloat(inv.total) || 0;
+      // "Total Billed" = pre-discount (sub_total + extra_charges), matching the
+      // same fix already applied to rpGetCustomerSummary() and
+      // buildAllCustomerSummaries() tonight — this was the third, independent
+      // occurrence of the same raw-`total`-column bug, feeding HO's Reports
+      // and Branches tab Outstanding figures.
+      m.total_billed += (parseFloat(inv.sub_total || inv.total) || 0) + (parseFloat(inv.extra_charges) || 0);
       m.total_collection += (parseFloat(inv.received) || 0);
       m.total_sqft += parseFloat(inv.total_sqft) || 0;
       m.total_kg += parseFloat(inv.total_kg) || 0;
