@@ -2374,6 +2374,7 @@ body {
     <button onclick="_syncToHO()" style="padding:6px 14px; background:#6366f1; color:#fff; border:none; border-radius:8px; font-family:Montserrat,sans-serif; font-weight:700; font-size:0.75rem; cursor:pointer; margin-left:8px;">
       🏢 Sync to HO
     </button>
+    <span id="hoLastSyncLabel" style="font-size:0.6rem;color:#94a3b8;font-weight:600;margin-left:8px;white-space:nowrap;"></span>
   </span>
 </div>
 
@@ -5491,13 +5492,26 @@ async function _masterResync() {
 }
 
 // Re-entrancy lock shared by every caller of _syncToHO() — the manual "Sync
-// to HO" button and the 30-minute auto-sync timer below both go through this
+// to HO" button and the 10-minute auto-sync timer below both go through this
 // same function, so guarding here (rather than separately in the timer)
 // guarantees a manual click and an auto-tick can never run concurrently.
 let _hoSyncBusy = false;
+// Set whenever a sync attempt (manual or auto) is skipped specifically for
+// being offline; consumed by the 'online' handler below to fire one retry
+// immediately on reconnect instead of waiting for the next scheduled tick.
+let _hoSyncNeedsRetry = false;
+function _hoRenderLastSync() {
+  var el = document.getElementById('hoLastSyncLabel');
+  if (!el) return;
+  var raw = localStorage.getItem('ho_last_sync_at');
+  if (!raw) { el.textContent = '— Never synced to HO'; return; }
+  var mins = Math.round((Date.now() - new Date(raw).getTime()) / 60000);
+  var label = mins < 1 ? 'just now' : mins < 60 ? mins + 'm ago' : Math.round(mins / 60) + 'h ago';
+  el.textContent = '🏢 Last synced: ' + label;
+}
 async function _syncToHO(auto) {
   if (_hoSyncBusy) { if (!auto) toast('⏳ Sync to HO already in progress...'); return; }
-  if (!navigator.onLine) { if (!auto) toast('📵 Cannot sync — offline'); return; }
+  if (!navigator.onLine) { _hoSyncNeedsRetry = true; if (!auto) toast('📵 Cannot sync — offline'); return; }
 
   // Initialize HO Supabase client on first use
   if (!sbHO) {
@@ -5698,11 +5712,13 @@ async function _syncToHO(auto) {
       records_synced: rows.length,
       synced_at:      new Date().toISOString()
     });
+    localStorage.setItem('ho_last_sync_at', new Date().toISOString());
+    _hoRenderLastSync();
 
     if (!auto) {
       setSyncStatus('synced', '● Synced');
-      toast('✅ ' + rows.length + ' months synced to Head Office');
     }
+    toast('✅ ' + rows.length + ' months synced to Head Office');
 
   } catch(err) {
     console.error('[syncToHO]', err);
@@ -5718,8 +5734,8 @@ async function _syncToHO(auto) {
     } catch(_) { console.error('[_syncToHO:branch_sync_log insert]', _); }
     if (!auto) {
       setSyncStatus('offline', '● Sync error');
-      toast('⚠ HO sync failed — ' + (err.message || 'check console'));
     }
+    toast('⚠ HO sync failed — ' + (err.message || 'check console'));
   } finally {
     _hoSyncBusy = false;
   }
@@ -5774,6 +5790,12 @@ window.addEventListener('online', async () => {
   setTimeout(function() {
     if (typeof _masterResync === 'function') _masterResync();
   }, 5000); // 5 second delay — ensures online handler finishes before masterResync starts
+  // One-shot HO retry if a sync attempt was skipped specifically for being
+  // offline — avoids waiting up to a full 10-minute tick after reconnecting.
+  if (_hoSyncNeedsRetry && sb && currentUser) {
+    _hoSyncNeedsRetry = false;
+    _syncToHO(true);
+  }
 });
 
 window.addEventListener('offline', () => {
@@ -5808,17 +5830,17 @@ setInterval(async () => {
   finally { _autoSyncBusy = false; }
 }, 10000);
 
-// ── AUTO-SYNC TO HO every 30 minutes ──
+// ── AUTO-SYNC TO HO every 10 minutes ──
 // Separate, much-lower-frequency timer from the 10s tick above — pushes
 // aggregated branch data to Head Office so HO doesn't rely on someone
 // remembering to click "Sync to HO". Concurrency is guarded inside
 // _syncToHO() itself via _hoSyncBusy, so this can never overlap a manual
 // click or another auto-tick already in flight. TEST-ONLY: set
-// window._HO_AUTOSYNC_TEST_MS before load to override the 30-minute
+// window._HO_AUTOSYNC_TEST_MS before load to override the 10-minute
 // interval for practical verification (e.g. a few seconds).
-var HO_AUTOSYNC_INTERVAL_MS = window._HO_AUTOSYNC_TEST_MS || (30 * 60 * 1000);
+var HO_AUTOSYNC_INTERVAL_MS = window._HO_AUTOSYNC_TEST_MS || (10 * 60 * 1000);
 setInterval(function() {
-  if (!navigator.onLine) return; // skip silently — same graceful-degradation pattern as the 10s tick
+  if (!navigator.onLine) { _hoSyncNeedsRetry = true; return; } // skip silently — same graceful-degradation pattern as the 10s tick
   if (typeof sb === 'undefined' || !sb || !currentUser) return; // nothing to sync before login
   _syncToHO(true);
 }, HO_AUTOSYNC_INTERVAL_MS);
@@ -5876,6 +5898,7 @@ var _BRANCH_SCOPED_EXACT = [
   'pcnc_emp_v4','pcnc_emp_ver','pcnc_excel_full','pcnc_excel_full_ts',
   'pcnc_fin_categories','pcnc_fin_ledger','pcnc_fin_seed_ver','pcnc_mon_v4',
   'pcnc_rec_v1','pcnc_sal_dedup_ver','shop_display_name','shop_name_color',
+  'ho_last_sync_at',
   'shop_name_size','summary_cache','userDisplayName','userEmail','userPhone',
   'userProfilePhoto'
 ];
@@ -6285,7 +6308,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.0.9';
+const APP_VERSION = '1.0.11';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -7906,6 +7929,15 @@ window.addEventListener('load', async () => {
       if (typeof _finCCRestoreStatus === 'function') _finCCRestoreStatus();
       if (sb && navigator.onLine && typeof _finCrossCheck === 'function') _finCrossCheck();
     }, 10000);
+    if (typeof _hoRenderLastSync === 'function') _hoRenderLastSync();
+    // Immediate HO push shortly after login — closes the gap where a fresh
+    // session's HO data could otherwise sit stale for a full auto-sync
+    // interval before the first push. Non-blocking, same deferred pattern
+    // as the cross-check above. Offline/not-ready cases are already handled
+    // silently inside _syncToHO() itself.
+    setTimeout(function() {
+      if (sb && navigator.onLine && currentUser && typeof _syncToHO === 'function') _syncToHO(true);
+    }, 8000);
   } else {
     document.getElementById('loginStatus').textContent = 'Please log in to continue.';
   }
@@ -29592,6 +29624,16 @@ async function _authDoFinishLogin(sess) {
       if (typeof window.updateDBCount === 'function') window.updateDBCount();
     } catch(e) { console.warn('[auth bg sync]', e); }
   }, 800);
+
+  // Show whatever HO-sync timestamp is already stored, then push an
+  // immediate HO sync shortly after login — this is the real, currently-used
+  // login completion path (new auth system), unlike the legacy
+  // window.addEventListener('load', ...) flow which is skipped whenever a
+  // new-auth session is active. Same 8s non-blocking pattern as intended.
+  if (typeof _hoRenderLastSync === 'function') _hoRenderLastSync();
+  setTimeout(function() {
+    if (window.sb && navigator.onLine && window.currentUser && typeof _syncToHO === 'function') _syncToHO(true);
+  }, 8000);
 }
 
 // ─── PROFILE SETUP — SAVE ─────────────────────────────────────
