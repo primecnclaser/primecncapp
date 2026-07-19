@@ -5546,9 +5546,22 @@ async function _syncToHO(auto) {
     // ── Fetch all invoices ──
     var { data: invData, error: invErr } = await sb
       .from('invoices')
-      .select('date, total, sub_total, extra_charges, received, total_sqft, total_kg, bad_debt')
+      .select('date, total, sub_total, extra_charges, received, total_sqft, total_kg')
       .eq('branch_id', BRANCH_ID);
     if (invErr) throw invErr;
+
+    // ── Fetch bad debt — from customer_payments (type='bad_debt'), the same
+    // authoritative source buildAllCustomerSummaries() uses, NOT the raw
+    // invoices.bad_debt column (barely populated, unrelated to how bad debt
+    // actually gets recorded via the Receive Payment flow). Found via tonight's
+    // audit: invoices.bad_debt summed to Rs.682 total while the real,
+    // customer_payments-based figure was Rs.61,262 — a ~99% understatement.
+    var { data: badDebtData, error: badDebtErr } = await sb
+      .from('customer_payments')
+      .select('amount, payment_date, created_at')
+      .eq('branch_id', BRANCH_ID)
+      .eq('type', 'bad_debt');
+    if (badDebtErr) throw badDebtErr;
 
     // Partner-investment category names are dynamic ("<partner name> Investment"),
     // one per currently-configured partner — not a fixed string. Same convention
@@ -5557,19 +5570,26 @@ async function _syncToHO(auto) {
       (typeof getPartners === 'function' ? getPartners() : []).map(function(p) { return p.name + ' Investment'; })
     );
 
-    // ── Group by YYYY-MM ──
+    // ── Group by YYYY-MM (existing) and YYYY-MM-DD (new — feeds
+    // branch_daily_summary, additive, does not replace the monthly push) ──
     var monthMap = {};
+    var dayMap = {};
+    var _dayBucketShape = {
+      sheets_cutting: 0, scrap: 0, total_expenses: 0,
+      total_invoices: 0, total_billed: 0, total_collection: 0,
+      total_sqft: 0, total_kg: 0, bad_debt: 0,
+      remaining_market: 0, cash_in_hand: 0,
+      loans_investment: 0, partners_investment: 0, other_income: 0,
+      onetime_expense: 0, debt_paid: 0, savings: 0
+    };
 
     function getMonth(mk) {
-      if (!monthMap[mk]) monthMap[mk] = {
-        sheets_cutting: 0, scrap: 0, total_expenses: 0,
-        total_invoices: 0, total_billed: 0, total_collection: 0,
-        total_sqft: 0, total_kg: 0, bad_debt: 0,
-        remaining_market: 0, cash_in_hand: 0,
-        loans_investment: 0, partners_investment: 0, other_income: 0,
-        onetime_expense: 0, debt_paid: 0, savings: 0
-      };
+      if (!monthMap[mk]) monthMap[mk] = JSON.parse(JSON.stringify(_dayBucketShape));
       return monthMap[mk];
+    }
+    function getDay(dk) {
+      if (!dayMap[dk]) dayMap[dk] = JSON.parse(JSON.stringify(_dayBucketShape));
+      return dayMap[dk];
     }
 
     // Process finance_ledger
@@ -5578,7 +5598,10 @@ async function _syncToHO(auto) {
       var mk = e.entry_date.slice(0, 7);
       var mkParts = mk.split('-');
       if (mkParts.length < 2 || isNaN(parseInt(mkParts[1])) || parseInt(mkParts[1]) < 1 || parseInt(mkParts[1]) > 12) return;
+      var dk = e.entry_date.slice(0, 10);
       var m = getMonth(mk);
+      var d = getDay(dk);
+      function add(field, val) { m[field] += val; d[field] += val; }
       var amt = parseFloat(e.amount) || 0;
       var cat = (e.category || '').trim();
       var et  = (e.entry_type || '').trim();
@@ -5587,26 +5610,26 @@ async function _syncToHO(auto) {
       // historical_daily) — both branches did the same thing before, merged
       // here since the source distinction never actually changed behavior.
       if (et === 'income' && cat === 'Sheets Cutting') {
-        m.sheets_cutting += amt;
+        add('sheets_cutting', amt);
       } else if (et === 'income' && cat === 'Scrap') {
-        m.scrap += amt;
+        add('scrap', amt);
       } else if (et === 'income' && cat === 'Loans Investment') {
-        m.loans_investment += amt;
+        add('loans_investment', amt);
       } else if (et === 'income' && partnerInvCats.has(cat)) {
-        m.partners_investment += amt;
+        add('partners_investment', amt);
       } else if (et === 'income' && cat === 'Other Income') {
         // Cash Returned/Adjustment and Unidentified Sale Cash have already
         // been merged into the 'Other Income' category directly in
         // finance_ledger (confirmed, no special-casing needed here).
-        m.other_income += amt;
+        add('other_income', amt);
       } else if (et === 'monthly_expense') {
-        m.total_expenses += amt;
+        add('total_expenses', amt);
       } else if (et === 'onetime_expense') {
-        m.onetime_expense += amt;
+        add('onetime_expense', amt);
       } else if (et === 'debt_paid') {
-        m.debt_paid += amt;
+        add('debt_paid', amt);
       } else if (et === 'savings') {
-        m.savings += amt;
+        add('savings', amt);
       }
     });
 
@@ -5622,18 +5645,39 @@ async function _syncToHO(auto) {
       var mk = isoDate.slice(0, 7);
       var mkParts = mk.split('-');
       if (mkParts.length < 2 || isNaN(parseInt(mkParts[1])) || parseInt(mkParts[1]) < 1 || parseInt(mkParts[1]) > 12) return;
+      var dk = isoDate.slice(0, 10);
       var m = getMonth(mk);
-      m.total_invoices += 1;
+      var d = getDay(dk);
+      m.total_invoices += 1; d.total_invoices += 1;
       // "Total Billed" = pre-discount (sub_total + extra_charges), matching the
       // same fix already applied to rpGetCustomerSummary() and
       // buildAllCustomerSummaries() tonight — this was the third, independent
       // occurrence of the same raw-`total`-column bug, feeding HO's Reports
       // and Branches tab Outstanding figures.
-      m.total_billed += (parseFloat(inv.sub_total || inv.total) || 0) + (parseFloat(inv.extra_charges) || 0);
-      m.total_collection += (parseFloat(inv.received) || 0);
-      m.total_sqft += parseFloat(inv.total_sqft) || 0;
-      m.total_kg += parseFloat(inv.total_kg) || 0;
-      m.bad_debt += parseFloat(inv.bad_debt) || 0;
+      var billed = (parseFloat(inv.sub_total || inv.total) || 0) + (parseFloat(inv.extra_charges) || 0);
+      m.total_billed += billed; d.total_billed += billed;
+      var recv = parseFloat(inv.received) || 0;
+      m.total_collection += recv; d.total_collection += recv;
+      var sqft = parseFloat(inv.total_sqft) || 0;
+      m.total_sqft += sqft; d.total_sqft += sqft;
+      var kg = parseFloat(inv.total_kg) || 0;
+      m.total_kg += kg; d.total_kg += kg;
+    });
+
+    // Process bad debt — payment_date is the real write-off date when
+    // present; falls back to created_at for the (rare) rows recorded without
+    // one, so nothing silently drops out of every monthly total.
+    (badDebtData || []).forEach(function(bd) {
+      var rawDate = bd.payment_date || (bd.created_at ? bd.created_at.slice(0, 10) : null);
+      if (!rawDate) return;
+      var mk = rawDate.slice(0, 7);
+      var mkParts = mk.split('-');
+      if (mkParts.length < 2 || isNaN(parseInt(mkParts[1])) || parseInt(mkParts[1]) < 1 || parseInt(mkParts[1]) > 12) return;
+      var dk = rawDate.slice(0, 10);
+      var m = getMonth(mk);
+      var d = getDay(dk);
+      var amt = parseFloat(bd.amount) || 0;
+      m.bad_debt += amt; d.bad_debt += amt;
     });
 
     // ── Remaining in Market — the authoritative, bad-debt-adjusted engine
@@ -5656,7 +5700,9 @@ async function _syncToHO(auto) {
       });
     } catch(_rmErr) { console.warn('[syncToHO] remaining-in-market calc failed:', _rmErr); }
     var _nowYM2 = new Date().toISOString().slice(0, 7); // e.g. "2026-07"
+    var _nowYMD = new Date().toISOString().slice(0, 10); // e.g. "2026-07-19"
     getMonth(_nowYM2); // ensure the current month has a row even if untouched by any entry yet
+    getDay(_nowYMD);   // same, for the current day
 
     // ── Build upsert rows ──
     var rows = [];
@@ -5708,6 +5754,53 @@ async function _syncToHO(auto) {
       .from('branch_monthly_summary')
       .upsert(rows, { onConflict: 'branch_id,year,month' });
     if (upsertErr) throw upsertErr;
+
+    // ── Build + upsert day-level rows — additive to the monthly push above,
+    // does not replace or alter it. Only days that actually have activity
+    // (ledger/invoice/bad-debt entries) get a row, same on-demand pattern
+    // as monthly, plus the current day so "today" always has a row.
+    var dayRows = [];
+    Object.keys(dayMap).forEach(function(dk) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dk)) return;
+      var yr = parseInt(dk.slice(0, 4));
+      if (isNaN(yr) || yr < 2020) return;
+      var d = dayMap[dk];
+      var dIncome = d.sheets_cutting + d.scrap;
+      var dPl = dIncome - d.total_expenses;
+      var dAvgSqft = d.total_invoices > 0 ? (d.total_sqft / d.total_invoices) : 0;
+
+      dayRows.push({
+        branch_id:        BRANCH_UUID,
+        summary_date:     dk,
+        total_invoices:   d.total_invoices,
+        total_billed:     parseFloat(d.total_billed.toFixed(2)),
+        total_collection: parseFloat(d.total_collection.toFixed(2)),
+        sheets_cutting:   parseFloat(d.sheets_cutting.toFixed(2)),
+        scrap:            parseFloat(d.scrap.toFixed(2)),
+        total_income:     parseFloat(dIncome.toFixed(2)),
+        total_expenses:   parseFloat(d.total_expenses.toFixed(2)),
+        profit_loss:      parseFloat(dPl.toFixed(2)),
+        loans_investment:    parseFloat(d.loans_investment.toFixed(2)),
+        partners_investment: parseFloat(d.partners_investment.toFixed(2)),
+        other_income:        parseFloat(d.other_income.toFixed(2)),
+        onetime_expense:     parseFloat(d.onetime_expense.toFixed(2)),
+        debt_paid:           parseFloat(d.debt_paid.toFixed(2)),
+        savings:             parseFloat(d.savings.toFixed(2)),
+        remaining_market:    dk === _nowYMD ? parseFloat(_remainingInMarket.toFixed(2)) : 0,
+        total_sqft:       parseFloat(d.total_sqft.toFixed(2)),
+        total_kg:         parseFloat(d.total_kg.toFixed(2)),
+        avg_sqft_per_day: parseFloat(dAvgSqft.toFixed(2)),
+        bad_debt:         parseFloat(d.bad_debt.toFixed(2)),
+        synced_at:        new Date().toISOString()
+      });
+    });
+
+    if (dayRows.length) {
+      var { error: dayUpsertErr } = await sbHO
+        .from('branch_daily_summary')
+        .upsert(dayRows, { onConflict: 'branch_id,summary_date' });
+      if (dayUpsertErr) throw dayUpsertErr;
+    }
 
     // ── Log sync success ──
     await sbHO.from('branch_sync_log').insert({
