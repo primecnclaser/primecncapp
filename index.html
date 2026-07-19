@@ -19316,29 +19316,42 @@ async function _renderSearchByInv(invNum) {
     var n = (inv.invNum||'').toUpperCase();
     return n === invNumUpper || n === withPrefix || n === withoutPfx;
   }).forEach(function(inv) {
-    var bill = inv.afterDiscount != null ? inv.afterDiscount : (inv.total||0);
-    var rem  = Math.max(0, calcRemaining({ total: bill, received: inv.received||0, badDebt: inv.badDebt||0 }));
+    // netBill (post-discount) drives the Remaining-owed math — unchanged.
+    // grossBill (pre-discount, sub_total + extra_charges) is what the "Total
+    // Bill" column displays — same pre-discount convention as _syncToHO()'s
+    // total_billed fix earlier tonight, applied here for the same reason:
+    // "Total Bill" should read as the gross bill, not what's left after a
+    // discount, even before the row is clicked open.
+    var netBill   = inv.afterDiscount != null ? inv.afterDiscount : (inv.total||0);
+    var grossBill = (parseFloat(inv.subTotal != null ? inv.subTotal : inv.total) || 0) + (parseFloat(inv.extraCharges) || 0);
+    var rem  = Math.max(0, calcRemaining({ total: netBill, received: inv.received||0, badDebt: inv.badDebt||0 }));
     matchedInvoices.push({
       date: inv.date||'', invNum: inv.invNum||'—',
       custName: inv.custName||'', phone: inv.phone||'',
-      bill: bill, disc: inv.discount||0,
+      bill: grossBill, disc: inv.discount||0,
       recv: inv.received||0, remaining: rem,
       source: 'local'
     });
   });
 
   // 2. Search Supabase invoices table (exact match)
+  // NOTE: previously selected a non-existent "total_bill" column (the real
+  // schema has sub_total/discount/total/extra_charges) — every call to this
+  // branch was silently failing (caught below) and contributing zero rows.
+  // Fixed to select the real columns and compute bill the same pre-discount
+  // way as the local branch above.
   if (typeof sb !== 'undefined' && sb) {
     try {
       var res = await sb.from('invoices')
-        .select('cust_name,phone,inv_num,date,total_bill,received,discount,remaining,bad_debt')
+        .select('cust_name,phone,inv_num,date,sub_total,total,extra_charges,received,discount,remaining,bad_debt')
         .or('inv_num.eq.' + withPrefix + ',inv_num.eq.' + invNumStr).limit(5);
       if (res.data) res.data.forEach(function(r) {
         if (!matchedInvoices.find(function(m){ return m.invNum === r.inv_num; })) {
           matchedInvoices.push({
             date: r.date||'', invNum: r.inv_num||'—',
             custName: r.cust_name||'', phone: r.phone||'',
-            bill: parseFloat(r.total_bill)||0, disc: parseFloat(r.discount)||0,
+            bill: (parseFloat(r.sub_total != null ? r.sub_total : r.total) || 0) + (parseFloat(r.extra_charges) || 0),
+            disc: parseFloat(r.discount)||0,
             recv: parseFloat(r.received)||0,
             remaining: parseFloat(r.remaining)||0,
             source: 'supabase'
