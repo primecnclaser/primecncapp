@@ -1619,8 +1619,9 @@ body {
   font-size:0.62rem; font-weight:800; letter-spacing:0.5px;
   vertical-align:middle; margin-left:6px;
 }
-.auth-role-admin { background:#fef3c7; color:#92400e; }
-.auth-role-user  { background:#e0e7ff; color:#3730a3; }
+.auth-role-admin   { background:#fef3c7; color:#92400e; }
+.auth-role-manager { background:#ccfbf1; color:#115e59; }
+.auth-role-user    { background:#e0e7ff; color:#3730a3; }
 /* Permission toggle switch */
 .auth-toggle-label {
   display:inline-flex; align-items:center; gap:8px;
@@ -1833,6 +1834,7 @@ body {
 ._pmSaveBtn { padding:5px 13px; background:#1e293b; color:#fff; border:none; border-radius:7px; font-family:'Montserrat',sans-serif; font-size:0.72rem; font-weight:700; cursor:pointer; flex-shrink:0; white-space:nowrap; }
 ._pmSaveBtn:hover { background:#334155; }
 ._pmRolePill { display:inline-block; padding:2px 10px; border-radius:20px; font-size:0.6rem; font-weight:800; letter-spacing:0.5px; background:#fef3c7; color:#92400e; }
+._pmRolePill.manager { background:#ccfbf1; color:#115e59; }
 ._pmRolePill.user { background:#e0e7ff; color:#3730a3; }
 ._pmActions { padding:14px 24px 22px; display:flex; flex-direction:column; gap:9px; }
 ._pmCpwBtn { width:100%; padding:11px; border-radius:9px; cursor:pointer; background:#f1f5f9; border:1.5px solid #e2e8f0; font-family:'Montserrat',sans-serif; font-size:0.85rem; font-weight:700; color:#334155; transition:background .2s; }
@@ -2458,7 +2460,7 @@ function _ubOpenModal() {
   _s('_pmValEmail', email);
   _s('_pmValSince', sess.created_at ? _pmFmtDate(sess.created_at) : '—');
   var rb = document.getElementById('_pmValRole');
-  if (rb) { rb.textContent = (sess.role||'user').toUpperCase(); rb.className = '_pmRolePill'+(sess.role==='admin'?'':' user'); }
+  if (rb) { rb.textContent = (sess.role||'user').toUpperCase(); rb.className = '_pmRolePill'+(sess.role==='admin'?'':sess.role==='manager'?' manager':' user'); }
   _pmApplyPhoto(localStorage.getItem('userProfilePhoto_' + uKey), '_pmAvatarImg', '_pmInitial');
   var ov = document.getElementById('_ubModalOverlay');
   if (ov) { ov.classList.add('open'); document.body.style.overflow='hidden'; }
@@ -3913,6 +3915,14 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
             <div style="text-align:center;color:#94a3b8;padding:16px;font-family:Montserrat,sans-serif;font-size:0.8rem;">Click Refresh to load</div>
           </div>
         </div>
+
+        <!-- Amendment Requests (finance_ledger period-lock overrides) -->
+        <div style="margin-bottom:24px;">
+          <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;color:#92400e;margin-bottom:10px;display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;background:#d97706;border-radius:50%;display:inline-block;"></span>Amendment Requests — Pending</div>
+          <div id="arPendingList" style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:12px;">
+            <div style="text-align:center;color:#94a3b8;padding:16px;font-family:Montserrat,sans-serif;font-size:0.8rem;">Loading...</div>
+          </div>
+        </div>
       </div>
 
       <!-- ═══ PARTNERS / INVESTORS ═══ -->
@@ -4600,7 +4610,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
             <span id="scAutoNote" style="font-size:0.72rem;color:#94a3b8;">Invoice income (Sheets Cutting) is recorded automatically when invoices are submitted.</span>
           </div>
           <div style="margin-top:8px;padding:7px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:0.7rem;color:#92400e;line-height:1.6;">
-            🔒 All manually entered amounts are <strong>automatically locked after 40 days</strong> and cannot be edited or deleted.
+            🔒 Entries lock 5 days after month-end. Admins can always edit; Managers can edit within the current month. Locked entries require an amendment request.
           </div>
 
         </div>
@@ -5117,8 +5127,44 @@ async function flushPendingUpdates() {
             entityLabel: _label, table: 'invoices', recordKey: _recordKey, changedFields: occ.changedFields,
             onKeepLocal: async function() {
               try {
+                var oldRow = null;
+                try {
+                  var _fetchRes = await sb.from('invoices').select('*').eq('id', item.supaId).maybeSingle();
+                  oldRow = _fetchRes.data || null;
+                } catch(fetchErr) {
+                  console.warn('[audit_log] failed to fetch prior invoices row for '+item.supaId+':', fetchErr);
+                }
+
+                var _sessPUKl = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+                if (typeof _isPeriodLocked === 'function' && _isPeriodLocked(_idx !== -1 ? database[_idx].date : null, _sessPUKl)) {
+                  _pendingUpdates = _pendingUpdates.filter(p => p.supaId !== item.supaId);
+                  _savePendingUpdates();
+                  if (typeof _promptAmendmentRequest === 'function') {
+                    _promptAmendmentRequest('invoices', item.supaId, 'update', item.updates);
+                  }
+                  toast('🔒 A queued update for ' + _label + ' is period-locked — submitted for Admin review.');
+                  return;
+                }
+
                 const { error } = await sb.from('invoices').update(item.updates).eq('id', item.supaId);
                 if (!error) {
+                  try {
+                    var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+                    var auditRes = await sb.from('audit_log').insert({
+                      table_name:          'invoices',
+                      record_key:          item.supaId,
+                      action:              'update',
+                      old_data:             oldRow,
+                      new_data:             { ...oldRow, ...item.updates },
+                      changed_by:           _sess ? _sess.id : null,
+                      changed_by_username:  _sess ? _sess.username : null,
+                      source:               'app'
+                    });
+                    if (auditRes.error) throw auditRes.error;
+                  } catch(auditErr) {
+                    console.warn('[audit_log sync] failed for '+item.supaId+':', auditErr);
+                  }
+
                   _pendingUpdates = _pendingUpdates.filter(p => p.supaId !== item.supaId);
                   _savePendingUpdates();
                   toast('✅ Queued update saved — kept your version');
@@ -5141,8 +5187,47 @@ async function flushPendingUpdates() {
           continue; // leave in queue, don't silently overwrite
         }
       }
+      var oldRow = null;
+      try {
+        var _fetchRes = await sb.from('invoices').select('*').eq('id', item.supaId).maybeSingle();
+        oldRow = _fetchRes.data || null;
+      } catch(fetchErr) {
+        console.warn('[audit_log] failed to fetch prior invoices row for '+item.supaId+':', fetchErr);
+      }
+
+      var _dbRow2 = database.find(function(d){ return d._supaId === item.supaId; });
+      var _rowDate2 = _dbRow2 ? _dbRow2.date : null;
+      var _sessPU = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+      if (typeof _isPeriodLocked === 'function' && _isPeriodLocked(_rowDate2, _sessPU)) {
+        _pendingUpdates = _pendingUpdates.filter(p => p.supaId !== item.supaId);
+        _savePendingUpdates();
+        if (typeof _submitAmendmentRequest === 'function') {
+          _submitAmendmentRequest('invoices', item.supaId, 'update', item.updates,
+            '(Auto-submitted) Queued update could not sync — period is now locked.');
+        }
+        toast('🔒 A queued update for ' + (_dbRow2 ? _dbRow2.invNum : item.supaId) + ' is period-locked — submitted for Admin review.');
+        continue;
+      }
+
       const { error } = await sb.from('invoices').update(item.updates).eq('id', item.supaId);
       if (!error) {
+        try {
+          var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+          var auditRes = await sb.from('audit_log').insert({
+            table_name:          'invoices',
+            record_key:          item.supaId,
+            action:              'update',
+            old_data:             oldRow,
+            new_data:             { ...oldRow, ...item.updates },
+            changed_by:           _sess ? _sess.id : null,
+            changed_by_username:  _sess ? _sess.username : null,
+            source:               'app'
+          });
+          if (auditRes.error) throw auditRes.error;
+        } catch(auditErr) {
+          console.warn('[audit_log sync] failed for '+item.supaId+':', auditErr);
+        }
+
         _pendingUpdates = _pendingUpdates.filter(p => p.supaId !== item.supaId);
         _savePendingUpdates();
       }
@@ -5165,7 +5250,7 @@ async function flushExcelPendingQueue() {
   if (!navigator.onLine || !sb || _excelPendingQueue.length === 0) return;
   const toTry = [..._excelPendingQueue];
   for (const item of toTry) {
-    const r = await _writeExcelFieldWithOCC(item.orderNum, item.field, item.value, item.baselineUpdatedAt);
+    const r = await _writeExcelFieldWithOCC(item.orderNum, item.field, item.value, item.baselineUpdatedAt, undefined, true);
     if (r.ok && !r.queued) {
       _excelPendingQueue = _excelPendingQueue.filter(p => !(p.orderNum === item.orderNum && p.field === item.field));
       _saveExcelPendingQueue();
@@ -5193,6 +5278,19 @@ async function flushExcelPendingQueue() {
           toast('☁ Loaded the current ' + item.field + ' from the server instead');
         }
       });
+    } else if (r.locked) {
+      // Background flush — no modal (nothing prompted this, no user is present to
+      // explain "why"). Stop the infinite retry by removing the item from the queue,
+      // and still create a real amendment_requests row (auto-submitted, clearly
+      // marked as such) so an Admin has something real to review instead of the
+      // edit silently vanishing.
+      _excelPendingQueue = _excelPendingQueue.filter(p => !(p.orderNum === item.orderNum && p.field === item.field));
+      _saveExcelPendingQueue();
+      if (typeof _submitAmendmentRequest === 'function') {
+        _submitAmendmentRequest('excel_invoices', item.orderNum, 'update', { [item.field]: item.value },
+          '(Auto-submitted) Queued offline edit could not sync — period is now locked.');
+      }
+      toast('🔒 A queued ' + item.field + ' edit for ' + item.orderNum + ' is period-locked — submitted for Admin review.');
     }
   }
 }
@@ -5314,7 +5412,7 @@ async function flushPendingQueue() {
 async function _upsertCustomerPaymentWithOCC(invoiceRef, type, newAmount, meta, baselineSnapshot) {
   if (typeof sb === 'undefined' || !sb) return { ok:false, error:'no sb client' };
   const { data: existing } = await sb.from('customer_payments')
-    .select('id,amount,updated_at').eq('invoice_ref', invoiceRef).eq('type', type).limit(1);
+    .select('*').eq('invoice_ref', invoiceRef).eq('type', type).limit(1);
   const row = existing && existing[0];
 
   if (row && baselineSnapshot && baselineSnapshot.updatedAt) {
@@ -5325,22 +5423,67 @@ async function _upsertCustomerPaymentWithOCC(invoiceRef, type, newAmount, meta, 
     }
   }
 
+  // Built here (not inside the insert branch below) purely so the period-lock
+  // check below can pass it as proposedNewData for the insert case — same
+  // object, same fields, only constructed earlier. Nothing else changes.
   const nowIso = new Date().toISOString();
+  const _newRow = {
+    customer_name: meta.customer_name || 'Unknown', phone: meta.phone || null,
+    amount: newAmount, payment_date: meta.payment_date, type: type, source: 'non_imported',
+    note: meta.note || (type + ' — ' + invoiceRef), invoice_ref: invoiceRef,
+    created_by: meta.created_by || (typeof currentUser !== 'undefined' ? currentUser : 'unknown'),
+    updated_at: nowIso
+  };
+
+  // Period-lock check — before any mutation branch below.
+  var _plockDate = row ? row.payment_date : (meta && meta.payment_date);
+  var _sessPlock = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+  if (typeof _isPeriodLocked === 'function' && _isPeriodLocked(_plockDate, _sessPlock)) {
+    if (typeof _promptAmendmentRequest === 'function') {
+      _promptAmendmentRequest('customer_payments', row ? row.id : null, row ? (newAmount > 0 ? 'update' : 'delete') : 'insert', row ? { amount: newAmount } : _newRow);
+    }
+    return { ok:false, locked:true };
+  }
+
   try {
+    let _auditAction = null, _auditNewData = null;
     if (row) {
       if (newAmount > 0) {
         await sb.from('customer_payments').update({ amount: newAmount, updated_at: nowIso }).eq('id', row.id);
+        _auditAction = 'update';
+        _auditNewData = { ...row, amount: newAmount, updated_at: nowIso };
       } else {
         await sb.from('customer_payments').delete().eq('id', row.id);
+        _auditAction = 'delete';
+        _auditNewData = null;
       }
     } else if (newAmount > 0) {
-      await sb.from('customer_payments').insert({
-        customer_name: meta.customer_name || 'Unknown', phone: meta.phone || null,
-        amount: newAmount, payment_date: meta.payment_date, type: type, source: 'non_imported',
-        note: meta.note || (type + ' — ' + invoiceRef), invoice_ref: invoiceRef,
-        created_by: meta.created_by || (typeof currentUser !== 'undefined' ? currentUser : 'unknown'),
-        updated_at: nowIso
-      });
+      await sb.from('customer_payments').insert(_newRow);
+      _auditAction = 'insert';
+      _auditNewData = _newRow;
+    }
+
+    // Audit trail: log this write. Own try/catch — must never affect the
+    // customer_payments write above, which has already succeeded by this
+    // point. No-op (stays null) if neither branch executed, i.e. a
+    // no-existing-row + newAmount<=0 call that legitimately writes nothing.
+    if (_auditAction) {
+      try {
+        const _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+        const { error: auditError } = await sb.from('audit_log').insert({
+          table_name:          'customer_payments',
+          record_key:          invoiceRef+'|'+type,
+          action:               _auditAction,
+          old_data:             row || null,
+          new_data:             _auditNewData,
+          changed_by:           _sess ? _sess.id : null,
+          changed_by_username:  _sess ? _sess.username : null,
+          source:               'app'
+        });
+        if (auditError) throw auditError;
+      } catch(auditErr) {
+        console.warn('[audit_log sync] failed for '+invoiceRef+'|'+type+':', auditErr);
+      }
     }
     return { ok:true, updatedAt: nowIso };
   } catch(e) {
@@ -5978,7 +6121,7 @@ const _HO_SUPA_DEFAULTS = {
 // SDK's own internal keys, any future/unknown key) passes through
 // completely untouched.
 var _BRANCH_SCOPED_EXACT = [
-  '_lastActivity','_offlineAuth','_summaryCache','app_version','cash_holders_cache',
+  '_offlineAuth','_summaryCache','app_version','cash_holders_cache',
   'cp_pending_sync','drafts_db','excel_pending_queue','fin_ledger_delete',
   'fin_ledger_local','fin_ledger_pending','inv_accent','inv_address','inv_counter',
   'inv_database','inv_drafts','inv_drag_free_mode','inv_drag_free_pos',
@@ -6513,49 +6656,6 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
-// ── SESSION TIMEOUT ──────────────────────────────────────────
-// Admin: 30 minutes idle → auto logout
-// Staff: 30 days since last login → auto logout
-(function() {
-  var _ADMIN_TIMEOUT_MS = 30 * 60 * 1000;          // 30 minutes
-  var _USER_TIMEOUT_MS  = 30 * 24 * 60 * 60 * 1000; // 30 days
-
-  function _resetActivity() {
-    localStorage.setItem('_lastActivity', Date.now());
-  }
-
-  function _checkSession() {
-    var _now = Date.now();
-    var _last = parseInt(localStorage.getItem('_lastActivity') || _now);
-
-    // Get current role
-    var _sess = null;
-    try { _sess = JSON.parse(sessionStorage.getItem('_authSession') || 'null'); } catch(e) { console.error('[_checkSession]', e); }
-    var _isAdmin = _sess && _sess.role === 'admin';
-
-    var _timeout = _isAdmin ? _ADMIN_TIMEOUT_MS : _USER_TIMEOUT_MS;
-
-    if (_now - _last > _timeout) {
-      localStorage.removeItem('_lastActivity');
-      var _msg = _isAdmin
-        ? '⚠️ Admin session expired after 30 minutes idle. Please log in again.'
-        : '⚠️ Session expired after 30 days. Please log in again.';
-      if (typeof toast === 'function') toast(_msg);
-      setTimeout(function() {
-        if (typeof doLogout === 'function') doLogout();
-        else window.location.reload();
-      }, 2000);
-    }
-  }
-
-  // Reset activity on any interaction
-  ['click','keydown','scroll','touchstart'].forEach(function(evt) {
-    document.addEventListener(evt, _resetActivity, { passive: true });
-  });
-
-  _resetActivity();
-  setInterval(_checkSession, 60000); // check every minute
-})();
 Sentry.setTag("app_version", "1.0.4");
 const storedVersion = localStorage.getItem('app_version');
 if (storedVersion !== APP_VERSION) {
@@ -7698,6 +7798,16 @@ async function saveToSupabase(data) {
   }
   try {
     // 1. Write the invoice row.
+    // Period-lock check — before either the insert or upsert branch below.
+    var _sessInv = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+    if (typeof _isPeriodLocked === 'function' && _isPeriodLocked(data.date, _sessInv)) {
+      if (typeof _promptAmendmentRequest === 'function') {
+        _promptAmendmentRequest('invoices', data._supaId || null, data._supaId ? 'update' : 'insert', data);
+      }
+      setSyncStatus('offline', '● Save paused — period locked');
+      return { ok:false, locked:true };
+    }
+
     // Calculate total sqft and kg from items
     var _totalSqft = (data.items || []).reduce(function(s, it) {
       return s + (parseFloat(it.sqft) || 0) * (parseFloat(it.qty) || 1);
@@ -7752,9 +7862,64 @@ async function saveToSupabase(data) {
         invErr = _ins.error;
         break;
       }
+
+      // Audit trail: log the successful insert exactly once, after the
+      // retry loop has actually produced a real row — never per attempt.
+      if (inv && !invErr) {
+        try {
+          var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+          var auditRes = await sb.from('audit_log').insert({
+            table_name:          'invoices',
+            record_key:          inv.id,
+            action:              'insert',
+            old_data:             null,
+            new_data:             inv,
+            changed_by:           _sess ? _sess.id : null,
+            changed_by_username:  _sess ? _sess.username : null,
+            source:               'app'
+          });
+          if (auditRes.error) throw auditRes.error;
+        } catch(auditErr) {
+          console.warn('[audit_log sync] failed for '+inv.id+' ('+_invoiceRow.inv_num+'):', auditErr);
+        }
+      }
     } else {
+      // Audit trail: capture whether a row for this inv_num already exists
+      // BEFORE the upsert, since the upsert's response alone can't tell us
+      // insert vs update. Read-only — does not gate or delay the upsert
+      // itself. Leaves a narrow window where old_data could be marginally
+      // stale if another write lands between this fetch and the upsert —
+      // an accepted, known limitation, not a correctness risk to the
+      // actual invoice write.
+      var oldRow = null;
+      try {
+        var _fetchRes = await sb.from('invoices').select('*').eq('inv_num', data.invNum).maybeSingle();
+        oldRow = _fetchRes.data || null;
+      } catch(fetchErr) {
+        console.warn('[audit_log] failed to fetch prior invoices row for '+data.invNum+':', fetchErr);
+      }
+
       var _ups = await sb.from('invoices').upsert(_invoiceRow, { onConflict: 'inv_num' }).select().single();
       inv = _ups.data; invErr = _ups.error;
+
+      if (inv && !invErr) {
+        try {
+          var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+          var auditRes = await sb.from('audit_log').insert({
+            table_name:          'invoices',
+            record_key:          inv.id,
+            action:              oldRow ? 'update' : 'insert',
+            old_data:             oldRow,
+            new_data:             inv,
+            changed_by:           _sess ? _sess.id : null,
+            changed_by_username:  _sess ? _sess.username : null,
+            source:               'app'
+          });
+          if (auditRes.error) throw auditRes.error;
+        } catch(auditErr) {
+          console.warn('[audit_log sync] failed for '+inv.id+' ('+data.invNum+'):', auditErr);
+        }
+      }
     }
 
     if (invErr) throw invErr;
@@ -8043,7 +8208,11 @@ window.addEventListener('load', async () => {
 
 function setDate() {
   var _d = document.getElementById('invDate');
-  if (_d) _d.textContent = fmtDateDisplay(new Date().toISOString().split('T')[0]);
+  if (_d) {
+    var _iso = new Date().toISOString().split('T')[0];
+    _d.textContent = fmtDateDisplay(_iso);
+    _d.dataset.iso = _iso;
+  }
 }
 
 // PREVIEW ONLY — computes and displays the next available invoice number,
@@ -8693,7 +8862,7 @@ function collectData() {
 
   return {
     invNum:         document.getElementById('invNumber').textContent,
-    date:           document.getElementById('invDate').textContent,
+    date:           (document.getElementById('invDate').dataset.iso || document.getElementById('invDate').textContent),
     custName:       document.getElementById('custName').value.trim(),
     phone:          document.getElementById('custPhone').value.trim(),
     area:           document.getElementById('custArea').value.trim(),
@@ -8947,7 +9116,7 @@ async function submitInvoice() {
 
 function recordAsNull() {
   var invNum = document.getElementById('invNumber').textContent;
-  var date   = document.getElementById('invDate').textContent;
+  var date   = (document.getElementById('invDate').dataset.iso || document.getElementById('invDate').textContent);
   showModal('⛔ Record as Null',
     'Invoice <strong>' + invNum + '</strong> will be saved with no customer details — the number is preserved in sequence and marked NULL.<br><br>' +
     '<span style="color:#c0392b;font-weight:600;">This cannot be undone easily. Continue?</span>',
@@ -9171,6 +9340,12 @@ async function doSubmit(data) {
           });
         return;
       }
+      if (result && result.locked) {
+        // Blocked by period-lock — saveToSupabase() already prompted the
+        // amendment-request modal. Don't mark this as synced, and don't
+        // queue it for retry (it would just be rejected again every flush).
+        return;
+      }
       const supaId = result;
       if (supaId !== null) {
         const idx2 = database.findIndex(d => d.invNum === data.invNum);
@@ -9280,6 +9455,12 @@ async function doSubmit(data) {
     // Try to save to Supabase immediately
     setSyncStatus('syncing', '● Saving...');
     const supaId = await saveToSupabase(data);
+    if (supaId && supaId.locked) {
+      // Blocked by period-lock — saveToSupabase() already prompted the
+      // amendment-request modal. Leave the already-pushed local record as
+      // is (no _supaId), and don't queue it for retry.
+      return;
+    }
     if (supaId !== null) {
       // If saveToSupabase() had to retry under a different number (real
       // collision caught by the DB's unique constraint), keep the local
@@ -10245,7 +10426,7 @@ async function _saveDBFieldBadDebtCommit(idx, amt) {
 // field: any single excel_invoices column ('total_bill' | 'discount' | 'bad_debt' | 'received' | ...)
 // Owns only the raw column write + OCC + queueing. Callers keep their own
 // `remaining` recompute and customer_payments mirror logic.
-async function _writeExcelFieldWithOCC(orderNum, field, value, baselineUpdatedAt, extraCols) {
+async function _writeExcelFieldWithOCC(orderNum, field, value, baselineUpdatedAt, extraCols, suppressPrompt) {
   const _rawOrderNum = String(orderNum).replace(/^INV-/i, '');
   const amt = parseFloat(value);
   if (isNaN(amt) || amt < 0) return { ok:false, error:'invalid amount' };
@@ -10253,6 +10434,18 @@ async function _writeExcelFieldWithOCC(orderNum, field, value, baselineUpdatedAt
   if (!navigator.onLine || typeof sb === 'undefined' || !sb) {
     _addToExcelPendingQueue(_rawOrderNum, field, amt, baselineUpdatedAt);
     return { ok:true, queued:true };
+  }
+
+  // Period-lock check — before the OCC conflict check, before any mutation.
+  // Self-contained fetch (mirrors Site A's own pre-write lookup); no caller changes needed.
+  var _dateRes = await sb.from('excel_invoices').select('date').eq('order_num', _rawOrderNum).maybeSingle();
+  var _rowDate = _dateRes.data ? _dateRes.data.date : null;
+  var _sessExcel = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+  if (typeof _isPeriodLocked === 'function' && _isPeriodLocked(_rowDate, _sessExcel)) {
+    if (!suppressPrompt && typeof _promptAmendmentRequest === 'function') {
+      _promptAmendmentRequest('excel_invoices', orderNum, 'update', { [field]: amt });
+    }
+    return { ok:false, locked:true };
   }
 
   const occ = await _checkOCC('excel_invoices', 'order_num', _rawOrderNum, baselineUpdatedAt, [{key: field, label: field, localValue: amt}]);
@@ -10679,7 +10872,9 @@ function loadInvoiceIntoForm(inv, editIdx) {
 
   // Show the original invoice number (not the next counter)
   document.getElementById('invNumber').textContent = inv.invNum;
-  document.getElementById('invDate').textContent   = inv.date;
+  var _invDateEl = document.getElementById('invDate');
+  _invDateEl.textContent = fmtDateDisplay(inv.date);
+  _invDateEl.dataset.iso = inv.date;
 
   // Rebuild rows — enough rows for all items (min 5)
   const itemCount = (inv.items || []).length;
@@ -14123,6 +14318,182 @@ async function denyIdentityChange(requestId) {
   } catch(e) { console.error(e); toast('⚠ Failed to deny'); }
 }
 
+// ── Amendment Request Review (Admin) ──
+
+async function renderAmendmentRequestsPanel() {
+  if (!sb) return;
+  var pendingEl = document.getElementById('arPendingList');
+  try {
+    var { data: pending } = await sb.from('amendment_requests')
+      .select('id, table_name, record_key, action, old_data, proposed_new_data, description, created_at, requested_by, app_users!amendment_requests_requested_by_fkey(display_name)')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    if (!pendingEl) return;
+    if (!pending || !pending.length) {
+      pendingEl.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:16px;font-family:Montserrat,sans-serif;font-size:0.8rem;">No pending requests</div>';
+      return;
+    }
+
+    pendingEl.innerHTML = pending.map(function(r) {
+      var staffName = (r.app_users && r.app_users.display_name) || 'Unknown';
+      var actionLabel = r.action === 'insert' ? 'Add new entry' : r.action === 'delete' ? 'Delete entry' : 'Edit entry';
+      var pd = r.proposed_new_data;
+      var proposedHtml = pd
+        ? ('<div style="color:#166534;font-size:0.72rem;margin-top:4px;">Proposed: '
+            + (pd.amount != null ? 'Rs. ' + pd.amount + ' · ' : '')
+            + (pd.category ? pd.category + ' · ' : '')
+            + (pd.entry_date || '')
+            + (pd.note ? ' · "' + pd.note + '"' : '')
+            + '</div>')
+        : '';
+      var needsManual = (r.action === 'update' && !pd);
+      var manualNote = needsManual
+        ? '<div style="color:#92400e;font-size:0.7rem;margin-top:4px;font-weight:700;">⚠ No proposed value captured — make the edit manually first, then Mark Approved.</div>'
+        : '';
+      var approveBtn = needsManual
+        ? '<button onclick="markAmendmentApprovedManually(\'' + r.id + '\')" style="padding:5px 12px;background:#d97706;color:#fff;border:none;border-radius:6px;font-size:0.72rem;cursor:pointer;">✅ Mark Approved (edit made manually)</button>'
+        : '<button onclick="approveAmendmentRequest(\'' + r.id + '\')" style="padding:5px 12px;background:#059669;color:#fff;border:none;border-radius:6px;font-size:0.72rem;cursor:pointer;">✅ Approve</button>';
+
+      return '<div style="background:#fff;border-radius:8px;padding:10px 12px;margin-bottom:8px;">'
+        + '<div style="font-family:Montserrat,sans-serif;font-size:0.78rem;">'
+        + '<strong>' + staffName + '</strong> requests: <strong>' + actionLabel + '</strong>'
+        + ' — <span style="color:#64748b;">' + r.table_name + ' / ' + r.record_key + '</span>'
+        + (r.description ? '<div style="color:#64748b;font-size:0.72rem;margin-top:2px;">"' + r.description + '"</div>' : '')
+        + proposedHtml
+        + manualNote
+        + '</div>'
+        + '<div style="display:flex;gap:6px;margin-top:8px;">'
+        + approveBtn
+        + '<button onclick="denyAmendmentRequest(\'' + r.id + '\')" style="padding:5px 12px;background:#dc2626;color:#fff;border:none;border-radius:6px;font-size:0.72rem;cursor:pointer;">✕ Deny</button>'
+        + '</div></div>';
+    }).join('');
+  } catch(e) { console.warn(e); }
+}
+
+async function approveAmendmentRequest(requestId) {
+  var sess = _authGetSession();
+  if (!sess || sess.role !== 'admin') { toast('⛔ Admin only'); return; }
+  if (!sb) { toast('📵 Cannot approve — offline'); return; }
+  try {
+    var { data: reqRows } = await sb.from('amendment_requests').select('*').eq('id', requestId).limit(1);
+    if (!reqRows || !reqRows.length) { toast('⚠ Request not found'); return; }
+    var req = reqRows[0];
+
+    if (req.action === 'update' && !req.proposed_new_data) {
+      toast('⚠ No proposed value to auto-apply — make the edit manually, then use "Mark Approved".');
+      return;
+    }
+
+    // Fetch the record's CURRENT state fresh for the audit trail — req.old_data
+    // (captured at request-submission time) may be stale if the record changed
+    // since. Skipped for 'insert': there's no existing record to fetch.
+    var freshOldData = null;
+    if (req.action !== 'insert') {
+      try {
+        var freshRes = await sb.from('finance_ledger').select('*').eq('ref_id', req.record_key).maybeSingle();
+        if (freshRes.error) throw freshRes.error;
+        freshOldData = freshRes.data || null;
+      } catch(fetchErr) {
+        console.warn('[amendment approve] fresh fetch failed for '+req.record_key+', falling back to request-time old_data:', fetchErr);
+      }
+      if (!freshOldData) {
+        console.warn('[amendment approve] no current row found for '+req.record_key+' — falling back to request-time old_data');
+        freshOldData = req.old_data;
+      }
+    }
+
+    var newRowData = null;
+
+    if (req.action === 'insert') {
+      var insertPayload = { ...req.proposed_new_data, ref_id: 'amend_' + requestId, created_by: sess.username };
+      var insRes = await sb.from('finance_ledger').insert(insertPayload).select().single();
+      if (insRes.error) throw insRes.error;
+      newRowData = insRes.data;
+    } else if (req.action === 'delete') {
+      var delRes = await sb.from('finance_ledger').delete().eq('ref_id', req.record_key).eq('source','manual');
+      if (delRes.error) throw delRes.error;
+      newRowData = null;
+    } else if (req.action === 'update') {
+      var updRes = await sb.from('finance_ledger').update(req.proposed_new_data).eq('ref_id', req.record_key);
+      if (updRes.error) throw updRes.error;
+      newRowData = req.proposed_new_data;
+    }
+
+    try {
+      var auditKey = (req.action === 'insert' && newRowData) ? (newRowData.ref_id || newRowData.id) : req.record_key;
+      await sb.from('audit_log').insert({
+        table_name: 'finance_ledger',
+        record_key: auditKey,
+        action: req.action,
+        old_data: req.action === 'insert' ? null : freshOldData,
+        new_data: newRowData,
+        changed_by: sess.id,
+        changed_by_username: sess.username,
+        source: 'amendment'
+      });
+    } catch(auditErr) {
+      console.warn('[amendment approve] audit_log failed:', auditErr);
+    }
+
+    await sb.from('amendment_requests').update({
+      status: 'approved', reviewed_by: sess.id, reviewed_at: new Date().toISOString()
+    }).eq('id', requestId);
+
+    toast('✅ Amendment approved and applied');
+    if (typeof renderAmendmentRequestsPanel === 'function') renderAmendmentRequestsPanel();
+    if (typeof refreshAllFinanceViews === 'function') refreshAllFinanceViews();
+  } catch(e) { console.error(e); toast('⚠ Failed to approve: ' + (e.message || e)); }
+}
+
+async function denyAmendmentRequest(requestId) {
+  var sess = _authGetSession();
+  if (!sess || sess.role !== 'admin') { toast('⛔ Admin only'); return; }
+  try {
+    await sb.from('amendment_requests').update({
+      status: 'denied', reviewed_by: sess.id, reviewed_at: new Date().toISOString()
+    }).eq('id', requestId);
+    toast('✕ Request denied');
+    if (typeof renderAmendmentRequestsPanel === 'function') renderAmendmentRequestsPanel();
+  } catch(e) { console.error(e); toast('⚠ Failed to deny'); }
+}
+
+async function markAmendmentApprovedManually(requestId) {
+  var sess = _authGetSession();
+  if (!sess || sess.role !== 'admin') { toast('⛔ Admin only'); return; }
+  if (!sb) { toast('📵 Cannot approve — offline'); return; }
+  try {
+    var { data: reqRows } = await sb.from('amendment_requests').select('*').eq('id', requestId).limit(1);
+    if (!reqRows || !reqRows.length) { toast('⚠ Request not found'); return; }
+    var req = reqRows[0];
+
+    try {
+      await sb.from('audit_log').insert({
+        table_name: 'finance_ledger',
+        record_key: req.record_key,
+        action: 'update',
+        old_data: req.old_data,
+        // No auto-captured new value — this only documents that an Admin manually
+        // applied some change outside this flow and is marking the request resolved.
+        // The real resulting value lives in finance_ledger itself, not here.
+        new_data: null,
+        changed_by: sess.id,
+        changed_by_username: sess.username,
+        source: 'amendment'
+      });
+    } catch(auditErr) {
+      console.warn('[amendment mark-manual] audit_log failed:', auditErr);
+    }
+
+    await sb.from('amendment_requests').update({
+      status: 'approved', reviewed_by: sess.id, reviewed_at: new Date().toISOString()
+    }).eq('id', requestId);
+
+    toast('✅ Marked approved — remember you must have already made the edit manually');
+    if (typeof renderAmendmentRequestsPanel === 'function') renderAmendmentRequestsPanel();
+  } catch(e) { console.error(e); toast('⚠ Failed to mark approved: ' + (e.message || e)); }
+}
+
 async function _checkNameExists(name) {
   var empty = { inv_count: 0, excel_count: 0, pay_count: 0, grant_count: 0 };
   if (!sb || !name) return empty;
@@ -14856,7 +15227,38 @@ async function _convertSubmittedToDraft(editIdx, data, supaId) {
   if (supaId && navigator.onLine && typeof sb !== 'undefined' && sb) {
     try {
       await sb.from('invoice_items').delete().eq('invoice_id', supaId);
+
+      // Audit trail: capture pre-delete state. Own try/catch — a failed
+      // fetch must not block the delete below; old_data just stays null.
+      var oldRow = null;
+      try {
+        var _fetchRes = await sb.from('invoices').select('*').eq('id', supaId).maybeSingle();
+        oldRow = _fetchRes.data || null;
+      } catch(fetchErr) {
+        console.warn('[audit_log] failed to fetch prior invoices row for '+supaId+':', fetchErr);
+      }
+
       await sb.from('invoices').delete().eq('id', supaId);
+
+      // Audit trail: log this delete. Own try/catch — must never affect the
+      // delete above, the invoice_items delete, or the shop_settings/
+      // inv_drafts upsert that follows.
+      try {
+        var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+        var auditRes = await sb.from('audit_log').insert({
+          table_name:          'invoices',
+          record_key:          supaId,
+          action:              'delete',
+          old_data:             oldRow,
+          new_data:             null,
+          changed_by:           _sess ? _sess.id : null,
+          changed_by_username:  _sess ? _sess.username : null,
+          source:               'app'
+        });
+        if (auditRes.error) throw auditRes.error;
+      } catch(auditErr) {
+        console.warn('[audit_log sync] failed for '+supaId+':', auditErr);
+      }
     } catch(e) { console.warn('[saveDraft] failed to delete live invoice row:', e); }
   }
   if (typeof sb !== 'undefined' && sb) {
@@ -16004,8 +16406,44 @@ async function sCatDoRename(type, idx, oldName) {
   // Update Supabase directly for all cloud entries with old name
   if (typeof sb !== 'undefined' && sb && navigator.onLine) {
     try {
+      // Audit trail: snapshot all matching rows before updating. Own try/catch —
+      // a failed fetch must not block the update below.
+      var oldRowsCat = [];
+      try {
+        var _fetchResCat = await sb.from('finance_ledger').select('*')
+          .eq('entry_type', type).eq('category', oldName);
+        oldRowsCat = _fetchResCat.data || [];
+      } catch(fetchErrCat) {
+        console.warn('[audit_log] failed to fetch prior finance_ledger rows for rename '+type+'/'+oldName+':', fetchErrCat);
+      }
+
       await sb.from('finance_ledger').update({category: newName})
         .eq('entry_type', type).eq('category', oldName);
+
+      // Audit trail: one audit_log row per updated row, keyed by that row's own
+      // ref_id, inserted as a single bulk call — this can be 300+ rows, so a
+      // per-row loop with individual awaits is not acceptable here.
+      if (oldRowsCat.length) {
+        try {
+          var _sessCat = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+          var auditRowsCat = oldRowsCat.map(function(row) {
+            return {
+              table_name:          'finance_ledger',
+              record_key:          row.ref_id || row.id,
+              action:              'update',
+              old_data:             row,
+              new_data:             Object.assign({}, row, {category: newName}),
+              changed_by:           _sessCat ? _sessCat.id : null,
+              changed_by_username:  _sessCat ? _sessCat.username : null,
+              source:               'app'
+            };
+          });
+          var auditResCat = await sb.from('audit_log').insert(auditRowsCat);
+          if (auditResCat.error) throw auditResCat.error;
+        } catch(auditErrCat) {
+          console.warn('[audit_log sync] failed for rename '+type+'/'+oldName+' ('+oldRowsCat.length+' rows):', auditErrCat);
+        }
+      }
     } catch(e) { console.warn('sCatDoRename Supabase update failed:', e); }
   }
   // Update locked set in memory so UI reflects rename immediately
@@ -17343,6 +17781,7 @@ function _runApplyHeaderToInvoice() {
   var invDateEl = document.getElementById('invDate');
   var invNum  = invNumEl  ? (invNumEl.textContent  || invNumEl.value  || '') : '';
   var invDate = invDateEl ? (invDateEl.textContent || invDateEl.value || '') : '';
+  var invDateIso = invDateEl ? (invDateEl.dataset.iso || '') : '';
 
   var invTitle = s.invTitle || localStorage.getItem('inv_inv_title') || 'INVOICE';
   var rightHtml =
@@ -17375,6 +17814,15 @@ function _runApplyHeaderToInvoice() {
   // Populate date + invoice number into the freshly rendered header elements
   if (typeof setDate === 'function') setDate();
   if (typeof setInvoiceNumber === 'function') setInvoiceNumber();
+
+  // setDate() above always resets to today — if we had a real preserved
+  // date (e.g. an old invoice loaded via editInvoice), restore it now.
+  // Empty preserved value (first load, no invoice open) means setDate()'s
+  // fresh "today" result is correct and should be left alone.
+  if (invDateIso) {
+    var _newDateEl = document.getElementById('invDate');
+    if (_newDateEl) { _newDateEl.textContent = invDate; _newDateEl.dataset.iso = invDateIso; }
+  }
 
   applyHeaderSettings();
 
@@ -17431,6 +17879,7 @@ function _applyHeaderSettingsNow() {
   var _datEl  = document.getElementById('invDate');
   var _invNum  = _numEl  ? (_numEl.textContent  || '') : '';
   var _invDate = _datEl  ? (_datEl.textContent  || '') : '';
+  var _invDateIso = _datEl ? (_datEl.dataset.iso || '') : '';
   var rightHtml =
     '<span class="ph-lbl">' + (s.invTitle || 'INVOICE') + ' #</span>' +
     '<span class="ph-val" id="invNumber" style="font-size:1.05rem;">' + (_invNum  || '&mdash;') + '</span>' +
@@ -17473,6 +17922,16 @@ function _applyHeaderSettingsNow() {
   // Repopulate date and invoice number into freshly created elements
   if (typeof setDate === 'function') setDate();
   if (typeof setInvoiceNumber === 'function') setInvoiceNumber();
+
+  // setDate() above always resets to today — if we had a real preserved
+  // date (e.g. an old invoice loaded via editInvoice), restore it now.
+  // Empty preserved value (first load, no invoice open) means setDate()'s
+  // fresh "today" result is correct and should be left alone.
+  if (_invDateIso) {
+    var _newDatEl = document.getElementById('invDate');
+    if (_newDatEl) { _newDatEl.textContent = _invDate; _newDatEl.dataset.iso = _invDateIso; }
+  }
+
   if (typeof applyUrduFont === 'function') applyUrduFont();
 }
 // Single function that saves the Urdu font to localStorage (inv_urdu_font),
@@ -18779,8 +19238,40 @@ async function rpAddEntry() {
       source: 'non_imported',
       created_by: currentUser || 'unknown'
     };
-    var res = await sb.from('customer_payments').insert(payRow);
+
+    var _sessD = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+    if (typeof _isPeriodLocked === 'function' && _isPeriodLocked(date, _sessD)) {
+      status.textContent = '🔒 This period is locked.'; status.style.color = '#dc2626';
+      toast('🔒 This period is locked. Submit an amendment request to make changes.');
+      if (typeof _promptAmendmentRequest === 'function') {
+        _promptAmendmentRequest('customer_payments', null, 'insert', payRow);
+      }
+      return;
+    }
+
+    var res = await sb.from('customer_payments').insert(payRow).select().single();
     if (res.error) throw res.error;
+
+    // Audit trail: log this insert. Own try/catch — must never affect the
+    // customer_payments insert above, which has already succeeded by this
+    // point, or the status/UI updates that follow. record_key is the real
+    // id — no invoice_ref/type composite exists for this write site.
+    try {
+      var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+      var auditRes = await sb.from('audit_log').insert({
+        table_name:          'customer_payments',
+        record_key:          res.data.id,
+        action:              'insert',
+        old_data:             null,
+        new_data:             res.data,
+        changed_by:           _sess ? _sess.id : null,
+        changed_by_username:  _sess ? _sess.username : null,
+        source:               'app'
+      });
+      if (auditRes.error) throw auditRes.error;
+    } catch(auditErr) {
+      console.warn('[audit_log sync] failed for '+((res.data && res.data.id) || (payRow.customer_name+'|'+payRow.amount+'|'+payRow.payment_date))+':', auditErr);
+    }
 
     status.textContent = '✅ Entry added successfully!'; status.style.color = '#059669';
     document.getElementById('rpEntryAmount').value = '';
@@ -18802,8 +19293,37 @@ async function rpDeletePayment(paymentId, encodedName) {
   try {
     if (typeof sb === 'undefined' || !sb) throw new Error('Not connected to Supabase.');
 
+    // Audit trail: capture pre-delete state. Own try/catch — a failed
+    // fetch must not block the delete below; old_data just stays null.
+    var oldRow = null;
+    try {
+      var _fetchRes = await sb.from('customer_payments').select('*').eq('id', paymentId).maybeSingle();
+      oldRow = _fetchRes.data || null;
+    } catch(fetchErr) {
+      console.warn('[audit_log] failed to fetch prior customer_payments row for '+paymentId+':', fetchErr);
+    }
+
     var res = await sb.from('customer_payments').delete().eq('id', paymentId);
     if (res.error) throw res.error;
+
+    // Audit trail: log this delete. Own try/catch — must never affect the
+    // delete above, or the renderSummary()/panel refresh/toast that follow.
+    try {
+      var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+      var auditRes = await sb.from('audit_log').insert({
+        table_name:          'customer_payments',
+        record_key:          paymentId,
+        action:              'delete',
+        old_data:             oldRow || null,
+        new_data:             null,
+        changed_by:           _sess ? _sess.id : null,
+        changed_by_username:  _sess ? _sess.username : null,
+        source:               'app'
+      });
+      if (auditRes.error) throw auditRes.error;
+    } catch(auditErr) {
+      console.warn('[audit_log sync] failed for '+paymentId+':', auditErr);
+    }
 
     _rpInvalidateSummaryCache();
     if (typeof renderSummary === 'function') renderSummary();
@@ -18837,7 +19357,42 @@ function rpEditPayment(paymentId, currentAmount, encodedName, entryType, noDelet
               { label: '🗑️ Delete', cls: 'btn-danger', fn: async function() {
                   closeModal();
                   try {
+                    var oldRow = null;
+                    try {
+                      var _fetchRes = await sb.from('customer_payments').select('*').eq('id', paymentId).maybeSingle();
+                      oldRow = _fetchRes.data || null;
+                    } catch(fetchErr) {
+                      console.warn('[audit_log] failed to fetch prior customer_payments row for '+paymentId+':', fetchErr);
+                    }
+
+                    var _sessFDel = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+                    if (typeof _isPeriodLocked === 'function' && _isPeriodLocked(oldRow && oldRow.payment_date, _sessFDel)) {
+                      toast('🔒 This period is locked. Submit an amendment request to make changes.');
+                      if (typeof _promptAmendmentRequest === 'function') {
+                        _promptAmendmentRequest('customer_payments', paymentId, 'delete', null);
+                      }
+                      return;
+                    }
+
                     await sb.from('customer_payments').delete().eq('id', paymentId);
+
+                    try {
+                      var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+                      var auditRes = await sb.from('audit_log').insert({
+                        table_name:          'customer_payments',
+                        record_key:          paymentId,
+                        action:              'delete',
+                        old_data:             oldRow || null,
+                        new_data:             null,
+                        changed_by:           _sess ? _sess.id : null,
+                        changed_by_username:  _sess ? _sess.username : null,
+                        source:               'app'
+                      });
+                      if (auditRes.error) throw auditRes.error;
+                    } catch(auditErr) {
+                      console.warn('[audit_log sync] failed for '+paymentId+':', auditErr);
+                    }
+
                     if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
                     var name = decodeURIComponent(encodedName);
                     await rpRenderCustomerPanel(name, _rpCurrentCustomer ? _rpCurrentCustomer.phone : '');
@@ -18854,7 +19409,42 @@ function rpEditPayment(paymentId, currentAmount, encodedName, entryType, noDelet
           closeModal();
           if (isNaN(newAmt) || newAmt < 0) { alert('Invalid amount'); return; }
           try {
+            var oldRow = null;
+            try {
+              var _fetchRes = await sb.from('customer_payments').select('*').eq('id', paymentId).maybeSingle();
+              oldRow = _fetchRes.data || null;
+            } catch(fetchErr) {
+              console.warn('[audit_log] failed to fetch prior customer_payments row for '+paymentId+':', fetchErr);
+            }
+
+            var _sessFSave = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+            if (typeof _isPeriodLocked === 'function' && _isPeriodLocked(oldRow && oldRow.payment_date, _sessFSave)) {
+              toast('🔒 This period is locked. Submit an amendment request to make changes.');
+              if (typeof _promptAmendmentRequest === 'function') {
+                _promptAmendmentRequest('customer_payments', paymentId, 'update', { amount: newAmt });
+              }
+              return;
+            }
+
             await sb.from('customer_payments').update({ amount: newAmt }).eq('id', paymentId);
+
+            try {
+              var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+              var auditRes = await sb.from('audit_log').insert({
+                table_name:          'customer_payments',
+                record_key:          paymentId,
+                action:              'update',
+                old_data:             oldRow,
+                new_data:             { ...oldRow, amount: newAmt },
+                changed_by:           _sess ? _sess.id : null,
+                changed_by_username:  _sess ? _sess.username : null,
+                source:               'app'
+              });
+              if (auditRes.error) throw auditRes.error;
+            } catch(auditErr) {
+              console.warn('[audit_log sync] failed for '+paymentId+':', auditErr);
+            }
+
             if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
             if (typeof renderSummary === 'function') renderSummary();
             var name = decodeURIComponent(encodedName);
@@ -18940,11 +19530,62 @@ async function rpDeleteExcelDisc(orderNum, encodedName) {
   try {
     if (typeof sb === 'undefined' || !sb) throw new Error('Not connected');
     var _rawNum = String(orderNum).replace(/^INV-/i,'');
+    var _invRef = 'INV-' + _rawNum;
+
+    // Audit trail: capture ALL matching rows — more than one can genuinely exist
+    // (no unique constraint on invoice_ref+type; confirmed possible via a real
+    // race already observed in this table). Moved here, before either table is
+    // touched, so the same fetch also serves the period-lock check below.
+    var oldRows = [];
+    try {
+      var _fetchRes = await sb.from('customer_payments').select('*').eq('invoice_ref', _invRef).eq('type','discount');
+      oldRows = _fetchRes.data || [];
+    } catch(fetchErr) {
+      console.warn('[audit_log] failed to fetch prior customer_payments rows for '+_invRef+'|discount:', fetchErr);
+    }
+
+    // Period-lock check — blocks the ENTIRE dual-table action (excel_invoices
+    // zero-out AND customer_payments delete) if ANY matching row is locked.
+    var _sessG = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+    var _anyLockedG = oldRows.some(function(r){ return typeof _isPeriodLocked === 'function' && _isPeriodLocked(r.payment_date, _sessG); });
+    if (_anyLockedG) {
+      toast('🔒 This period is locked. Submit an amendment request to make changes.');
+      if (typeof _promptAmendmentRequest === 'function') {
+        _promptAmendmentRequest('customer_payments', _invRef+'|discount', 'delete', null);
+      }
+      return;
+    }
+
     var row = (_excelDBCache||[]).find(function(r){ return String(r.order_num).replace(/^INV-/i,'') === _rawNum; });
     if (row) { row.discount = 0; }
     await sb.from('excel_invoices').update({ discount: 0 }).eq('order_num', _rawNum);
-    var _invRef = 'INV-' + _rawNum;
+
     await sb.from('customer_payments').delete().eq('invoice_ref', _invRef).eq('type','discount');
+
+    // Audit trail: one audit_log row per deleted row. Per-row try/catch —
+    // a bad insert must not stop the rest, and none of this may affect
+    // the delete above or the renderSummary()/panel refresh/toast below.
+    if (oldRows.length) {
+      var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+      for (var _i = 0; _i < oldRows.length; _i++) {
+        try {
+          var auditRes = await sb.from('audit_log').insert({
+            table_name:          'customer_payments',
+            record_key:          _invRef+'|discount',
+            action:              'delete',
+            old_data:             oldRows[_i],
+            new_data:             null,
+            changed_by:           _sess ? _sess.id : null,
+            changed_by_username:  _sess ? _sess.username : null,
+            source:               'app'
+          });
+          if (auditRes.error) throw auditRes.error;
+        } catch(auditErr) {
+          console.warn('[audit_log sync] failed for '+_invRef+'|discount (row '+(oldRows[_i]&&oldRows[_i].id)+'):', auditErr);
+        }
+      }
+    }
+
     if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
     var name = decodeURIComponent(encodedName);
     await rpRenderCustomerPanel(name, _rpCurrentCustomer ? _rpCurrentCustomer.phone : '');
@@ -19076,11 +19717,62 @@ async function rpDeleteExcelBd(orderNum, encodedName) {
   try {
     if (typeof sb === 'undefined' || !sb) throw new Error('Not connected');
     var _rawNum = String(orderNum).replace(/^INV-/i,'');
+    var _invRef = 'INV-' + _rawNum;
+
+    // Audit trail: capture ALL matching rows — more than one can genuinely exist
+    // (no unique constraint on invoice_ref+type; confirmed possible via a real
+    // race already observed in this table). Moved here, before either table is
+    // touched, so the same fetch also serves the period-lock check below.
+    var oldRows = [];
+    try {
+      var _fetchRes = await sb.from('customer_payments').select('*').eq('invoice_ref', _invRef).eq('type','bad_debt');
+      oldRows = _fetchRes.data || [];
+    } catch(fetchErr) {
+      console.warn('[audit_log] failed to fetch prior customer_payments rows for '+_invRef+'|bad_debt:', fetchErr);
+    }
+
+    // Period-lock check — blocks the ENTIRE dual-table action (excel_invoices
+    // zero-out AND customer_payments delete) if ANY matching row is locked.
+    var _sessH = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+    var _anyLockedH = oldRows.some(function(r){ return typeof _isPeriodLocked === 'function' && _isPeriodLocked(r.payment_date, _sessH); });
+    if (_anyLockedH) {
+      toast('🔒 This period is locked. Submit an amendment request to make changes.');
+      if (typeof _promptAmendmentRequest === 'function') {
+        _promptAmendmentRequest('customer_payments', _invRef+'|bad_debt', 'delete', null);
+      }
+      return;
+    }
+
     var row = (_excelDBCache||[]).find(function(r){ return String(r.order_num).replace(/^INV-/i,'') === _rawNum; });
     if (row) { row.bad_debt = 0; }
     await sb.from('excel_invoices').update({ bad_debt: 0 }).eq('order_num', _rawNum);
-    var _invRef = 'INV-' + _rawNum;
+
     await sb.from('customer_payments').delete().eq('invoice_ref', _invRef).eq('type','bad_debt');
+
+    // Audit trail: one audit_log row per deleted row. Per-row try/catch —
+    // a bad insert must not stop the rest, and none of this may affect
+    // the delete above or the renderSummary()/panel refresh/toast below.
+    if (oldRows.length) {
+      var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+      for (var _i = 0; _i < oldRows.length; _i++) {
+        try {
+          var auditRes = await sb.from('audit_log').insert({
+            table_name:          'customer_payments',
+            record_key:          _invRef+'|bad_debt',
+            action:              'delete',
+            old_data:             oldRows[_i],
+            new_data:             null,
+            changed_by:           _sess ? _sess.id : null,
+            changed_by_username:  _sess ? _sess.username : null,
+            source:               'app'
+          });
+          if (auditRes.error) throw auditRes.error;
+        } catch(auditErr) {
+          console.warn('[audit_log sync] failed for '+_invRef+'|bad_debt (row '+(oldRows[_i]&&oldRows[_i].id)+'):', auditErr);
+        }
+      }
+    }
+
     if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
     var name = decodeURIComponent(encodedName);
     await rpRenderCustomerPanel(name, _rpCurrentCustomer ? _rpCurrentCustomer.phone : '');
@@ -21218,15 +21910,9 @@ function onDailyCatChange() {
         _amtInput.style.borderColor = '#059669';
         _amtInput.dataset.editLocalId = localId || '';
         if (overrideBox) overrideBox.style.display = 'none';
-        // Show pen for all manual entries on May 13+ (except Salaries), within 40-day window
+        // Show pen based on the shared period-lock rule (matches auto-fetch branch above)
         const _penBtn = document.getElementById('dailyAmtEditBtn');
-        let _showPen = false;
-        if (isManual && cat !== 'Salaries' && !(type === 'income' && cat === 'Sheets Cutting')) {
-          if (date > '2026-05-31') {
-            const daysSince = (Date.now() - new Date(date).getTime()) / 86400000;
-            _showPen = daysSince <= 40;
-          }
-        }
+        const _showPen = isManual && _shouldShowPen(type, cat, date, localId);
         if (_penBtn) _penBtn.style.display = _showPen ? '' : 'none';
         if (saveBtn && _showPen) { saveBtn.textContent = '✏️ Update Entry'; saveBtn.style.background = '#d97706'; }
       }
@@ -21893,23 +22579,25 @@ function _saveFinEditMeta(){ localStorage.setItem(FIN_EDIT_META_KEY, JSON.string
     .catch(function(e) { console.warn('[hydrate] Failed:', e); });
 })();
 
-// Returns {canEdit, reason} — unlimited edits within 40 days from first save
-// entryDate (YYYY-MM-DD) is used as fallback when no local meta exists (e.g. Supabase-fetched entries)
 // ─── Helper: should the pen (edit) icon be shown for this entry? ───
 // Rules:
 //  • Salaries (monthly_expense / Salaries) → NEVER editable, no pen
 //  • Sheets Cutting auto-fetched → no pen (caller must pass isManual=false to suppress)
 //  • All other types → pen shown if:
-//      - entry date >= 2026-05-13 (older entries already locked)
-//      - within 40 days of the entry's own firstSavedAt timestamp (or entry_date if no meta)
+//      - entry date > 2026-05-31 (older entries already locked)
+//      - _isPeriodLocked(entryDate, session) is false — Admin always exempt,
+//        Manager exempt only for the current/open period, everyone else (and
+//        Manager for older periods) locked once the period's 5-day grace
+//        window has passed
 function _shouldShowPen(type, cat, entryDate, localId) {
   // Salaries: never editable
   if (type === 'monthly_expense' && cat === 'Salaries') return false;
   // Entries on or before May 12 2026 are already locked
   if (entryDate && entryDate <= '2026-05-31') return false;
-  // 40-day window check
-  const { canEdit } = _canEditEntry(localId || '', entryDate || '');
-  return canEdit;
+  // Period-lock check
+  var _sessPen = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+  if (typeof _isPeriodLocked === 'function' && _isPeriodLocked(entryDate, _sessPen)) return false;
+  return true;
 }
 
 function _canEditEntry(localId, entryDate) {
@@ -21949,11 +22637,16 @@ function unlockDailyAmount() {
   const amtEl  = document.getElementById('dailyAmount');
   const penBtn = document.getElementById('dailyAmtEditBtn');
   if (!amtEl) return;
-  // Check edit window before unlocking — use entry date for 40-day fallback
-  const localId   = amtEl.dataset.editLocalId || '';
   const entryDate = (document.getElementById('dailyDate') || {}).value || '';
-  const { canEdit, reason } = _canEditEntry(localId, entryDate);
-  if (!canEdit) { toast(reason); return; }
+  // Period-lock check
+  var _sessUnlock = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+  if (typeof _isPeriodLocked === 'function' && _isPeriodLocked(entryDate, _sessUnlock)) {
+    toast('🔒 This period is locked. Submit an amendment request to make changes.');
+    if (typeof _promptAmendmentRequest === 'function') {
+      _promptAmendmentRequest('finance_ledger', amtEl.dataset.editLocalId || null, 'update', null);
+    }
+    return;
+  }
   amtEl.readOnly = false;
   amtEl.style.background  = '';
   amtEl.style.color       = '';
@@ -22004,7 +22697,7 @@ async function flushFinLedgerPending() {
     const entry = _finLedgerLocal.find(e => e.local_id === localId);
     if (!entry) continue; // already deleted locally
     try {
-      const { error } = await sb.from('finance_ledger').insert({
+      const { data: insertedRow, error } = await sb.from('finance_ledger').insert({
         entry_date:  entry.entry_date,
         entry_type:  entry.entry_type,
         category:    entry.category,
@@ -22013,8 +22706,29 @@ async function flushFinLedgerPending() {
         source:      entry.source || 'manual',
         created_by:  entry.created_by || currentUser || 'unknown',
         ref_id:      entry.local_id
-      });
+      }).select().single();
       if (error) throw error;
+
+      // Audit trail: log this insert. Own try/catch — must never affect
+      // the insert above (already succeeded) or the verify/mark-synced
+      // logic that follows.
+      try {
+        var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+        var auditRes = await sb.from('audit_log').insert({
+          table_name:          'finance_ledger',
+          record_key:          entry.local_id,
+          action:              'insert',
+          old_data:             null,
+          new_data:             insertedRow,
+          changed_by:           _sess ? _sess.id : null,
+          changed_by_username:  _sess ? _sess.username : null,
+          source:               'app'
+        });
+        if (auditRes.error) throw auditRes.error;
+      } catch(auditErr) {
+        console.warn('[audit_log sync] failed for '+entry.local_id+':', auditErr);
+      }
+
       // Mark synced in local record
       const idx = _finLedgerLocal.findIndex(e => e.local_id === localId);
       if (idx !== -1) {
@@ -22042,7 +22756,44 @@ async function flushFinLedgerPending() {
   const stillDeleting = [];
   for (const localId of [..._finDeleteQueue]) {
     try {
+      // Audit trail: capture ALL matching rows before the delete — more
+      // than one can genuinely exist (no unique constraint on ref_id+
+      // source; this table has direct evidence of real duplicates via
+      // its own dup-purge logic and the "Remove Duplicates" admin tool).
+      // Own try/catch — a failed fetch must not block the delete below.
+      var oldRows = [];
+      try {
+        var _fetchRes = await sb.from('finance_ledger').select('*').eq('ref_id', localId).eq('source','manual');
+        oldRows = _fetchRes.data || [];
+      } catch(fetchErr) {
+        console.warn('[audit_log] failed to fetch prior finance_ledger rows for '+localId+':', fetchErr);
+      }
+
       await sb.from('finance_ledger').delete().eq('ref_id', localId).eq('source', 'manual');
+
+      // Audit trail: one audit_log row per deleted row. Per-row try/catch —
+      // a bad insert must not stop the rest, and none of this may affect
+      // the delete above or the queue-removal logic that follows.
+      if (oldRows.length) {
+        var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+        for (var _i = 0; _i < oldRows.length; _i++) {
+          try {
+            var auditRes = await sb.from('audit_log').insert({
+              table_name:          'finance_ledger',
+              record_key:          localId,
+              action:              'delete',
+              old_data:             oldRows[_i],
+              new_data:             null,
+              changed_by:           _sess ? _sess.id : null,
+              changed_by_username:  _sess ? _sess.username : null,
+              source:               'app'
+            });
+            if (auditRes.error) throw auditRes.error;
+          } catch(auditErr) {
+            console.warn('[audit_log sync] failed for '+localId+' (row '+(oldRows[_i]&&oldRows[_i].id)+'):', auditErr);
+          }
+        }
+      }
     } catch(e) {
       console.warn('Finance delete sync failed for', localId, e);
       stillDeleting.push(localId);
@@ -22544,8 +23295,14 @@ async function _saveDailyEntryInner() {
 
   // Check edit limit if editing an existing entry
   if (editLocalId) {
-    const { canEdit, reason } = _canEditEntry(editLocalId, date);
-    if (!canEdit) { toast(reason); return; }
+    var _sessA = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+    if (typeof _isPeriodLocked === 'function' && _isPeriodLocked(date, _sessA)) {
+      toast('🔒 This period is locked. Submit an amendment request to make changes.');
+      if (typeof _promptAmendmentRequest === 'function') {
+        _promptAmendmentRequest('finance_ledger', editLocalId, 'update', { entry_date: date, category: cat, amount: amount, note: note });
+      }
+      return;
+    }
   }
 
   // If editing an existing local entry, remove old one first
@@ -22556,10 +23313,55 @@ async function _saveDailyEntryInner() {
     _saveFinPending();
     // Queue Supabase delete for old entry
     if (navigator.onLine && sb) {
-      try { await sb.from('finance_ledger').delete().eq('ref_id', editLocalId).eq('source','manual'); }
+      try {
+        // Audit trail: snapshot all matching rows before deleting. Own try/catch —
+        // a failed fetch must not block the delete below.
+        var oldRowsA = [];
+        try {
+          var _fetchResA = await sb.from('finance_ledger').select('*').eq('ref_id', editLocalId).eq('source','manual');
+          oldRowsA = _fetchResA.data || [];
+        } catch(fetchErrA) {
+          console.warn('[audit_log] failed to fetch prior finance_ledger rows for '+editLocalId+':', fetchErrA);
+        }
+
+        await sb.from('finance_ledger').delete().eq('ref_id', editLocalId).eq('source','manual');
+
+        // Audit trail: one audit_log row per deleted row. Per-row try/catch — a bad
+        // insert must not stop the rest or affect anything later in this function.
+        if (oldRowsA.length) {
+          var _sessA = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+          for (var _iA = 0; _iA < oldRowsA.length; _iA++) {
+            try {
+              var auditResA = await sb.from('audit_log').insert({
+                table_name:          'finance_ledger',
+                record_key:          editLocalId,
+                action:              'delete',
+                old_data:             oldRowsA[_iA],
+                new_data:             null,
+                changed_by:           _sessA ? _sessA.id : null,
+                changed_by_username:  _sessA ? _sessA.username : null,
+                source:               'app'
+              });
+              if (auditResA.error) throw auditResA.error;
+            } catch(auditErrA) {
+              console.warn('[audit_log sync] failed for '+editLocalId+' (row '+(oldRowsA[_iA]&&oldRowsA[_iA].id)+'):', auditErrA);
+            }
+          }
+        }
+      }
       catch(e) { console.error('[_saveDailyEntryInner:finance_ledger delete]', e); _finDeleteQueue.push(editLocalId); _saveFinDelete(); }
     } else { _finDeleteQueue.push(editLocalId); _saveFinDelete(); }
   } else {
+    // Period-lock check — must run before ANY local state mutation, so a
+    // rejected save leaves _finLedgerLocal/_finPendingSync untouched.
+    var _sessB2 = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+    if (typeof _isPeriodLocked === 'function' && _isPeriodLocked(date, _sessB2)) {
+      toast('🔒 This period is locked. Submit an amendment request to make changes.');
+      if (typeof _promptAmendmentRequest === 'function') {
+        _promptAmendmentRequest('finance_ledger', null, 'insert', { entry_date: date, entry_type: type, category: cat, amount: amount, note: note });
+      }
+      return;
+    }
     // Check if same date+type+cat already exists — if so, replace it
     const existingIdx = _finLedgerLocal.findIndex(e =>
       e.entry_date === date && e.entry_type === type && e.category === cat
@@ -22570,7 +23372,42 @@ async function _saveDailyEntryInner() {
       _finPendingSync = _finPendingSync.filter(id => id !== oldId);
       _saveFinPending();
       if (navigator.onLine && sb) {
-        try { await sb.from('finance_ledger').delete().eq('ref_id', oldId).eq('source','manual'); }
+        try {
+          // Audit trail: snapshot all matching rows before deleting. Own try/catch —
+          // a failed fetch must not block the delete below.
+          var oldRowsB = [];
+          try {
+            var _fetchResB = await sb.from('finance_ledger').select('*').eq('ref_id', oldId).eq('source','manual');
+            oldRowsB = _fetchResB.data || [];
+          } catch(fetchErrB) {
+            console.warn('[audit_log] failed to fetch prior finance_ledger rows for '+oldId+':', fetchErrB);
+          }
+
+          await sb.from('finance_ledger').delete().eq('ref_id', oldId).eq('source','manual');
+
+          // Audit trail: one audit_log row per deleted row. Per-row try/catch — a bad
+          // insert must not stop the rest or affect anything later in this function.
+          if (oldRowsB.length) {
+            var _sessB = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+            for (var _iB = 0; _iB < oldRowsB.length; _iB++) {
+              try {
+                var auditResB = await sb.from('audit_log').insert({
+                  table_name:          'finance_ledger',
+                  record_key:          oldId,
+                  action:              'delete',
+                  old_data:             oldRowsB[_iB],
+                  new_data:             null,
+                  changed_by:           _sessB ? _sessB.id : null,
+                  changed_by_username:  _sessB ? _sessB.username : null,
+                  source:               'app'
+                });
+                if (auditResB.error) throw auditResB.error;
+              } catch(auditErrB) {
+                console.warn('[audit_log sync] failed for '+oldId+' (row '+(oldRowsB[_iB]&&oldRowsB[_iB].id)+'):', auditErrB);
+              }
+            }
+          }
+        }
         catch(e) { console.error('[_saveDailyEntryInner:finance_ledger delete]', e); _finDeleteQueue.push(oldId); _saveFinDelete(); }
       } else { _finDeleteQueue.push(oldId); _saveFinDelete(); }
     }
@@ -22579,11 +23416,47 @@ async function _saveDailyEntryInner() {
     //  for every category and type — income, expense, saving, auto-fetched or manual)
     if (navigator.onLine && sb) {
       try {
+        // Audit trail: snapshot all matching rows before deleting. Own try/catch —
+        // a failed fetch must not block the delete below.
+        var oldRowsC = [];
+        try {
+          var _fetchResC = await sb.from('finance_ledger').select('*')
+            .eq('entry_date', date).eq('entry_type', type).eq('category', cat).eq('source', 'manual');
+          oldRowsC = _fetchResC.data || [];
+        } catch(fetchErrC) {
+          console.warn('[audit_log] failed to fetch prior finance_ledger rows for dup-purge:', fetchErrC);
+        }
+
         await sb.from('finance_ledger').delete()
           .eq('entry_date', date)
           .eq('entry_type', type)
           .eq('category', cat)
           .eq('source', 'manual');
+
+        // Audit trail: one audit_log row per deleted row, keyed by that row's own
+        // ref_id — this delete can span multiple distinct logical entries, so each
+        // must be attributable to its own real ref_id, not a shared key. Per-row
+        // try/catch — a bad insert must not stop the rest or affect anything later.
+        if (oldRowsC.length) {
+          var _sessC = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+          for (var _iC = 0; _iC < oldRowsC.length; _iC++) {
+            try {
+              var auditResC = await sb.from('audit_log').insert({
+                table_name:          'finance_ledger',
+                record_key:          oldRowsC[_iC].ref_id,
+                action:              'delete',
+                old_data:             oldRowsC[_iC],
+                new_data:             null,
+                changed_by:           _sessC ? _sessC.id : null,
+                changed_by_username:  _sessC ? _sessC.username : null,
+                source:               'app'
+              });
+              if (auditResC.error) throw auditResC.error;
+            } catch(auditErrC) {
+              console.warn('[audit_log sync] failed for '+(oldRowsC[_iC]&&oldRowsC[_iC].ref_id)+' (row '+(oldRowsC[_iC]&&oldRowsC[_iC].id)+'):', auditErrC);
+            }
+          }
+        }
       } catch(_dupE) { console.warn('[dup-purge]', _dupE); }
     }
   }
@@ -22662,10 +23535,46 @@ async function _saveDailyEntryInner() {
     // Delete from Supabase if online
     if (navigator.onLine && sb) {
       try {
+        // Audit trail: snapshot all matching rows before deleting. Own try/catch —
+        // a failed fetch must not block the delete below.
+        var oldRowsD = [];
+        try {
+          var _fetchResD = await sb.from('finance_ledger').select('*')
+            .eq('entry_date', date).eq('source','invoice').eq('category','Sheets Cutting');
+          oldRowsD = _fetchResD.data || [];
+        } catch(fetchErrD) {
+          console.warn('[audit_log] failed to fetch prior finance_ledger rows for invoice-suppression:', fetchErrD);
+        }
+
         await sb.from('finance_ledger').delete()
           .eq('entry_date', date)
           .eq('source', 'invoice')
           .eq('category', 'Sheets Cutting');
+
+        // Audit trail: one audit_log row per deleted row, keyed by that row's own
+        // ref_id — this is a date+category-scoped purge that can span multiple
+        // distinct rows, not one logical entry with duplicates. Per-row try/catch —
+        // a bad insert must not stop the rest or affect anything later.
+        if (oldRowsD.length) {
+          var _sessD = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+          for (var _iD = 0; _iD < oldRowsD.length; _iD++) {
+            try {
+              var auditResD = await sb.from('audit_log').insert({
+                table_name:          'finance_ledger',
+                record_key:          oldRowsD[_iD].ref_id,
+                action:              'delete',
+                old_data:             oldRowsD[_iD],
+                new_data:             null,
+                changed_by:           _sessD ? _sessD.id : null,
+                changed_by_username:  _sessD ? _sessD.username : null,
+                source:               'app'
+              });
+              if (auditResD.error) throw auditResD.error;
+            } catch(auditErrD) {
+              console.warn('[audit_log sync] failed for '+(oldRowsD[_iD]&&oldRowsD[_iD].ref_id)+' (row '+(oldRowsD[_iD]&&oldRowsD[_iD].id)+'):', auditErrD);
+            }
+          }
+        }
       } catch(e2) { console.warn('Could not delete invoice entries for manual override:', e2); }
     }
     // Reset toggle UI back to auto mode ready for next entry
@@ -22680,7 +23589,7 @@ async function _saveDailyEntryInner() {
   // 3. Try to push to Supabase
   if (navigator.onLine && sb) {
     try {
-      const { error } = await sb.from('finance_ledger').insert({
+      const { data: insertedRowE, error } = await sb.from('finance_ledger').insert({
         entry_date:  newEntry.entry_date,
         entry_type:  newEntry.entry_type,
         category:    newEntry.category,
@@ -22689,8 +23598,29 @@ async function _saveDailyEntryInner() {
         source:      newEntry.source,
         created_by:  newEntry.created_by,
         ref_id:      localId
-      });
+      }).select().single();
       if (error) throw error;
+
+      // Audit trail: log this insert. Own try/catch — must never affect the
+      // insert above (already succeeded), the sync-flag update below, or
+      // anything else that follows.
+      try {
+        var _sessE = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+        var auditResE = await sb.from('audit_log').insert({
+          table_name:          'finance_ledger',
+          record_key:          localId,
+          action:              'insert',
+          old_data:             null,
+          new_data:             insertedRowE,
+          changed_by:           _sessE ? _sessE.id : null,
+          changed_by_username:  _sessE ? _sessE.username : null,
+          source:               'app'
+        });
+        if (auditResE.error) throw auditResE.error;
+      } catch(auditErrE) {
+        console.warn('[audit_log sync] failed for '+localId+':', auditErrE);
+      }
+
       const idx = _finLedgerLocal.findIndex(e => e.local_id === localId);
       if (idx !== -1) { _finLedgerLocal[idx]._synced = true; _savefinLocal(); }
       updateFinSyncBadge();
@@ -23169,6 +24099,17 @@ async function deleteFinEntryFromModal(id, date, isLocal) {
   if (!id) return;
   if (!confirm('Delete this entry?')) return;
 
+  // Period-lock check — covers both branches below with one check, before
+  // either branch's deletion logic runs.
+  var _sessDel = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+  if (typeof _isPeriodLocked === 'function' && _isPeriodLocked(date, _sessDel)) {
+    toast('🔒 This period is locked. Submit an amendment request to make changes.');
+    if (typeof _promptAmendmentRequest === 'function') {
+      _promptAmendmentRequest('finance_ledger', id, 'delete', null);
+    }
+    return;
+  }
+
   if (isLocal) {
     // Local entry — use local_id system
     _finLedgerLocal = _finLedgerLocal.filter(e => e.local_id !== id);
@@ -23176,14 +24117,80 @@ async function deleteFinEntryFromModal(id, date, isLocal) {
     _finPendingSync = _finPendingSync.filter(pid => pid !== id);
     _saveFinPending();
     if (navigator.onLine && sb) {
-      try { await sb.from('finance_ledger').delete().eq('ref_id', id).eq('source','manual'); }
+      try {
+        // Audit trail: snapshot all matching rows before deleting. Own try/catch —
+        // a failed fetch must not block the delete below.
+        var oldRows = [];
+        try {
+          var _fetchRes = await sb.from('finance_ledger').select('*').eq('ref_id', id).eq('source','manual');
+          oldRows = _fetchRes.data || [];
+        } catch(fetchErr) {
+          console.warn('[audit_log] failed to fetch prior finance_ledger rows for '+id+':', fetchErr);
+        }
+
+        await sb.from('finance_ledger').delete().eq('ref_id', id).eq('source','manual');
+
+        // Audit trail: one audit_log row per deleted row. Per-row try/catch — a bad
+        // insert must not stop the rest or affect the toast/render tail below.
+        if (oldRows.length) {
+          var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+          for (var _i = 0; _i < oldRows.length; _i++) {
+            try {
+              var auditRes = await sb.from('audit_log').insert({
+                table_name:          'finance_ledger',
+                record_key:          id,
+                action:              'delete',
+                old_data:             oldRows[_i],
+                new_data:             null,
+                changed_by:           _sess ? _sess.id : null,
+                changed_by_username:  _sess ? _sess.username : null,
+                source:               'app'
+              });
+              if (auditRes.error) throw auditRes.error;
+            } catch(auditErr) {
+              console.warn('[audit_log sync] failed for '+id+' (row '+(oldRows[_i]&&oldRows[_i].id)+'):', auditErr);
+            }
+          }
+        }
+      }
       catch(e) { console.error('[deleteFinEntryFromModal:finance_ledger delete]', e); _finDeleteQueue.push(id); _saveFinDelete(); }
     } else { _finDeleteQueue.push(id); _saveFinDelete(); }
     toast('🗑️ Entry deleted');
   } else {
     // Supabase-only entry (historical etc.)
     if (!sb) { toast('❌ Not connected'); return; }
-    try { await sb.from('finance_ledger').delete().eq('id', id); toast('🗑️ Entry deleted'); }
+    try {
+      // Audit trail: snapshot the row before deleting. Own try/catch — a failed
+      // fetch must not block the delete below.
+      var oldRow = null;
+      try {
+        var _fetchRes2 = await sb.from('finance_ledger').select('*').eq('id', id).maybeSingle();
+        oldRow = _fetchRes2.data || null;
+      } catch(fetchErr) {
+        console.warn('[audit_log] failed to fetch prior finance_ledger row for '+id+':', fetchErr);
+      }
+
+      await sb.from('finance_ledger').delete().eq('id', id);
+
+      try {
+        var _sess2 = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+        var auditRes2 = await sb.from('audit_log').insert({
+          table_name:          'finance_ledger',
+          record_key:          id,
+          action:              'delete',
+          old_data:             oldRow,
+          new_data:             null,
+          changed_by:           _sess2 ? _sess2.id : null,
+          changed_by_username:  _sess2 ? _sess2.username : null,
+          source:               'app'
+        });
+        if (auditRes2.error) throw auditRes2.error;
+      } catch(auditErr) {
+        console.warn('[audit_log sync] failed for '+id+':', auditErr);
+      }
+
+      toast('🗑️ Entry deleted');
+    }
     catch(e) { console.error('[deleteFinEntryFromModal:finance_ledger delete]', e); toast('❌ Error: ' + e.message); return; }
   }
 
@@ -24435,6 +25442,84 @@ async function sSaveMons(d, changedKey){
 }
 function sKey(eid,ym){ return eid+'|'+ym; }
 
+// ── Additive dual-write: salaries table (new, already migrated + backfilled,
+// 120 rows verified). Fires alongside the existing pcnc_mon_v4 blob write,
+// never blocking or rolling it back — same fire-and-forget resilience model
+// as sSaveMons() itself. branch_id is deliberately NOT set here, matching
+// finance_ledger's own insert convention (index.html:22007) — this
+// project's column DEFAULT ('branch_main') is correct for this branch's own
+// isolated Supabase project, exactly like every other local-table insert in
+// this file. wageType/dailyRate/locked are deliberately excluded — confirmed
+// per-employee/dead fields, not part of this table (see prior audit).
+async function _syncSalaryRow(empId, ym, rec) {
+  if (typeof sb === 'undefined' || !sb) return;
+
+  // Audit trail: capture pre-write state so audit_log can record a proper
+  // old_data/new_data diff. A failure here must never block the salaries
+  // upsert below — falls back to null (treated as an insert).
+  let _auditOldData = null;
+  try {
+    const [_ay, _am] = ym.split('-');
+    const { data: _existingRow } = await sb.from('salaries')
+      .select('*')
+      .eq('employee_id', empId)
+      .eq('period_year', parseInt(_ay, 10))
+      .eq('period_month', parseInt(_am, 10))
+      .maybeSingle();
+    _auditOldData = _existingRow || null;
+  } catch(err) {
+    console.warn('[audit_log] failed to fetch prior salaries row for '+empId+'|'+ym+':', err);
+  }
+
+  try {
+    const [yearStr, monthStr] = ym.split('-');
+    const newRow = {
+      employee_id:       empId,
+      period_year:       parseInt(yearStr, 10),
+      period_month:      parseInt(monthStr, 10),
+      basic_sal:         rec.basicSal        !== undefined ? rec.basicSal        : null,
+      base_sal_override: rec.baseSalOverride !== undefined ? rec.baseSalOverride : null,
+      arrears:           rec.arrears || 0,
+      advance:           rec.advance || 0,
+      cash:              rec.cash || 0,
+      tax:               rec.tax || 0,
+      mess:              rec.mess || 0,
+      room:              rec.room || 0,
+      nights:            rec.nights || 0,
+      days:              rec.days || 0,
+      days_worked:       rec.daysWorked || 0,
+      ot_amount:         rec.otAmount     !== undefined ? rec.otAmount     : null,
+      gross_sal:         rec.grossSal     !== undefined ? rec.grossSal     : null,
+      net_sal:           rec.netSal       !== undefined ? rec.netSal       : null,
+      remaining_ref:     rec.remainingRef !== undefined ? rec.remainingRef : null,
+      updated_at:        new Date().toISOString()
+    };
+    const { error } = await sb.from('salaries').upsert(newRow, { onConflict: 'branch_id,employee_id,period_year,period_month' });
+    if (error) throw error;
+
+    // Audit trail: log this write. Own try/catch — must never affect the
+    // salaries upsert above, which has already succeeded by this point.
+    try {
+      const _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+      const { error: auditError } = await sb.from('audit_log').insert({
+        table_name:          'salaries',
+        record_key:          empId+'|'+yearStr+'-'+monthStr,
+        action:              _auditOldData ? 'update' : 'insert',
+        old_data:            _auditOldData,
+        new_data:            newRow,
+        changed_by:          _sess ? _sess.id : null,
+        changed_by_username: _sess ? _sess.username : null,
+        source:              'app'
+      });
+      if (auditError) throw auditError;
+    } catch(auditErr) {
+      console.warn('[audit_log sync] failed for '+empId+'|'+ym+':', auditErr);
+    }
+  } catch(err) {
+    console.warn('[salaries table sync] failed for '+empId+'|'+ym+':', err);
+  }
+}
+
 
 // ── Daily payments helpers ──
 function sDays(){ return JSON.parse(localStorage.getItem(S_DAY)||'{}'); }
@@ -25079,9 +26164,9 @@ function sCard(emp,ym){
   const _pdM  = days.reduce((s,p)=>s+(p.mess||0),0);
   const _pdR  = days.reduce((s,p)=>s+(p.room||0),0);
   const _hasPD = _pdOT+_pdM+_pdR > 0;
-  // Auto-lock all months before current running month (dynamic)
-  const _todayYM = new Date().toISOString().slice(0,7); // e.g. '2026-05'
-  const isLocked = !ym || ym < _todayYM;
+  // Period lock — Admin always exempt, Manager exempt for current/open period only (_isPeriodLocked).
+  const _sessCard = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+  const isLocked = !ym || !!(typeof _isPeriodLocked === 'function' && _isPeriodLocked(ym+'-01', _sessCard));
 
   const fmt2=(n)=>`Rs. ${fmt(n)}`;
 
@@ -25370,26 +26455,41 @@ function sLive(empId,ym){
 
 // Auto-save daysWorked when input loses focus
 function sDWSave(empId, ym){
-  const _todayYM = new Date().toISOString().slice(0,7);
-  if(ym < _todayYM) return;
   const el = document.getElementById('daysWorked_'+empId);
   const val = el ? (parseFloat(el.value)||0) : 0;
   const rec = sGetRec(empId, ym);
-  sSetRec(empId, ym, {...rec, daysWorked: val});
+  const updated = {...rec, daysWorked: val};
+  var _sessDW = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+  if (typeof _isPeriodLocked === 'function' && _isPeriodLocked(ym+'-01', _sessDW)) {
+    toast('🔒 This period is locked. Submit an amendment request to make changes.');
+    if (typeof _promptAmendmentRequest === 'function') {
+      _promptAmendmentRequest('salaries', empId+'|'+ym, 'update', updated);
+    }
+    return;
+  }
+  sSetRec(empId, ym, updated);
+  _syncSalaryRow(empId, ym, updated);
   sRenderBar(ym);
 }
 
 // Auto-save nights/days OT when input loses focus
 function sOTSave(empId, ym){
-  const _todayYM = new Date().toISOString().slice(0,7);
-  if(ym < _todayYM) return;
   const g = id => { const el=document.getElementById(id+'_'+empId); return el?(parseFloat(el.value)||0):0; };
   const emps=sEmps(), emp=emps.find(e=>e.id===empId); if(!emp) return;
   const nights=g('otNights'), days=g('otDays');
   const rec=sGetRec(empId,ym);
   const updated={...rec, nights, days};
   delete updated.otAmount; // clear any old manual override so nights×rate is used
+  var _sessOT = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+  if (typeof _isPeriodLocked === 'function' && _isPeriodLocked(ym+'-01', _sessOT)) {
+    toast('🔒 This period is locked. Submit an amendment request to make changes.');
+    if (typeof _promptAmendmentRequest === 'function') {
+      _promptAmendmentRequest('salaries', empId+'|'+ym, 'update', updated);
+    }
+    return;
+  }
   sSetRec(empId,ym,updated);
+  _syncSalaryRow(empId, ym, updated);
   sRenderBar(ym);
   toast('✅ OT saved — '+emp.name);
   // Re-render card so right-side breakdown reflects the saved nights/days
@@ -25413,7 +26513,6 @@ function sCalcOT(empId, ym){
 function sSave(empId,ym){
   const emps=sEmps(), emp=emps.find(e=>e.id===empId); if(!emp) return;
   const rec = sGetRec(empId,ym);
-  if(rec.locked){ toast('🔒 This month is locked'); return; }
   const gv=id=>{
     const el=document.getElementById(id+'_'+empId);
     if(!el) return 0;
@@ -25429,7 +26528,16 @@ function sSave(empId,ym){
     tax:  gv('tax'),
     ...(emp.wageType==='daily' ? { daysWorked: gv('daysWorked') } : {}),
   };
+  var _sessSv = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+  if (typeof _isPeriodLocked === 'function' && _isPeriodLocked(ym+'-01', _sessSv)) {
+    toast('🔒 This period is locked. Submit an amendment request to make changes.');
+    if (typeof _promptAmendmentRequest === 'function') {
+      _promptAmendmentRequest('salaries', empId+'|'+ym, 'update', updated);
+    }
+    return;
+  }
   sSetRec(empId,ym,updated);
+  _syncSalaryRow(empId, ym, updated);
   toast('✅ Saved — '+emp.name);
   sRenderBar(ym);
   // Re-render the card so the right-side breakdown updates immediately
@@ -25969,7 +27077,7 @@ async function _salCleanAndSeed() {
     // Only insert entries that are missing
     const missing = allEntries.filter(e => !existingDates.has(e.entry_date));
     if (missing.length > 0) {
-      await sb.from('finance_ledger').insert(missing.map(e => ({
+      const { data: insertedRowsSal } = await sb.from('finance_ledger').insert(missing.map(e => ({
         entry_date: e.entry_date,
         entry_type: 'monthly_expense',
         category:   'Salaries',
@@ -25978,8 +27086,35 @@ async function _salCleanAndSeed() {
         source:     'historical_daily',
         created_by: 'system_seed',
         ref_id:     'sal_seed_' + e.entry_date,
-      })));
+      }))).select();
       console.log('[salSeed] Inserted', missing.length, 'missing salary entries.');
+
+      // Audit trail: one audit_log row per inserted row, single bulk insert call.
+      // Own try/catch — a failure must never affect the seed insert above (already
+      // succeeded) or anything in salInit()'s continued execution (this function is
+      // fire-and-forget from its caller, so an audit failure must never surface as
+      // an uncaught rejection).
+      if (insertedRowsSal && insertedRowsSal.length) {
+        try {
+          var _sessSal = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+          var auditRowsSal = insertedRowsSal.map(function(row) {
+            return {
+              table_name:          'finance_ledger',
+              record_key:          row.ref_id,
+              action:              'insert',
+              old_data:             null,
+              new_data:             row,
+              changed_by:           _sessSal ? _sessSal.id : null,
+              changed_by_username:  _sessSal ? _sessSal.username : null,
+              source:               'app'
+            };
+          });
+          var auditResSal = await sb.from('audit_log').insert(auditRowsSal);
+          if (auditResSal.error) throw auditResSal.error;
+        } catch(auditErrSal) {
+          console.warn('[audit_log sync] failed for salary seed ('+insertedRowsSal.length+' rows):', auditErrSal);
+        }
+      }
     } else {
       console.log('[salSeed] All salary entries already present — nothing to do.');
     }
@@ -26521,18 +27656,17 @@ function showPastDayEntries(date){
   const typeLabels={'income':'Income','monthly_expense':'Monthly Expense','onetime_expense':'One-Time Expense','debt_paid':'Debt Paid','savings':'Savings'};
   const _fmtTs = ts => new Date(ts).toLocaleDateString('en-PK',{day:'2-digit',month:'short',year:'numeric'});
 
+  const _sessBadge = (typeof _authGetSession === 'function') ? _authGetSession() : null;
   wrap.innerHTML=`
     <div style="margin-top:12px;">
       <div style="font-size:0.7rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">📋 Saved entries for ${date}</div>
       ${entries.map(e=>{
         const isManual = e.source === 'manual';
-        const meta = isManual ? _finEditMeta[e.local_id] : null;
-        const firstMs  = meta ? meta.firstSavedAt : (isManual ? new Date(e.entry_date).getTime() : null);
-        const untilMs  = firstMs ? firstMs + 40*24*60*60*1000 : null;
-        const isLocked = untilMs ? Date.now() > untilMs : false;
-        const lockBadge = isManual ? (isLocked
-          ? `<span style="display:inline-block;margin-top:4px;font-size:0.6rem;font-weight:700;color:#fff;background:#dc2626;border-radius:4px;padding:1px 6px;">🔒 Locked</span>`
-          : `<span style="display:inline-block;margin-top:4px;font-size:0.6rem;color:#64748b;">First entered: <strong>${_fmtTs(firstMs)}</strong> &nbsp;|&nbsp; Editable until: <strong style="color:#059669;">${_fmtTs(untilMs)}</strong></span>`)
+        const isLocked = isManual && (typeof _isPeriodLocked === 'function' ? _isPeriodLocked(e.entry_date, _sessBadge) : false);
+        const lockBadge = isManual
+          ? (isLocked
+            ? `<span style="display:inline-block;margin-top:4px;font-size:0.6rem;font-weight:700;color:#fff;background:#dc2626;border-radius:4px;padding:1px 6px;">🔒 Period locked</span>`
+            : `<span style="display:inline-block;margin-top:4px;font-size:0.6rem;font-weight:700;color:#fff;background:#059669;border-radius:4px;padding:1px 6px;">✏️ Editable this period</span>`)
           : '';
         return `
         <div style="padding:10px 14px;background:#fff;border:1.5px solid ${isLocked?'#fecaca':'#e2e8f0'};border-radius:8px;margin-bottom:6px;">
@@ -26570,7 +27704,7 @@ function showPastDayEntries(date){
         amtEl.style.borderColor = '#059669';
         amtEl.dataset.editLocalId = match.local_id||'';
       }
-      // Show pen for all May 13+ manual entries (not Salaries) within 40-day window
+      // Show pen for all May 13+ manual entries (not Salaries) that are not period-locked
       const showPen = curCat !== 'Salaries' && date > '2026-05-31' &&
         (typeof _shouldShowPen==='function' ? _shouldShowPen(curType,curCat,date,match.local_id||'') : true);
       if(penBtn) penBtn.style.display = showPen ? '' : 'none';
@@ -28626,7 +29760,7 @@ function _deRenderInlinePreview() {
     if(tab==='dragEditor') initDragEditor();
     if(tab==='watermark')  wmLoad();
     if(tab==='templates')  tmplRenderAll();
-    if(tab==='editaccess') { renderEditAccessPanel(); renderIdentityChangePanel(); }
+    if(tab==='editaccess') { renderEditAccessPanel(); renderIdentityChangePanel(); renderAmendmentRequestsPanel(); }
   };
 })();
 
@@ -28956,7 +30090,7 @@ window._forceAppRefresh = async function() {
 
   function _isAdminSession() {
     var sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
-    return sess && sess.role === 'admin';
+    return _authIsElevated(sess);
   }
 
   function _resetAdminTimer() {
@@ -29028,6 +30162,120 @@ function _authClearSession()   { localStorage.removeItem(AUTH_KEY); }
 window._authGetSession   = _authGetSession;
 window._authSetSession   = _authSetSession;
 window._authClearSession = _authClearSession;
+
+function _authIsElevated(sess) {
+  return !!(sess && (sess.role === 'admin' || sess.role === 'manager'));
+}
+window._authIsElevated = _authIsElevated;
+
+function _isPeriodLocked(dateStr, sess) {
+  if (!dateStr) return false;
+  if (sess && sess.role === 'admin') return false;
+
+  var recordYM = String(dateStr).slice(0, 7); // 'YYYY-MM'
+  var currentYM = new Date().toISOString().slice(0, 7);
+
+  // Manager: exempt for the current, still-open period only —
+  // falls through to the same grace-window check as everyone else
+  // for anything older.
+  if (sess && sess.role === 'manager' && recordYM >= currentYM) return false;
+
+  var today = new Date();
+  var cutoff = new Date(Date.UTC(
+    today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - 5
+  ));
+  var unlockedYM = cutoff.getUTCFullYear() + '-' +
+    String(cutoff.getUTCMonth() + 1).padStart(2, '0');
+
+  return recordYM < unlockedYM;
+}
+window._isPeriodLocked = _isPeriodLocked;
+
+// ─── Amendment-request submission (standalone — not wired into rejection points yet) ───
+async function _fetchCurrentFinLedgerRow(refId) {
+  if (!refId) return null;
+  var local = (typeof _finLedgerLocal !== 'undefined' ? _finLedgerLocal : []).find(function(e){ return e.local_id === refId; });
+  if (local) return local;
+  if (typeof sb !== 'undefined' && sb) {
+    try {
+      var res = await sb.from('finance_ledger').select('*').eq('ref_id', refId).limit(1);
+      if (res.data && res.data.length) return res.data[0];
+    } catch(e) {
+      console.warn('[amendment request] failed to fetch finance_ledger row for '+refId+':', e);
+    }
+  }
+  return null;
+}
+
+async function _submitAmendmentRequest(tableName, recordKey, actionHint, proposedNewData, description) {
+  var sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+  if (!sess) return { ok: false, error: 'Not logged in' };
+  var oldData = null;
+  if (tableName === 'finance_ledger' && recordKey) {
+    oldData = await _fetchCurrentFinLedgerRow(recordKey);
+  }
+  try {
+    var res = await sb.from('amendment_requests').insert({
+      table_name: tableName,
+      record_key: recordKey || '(new entry, no existing record)',
+      action: actionHint,
+      old_data: oldData,
+      proposed_new_data: proposedNewData || null,
+      description: description || null,
+      requested_by: sess.id
+    });
+    if (res.error) throw res.error;
+
+    // Best-effort HO notification — must never cause this function to report
+    // failure to the requester. Own try/catch, deliberately separate from the
+    // amendment_requests insert above. sbHO mirrors _syncToHO()'s own lazy-init
+    // (BRANCH_UUID itself is local to that function, not shared — recomputed
+    // here from the same source expression it uses).
+    try {
+      if (!sbHO) {
+        sbHO = supabase.createClient(HO_SUPA_URL, HO_SUPA_KEY);
+      }
+      var _hoBranchUuid = (_branchCfg || _JAUHARABAD_DEFAULTS).branchUuid;
+      var _hoMsg = (sess.display_name || sess.username) + ': "' + (description || '') + '"' +
+        (proposedNewData ? ' — Proposed: Rs. ' + proposedNewData.amount + ' · ' + proposedNewData.category + ' · ' + proposedNewData.entry_date : '');
+      var _hoRes = await sbHO.from('ho_notifications').insert({
+        branch_id: _hoBranchUuid,
+        type: 'warning',
+        title: 'Amendment request — ' + actionHint + ' on ' + tableName,
+        message: _hoMsg,
+        is_read: false
+      });
+      if (_hoRes.error) throw _hoRes.error;
+    } catch(hoErr) {
+      console.warn('[amendment request] HO notification failed (non-fatal):', hoErr);
+    }
+
+    return { ok: true };
+  } catch(e) {
+    console.warn('[amendment request] submission failed:', e);
+    return { ok: false, error: e.message || String(e) };
+  }
+}
+window._submitAmendmentRequest = _submitAmendmentRequest;
+
+function _promptAmendmentRequest(tableName, recordKey, actionHint, proposedNewData) {
+  showModal('📝 Submit Amendment Request',
+    '<p style="margin-bottom:10px;font-size:0.85rem;color:#475569;">This period is locked. Describe the change you need, and an Admin will review it.</p>' +
+    '<textarea id="_arDescription" rows="4" style="width:100%;padding:8px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;" placeholder="Why does this need to change?"></textarea>',
+    [
+      { label: 'Cancel', cls: 'btn-outline', fn: function(){ closeModal(); } },
+      { label: '📨 Submit Request', cls: 'btn-primary', fn: async function(){
+          var desc = (document.getElementById('_arDescription')||{}).value || '';
+          closeModal();
+          var result = await _submitAmendmentRequest(tableName, recordKey, actionHint, proposedNewData, desc);
+          if (result.ok) toast('✅ Amendment request submitted — an Admin will review it.');
+          else toast('❌ Failed to submit request: ' + result.error);
+        }
+      }
+    ]
+  );
+}
+window._promptAmendmentRequest = _promptAmendmentRequest;
 
 // ─── SYNCHRONOUS BOOTSTRAP (runs before ANY load handlers) ────
 // sb is declared with `let` in an earlier script — not on window.
@@ -29500,10 +30748,15 @@ async function _authDoLogin() {
     var _adminTabEl = document.getElementById('authTabAdmin');
     var _selectedRole = (_adminTabEl && _adminTabEl.classList.contains('active')) ? 'admin' : 'user';
     var _actualRole = data.role || 'user';
-    if (_selectedRole !== _actualRole) {
+    var _roleOk = (_selectedRole === 'admin')
+      ? (_actualRole === 'admin' || _actualRole === 'manager')
+      : (_actualRole === 'user');
+    if (!_roleOk) {
       if (errEl) {
         errEl.textContent = _actualRole === 'admin'
           ? '❌ This is an Admin account. Please select the "Admin" tab to log in.'
+          : _actualRole === 'manager'
+          ? '❌ This is a Manager account. Please select the "Admin" tab to log in.'
           : '❌ This is a User account. Please select the "User" tab to log in.';
         errEl.style.background = '';
         errEl.style.color = '';
@@ -29589,10 +30842,15 @@ async function _authDoLogin() {
         var _offAdminTabEl = document.getElementById('authTabAdmin');
         var _offSelectedRole = (_offAdminTabEl && _offAdminTabEl.classList.contains('active')) ? 'admin' : 'user';
         var _offActualRole = _offAuth.role || 'user';
-        if (_offSelectedRole !== _offActualRole) {
+        var _offRoleOk = (_offSelectedRole === 'admin')
+          ? (_offActualRole === 'admin' || _offActualRole === 'manager')
+          : (_offActualRole === 'user');
+        if (!_offRoleOk) {
           if (errEl) {
             errEl.textContent = _offActualRole === 'admin'
               ? '❌ This is an Admin account. Please select the "Admin" tab to log in.'
+              : _offActualRole === 'manager'
+              ? '❌ This is a Manager account. Please select the "Admin" tab to log in.'
               : '❌ This is a User account. Please select the "User" tab to log in.';
             errEl.style.background = '';
             errEl.style.color = '';
@@ -29923,6 +31181,7 @@ function _authApplyPermissions(sess) {
   if(!sess) return;
   var perm = sess.permissions;
   var isAdmin = sess.role === 'admin';
+  var isElevated = _authIsElevated(sess);
 
   // Self-heal: if the admin-only sub-tab elements haven't been
   // injected yet (e.g. timing issue on mobile/PWA reload), inject
@@ -29942,7 +31201,7 @@ function _authApplyPermissions(sess) {
 
   var _mobOverflowTabs = ['database','finance','settings'];
   Object.keys(tabIds).forEach(function(tab) {
-    var allowed = isAdmin || !!perm[tab];
+    var allowed = isElevated || !!perm[tab];
     var sideEl  = document.querySelector(tabIds[tab]);
     var mobEl   = document.querySelector('#mobileBottomNav '+mobSels[tab]);
     var mobMoreEl = document.querySelector('#mobMoreMenu '+mobSels[tab]);
@@ -29968,7 +31227,7 @@ function _authApplyPermissions(sess) {
   if(moreBtn) moreBtn.style.display = anyMoreVisible ? '' : 'none';
 
   // Finance view-only: hide add/edit/delete buttons in financeTab
-  if(!isAdmin && perm.finance && !perm.finance_edit) {
+  if(!isElevated && perm.finance && !perm.finance_edit) {
     var st = document.getElementById('_authFinViewOnlyStyle');
     if(!st) {
       st = document.createElement('style');
@@ -29989,11 +31248,11 @@ function _authApplyPermissions(sess) {
   var usersSubTabSidebar = document.getElementById('authUsersSubTabSidebar');
   if(usersSubTabSidebar) usersSubTabSidebar.style.display = isAdmin ? '' : 'none';
 
-  // Show Cash Custody sub-tab only for admin
+  // Show Cash Custody sub-tab for admin and manager (isElevated)
   var cashCustodySubTab = document.getElementById('cashCustodySubTab');
-  if(cashCustodySubTab) cashCustodySubTab.style.display = isAdmin ? '' : 'none';
+  if(cashCustodySubTab) cashCustodySubTab.style.display = isElevated ? '' : 'none';
   var cashCustodySubTabSidebar = document.getElementById('cashCustodySubTabSidebar');
-  if(cashCustodySubTabSidebar) cashCustodySubTabSidebar.style.display = isAdmin ? '' : 'none';
+  if(cashCustodySubTabSidebar) cashCustodySubTabSidebar.style.display = isElevated ? '' : 'none';
 
   // Show Edit Access Control sub-tab only for admin
   var eagEditAccessSubTab = document.getElementById('eagEditAccessSubTab');
@@ -30005,8 +31264,8 @@ function _authApplyPermissions(sess) {
   // Auto-switch to first permitted tab
   var order = ['invoice','payment','production','summary','search','database','finance','settings'];
   var lastTab = localStorage.getItem('last_active_tab') || '';
-  var allowed2 = isAdmin || (lastTab && !!perm[lastTab]);
-  if(!allowed2 || !lastTab) lastTab = order.find(function(t){ return isAdmin||!!perm[t]; }) || 'summary';
+  var allowed2 = isElevated || (lastTab && !!perm[lastTab]);
+  if(!allowed2 || !lastTab) lastTab = order.find(function(t){ return isElevated||!!perm[t]; }) || 'summary';
   var tabEl = document.querySelector('.tab.tab-'+lastTab);
   if(tabEl && typeof window.switchTab === 'function') {
     setTimeout(function(){
@@ -30045,7 +31304,7 @@ function _authApplyPermissions(sess) {
 // ─── CAN ACCESS CHECK ─────────────────────────────────────────
 function _authCanAccess(sess, tab) {
   if(!sess) return false;
-  if(sess.role === 'admin') return true;
+  if(_authIsElevated(sess)) return true;
   return !!sess.permissions[tab];
 }
 
@@ -30243,7 +31502,7 @@ async function _authSaveMyProfile() {
 window._authSaveMyProfile = _authSaveMyProfile;
 
 
-// ─── CASH CUSTODY PANEL (Settings tab, admin-only) ─────────────
+// ─── CASH CUSTODY PANEL (Settings tab, admin + manager) ────────
 // Editable version of the Cash in Hand breakdown: names, add/edit/delete entries.
 window._renderCashCustodyPanel = async function() {
   var panel = document.getElementById('cashCustodyPanel');
@@ -30548,14 +31807,15 @@ function _authInjectSettingsTab() {
   try {
     var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
     var _isAdmin = !!(_sess && _sess.role === 'admin');
+    var _isElevated = _authIsElevated(_sess);
     var _u1 = document.getElementById('authUsersSubTab');
     if (_u1) _u1.style.display = _isAdmin ? '' : 'none';
     var _u2 = document.getElementById('authUsersSubTabSidebar');
     if (_u2) _u2.style.display = _isAdmin ? '' : 'none';
     var _c1 = document.getElementById('cashCustodySubTab');
-    if (_c1) _c1.style.display = _isAdmin ? '' : 'none';
+    if (_c1) _c1.style.display = _isElevated ? '' : 'none';
     var _c2 = document.getElementById('cashCustodySubTabSidebar');
-    if (_c2) _c2.style.display = _isAdmin ? '' : 'none';
+    if (_c2) _c2.style.display = _isElevated ? '' : 'none';
     var _e1 = document.getElementById('eagEditAccessSubTab');
     if (_e1) _e1.style.display = _isAdmin ? '' : 'none';
     var _e2 = document.getElementById('eagEditAccessSubTabSidebar');
@@ -30615,6 +31875,11 @@ function _authUsersPanelHTML() {
     '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px;margin-bottom:18px;box-shadow:0 1px 6px rgba(30,41,59,0.06);">'+
       '<div class="auth-section-title">➕ Create New User</div>'+
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;" id="nuFormGrid">'+
+        '<div><label style="font-size:0.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.7px;display:block;margin-bottom:4px;">Role</label>'+
+          '<select id="nuRole" onchange="_nuOnRoleChange()" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.9rem;outline:none;box-sizing:border-box;background:#fff;">'+
+            '<option value="user" selected>User</option>'+
+            '<option value="manager">Manager</option>'+
+          '</select></div>'+
         '<div><label style="font-size:0.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.7px;display:block;margin-bottom:4px;">Display Name</label>'+
           '<input type="text" id="nuDisplayName" placeholder="Full Name" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.9rem;outline:none;box-sizing:border-box;"></div>'+
         '<div><label style="font-size:0.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.7px;display:block;margin-bottom:4px;">Username</label>'+
@@ -30628,7 +31893,7 @@ function _authUsersPanelHTML() {
         '<div><label style="font-size:0.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.7px;display:block;margin-bottom:4px;">Phone <span style="font-weight:400;text-transform:none;color:#94a3b8;">(for password recovery)</span></label>'+
           '<input type="tel" id="nuPhone" placeholder="+92-3XX-XXXXXXX" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:Montserrat,sans-serif;font-size:0.9rem;outline:none;box-sizing:border-box;"></div>'+
       '</div>'+
-      '<div style="margin-top:14px;"><div style="font-size:0.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.7px;margin-bottom:10px;">Tab Permissions</div>'+
+      '<div id="nuPermSection" style="margin-top:14px;"><div style="font-size:0.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.7px;margin-bottom:10px;">Tab Permissions</div>'+
         '<div style="display:flex;flex-wrap:wrap;gap:8px;">'+togglesHtml+'</div>'+
         '<div id="nuFinanceEditWrap" style="margin-top:8px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;display:none;">'+
           '<label class="auth-toggle-label">'+
@@ -30636,6 +31901,9 @@ function _authUsersPanelHTML() {
             '<span class="auth-toggle-track"><span class="auth-toggle-thumb"></span></span>'+
             '<span style="font-size:0.78rem;font-weight:600;color:#065f46;">Finance Edit (vs View-Only)</span>'+
           '</label></div>'+
+      '</div>'+
+      '<div id="nuManagerNote" style="display:none;margin-top:14px;padding:10px 14px;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:8px;font-size:0.78rem;color:#1e40af;">'+
+        'ℹ️ Managers get full access to all tabs and finance editing automatically — these settings don\'t apply.'+
       '</div>'+
       '<div id="nuError" style="display:none;padding:8px 12px;border-radius:8px;background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;font-size:0.82rem;font-weight:600;margin-top:10px;"></div>'+
       '<button onclick="_authCreateUser()" style="margin-top:14px;background:linear-gradient(135deg,#1e293b,#334155);color:#fff;border:none;border-radius:10px;padding:11px 24px;font-family:Montserrat,sans-serif;font-size:0.88rem;font-weight:700;cursor:pointer;min-height:44px;">Create User</button>'+
@@ -30656,6 +31924,16 @@ function _authUsersPanelHTML() {
   '</div>';
 }
 
+function _nuOnRoleChange() {
+  var roleEl = document.getElementById('nuRole');
+  var isManager = roleEl && roleEl.value === 'manager';
+  var permSection = document.getElementById('nuPermSection');
+  var note = document.getElementById('nuManagerNote');
+  if (permSection) permSection.style.display = isManager ? 'none' : '';
+  if (note) note.style.display = isManager ? '' : 'none';
+}
+window._nuOnRoleChange = _nuOnRoleChange;
+
 // ─── CREATE USER ──────────────────────────────────────────────
 async function _authCreateUser() {
   var dn  = (document.getElementById('nuDisplayName')||{}).value||'';
@@ -30673,13 +31951,24 @@ async function _authCreateUser() {
   var phone = ((document.getElementById('nuPhone')||{}).value||'').trim();
   try {
     var hash = await hashPassword(pw);
+    var roleEl = document.getElementById('nuRole');
+    var role = (roleEl && roleEl.value === 'manager') ? 'manager' : 'user';
     var perms = {};
-    ['invoice','database','search','summary','finance','settings','payment','production'].forEach(function(t){
-      var cb=document.getElementById('nuPerm_'+t); perms[t]=cb?cb.checked:false;
-    });
-    var fe=document.getElementById('nuPerm_finance_edit'); perms.finance_edit=fe?fe.checked:false;
+    if (role === 'manager') {
+      // Permission checkboxes are inert for Manager (_authIsElevated bypasses them) —
+      // never write true values that could mislead a future direct-DB read.
+      ['invoice','database','search','summary','finance','settings','payment','production'].forEach(function(t){
+        perms[t] = false;
+      });
+      perms.finance_edit = false;
+    } else {
+      ['invoice','database','search','summary','finance','settings','payment','production'].forEach(function(t){
+        var cb=document.getElementById('nuPerm_'+t); perms[t]=cb?cb.checked:false;
+      });
+      var fe=document.getElementById('nuPerm_finance_edit'); perms.finance_edit=fe?fe.checked:false;
+    }
     var res = await window.sb.from('app_users').insert({
-      display_name:dn, username:un, password_hash:hash, role:'user',
+      display_name:dn, username:un, password_hash:hash, role:role,
       email: email||null, phone: phone||null,
       profile_setup: !!(email||phone),
       tab_invoice:perms.invoice, tab_database:perms.database,
@@ -30694,6 +31983,7 @@ async function _authCreateUser() {
     ['nuDisplayName','nuUsername','nuPassword','nuConfirm','nuEmail','nuPhone'].forEach(function(id){
       var el=document.getElementById(id); if(el) el.value='';
     });
+    if (roleEl) { roleEl.value = 'user'; _nuOnRoleChange(); }
     _authRenderUsersList();
   } catch(e){ console.error('[_authCreateUser:app_users insert]', e); if(err){err.textContent='⚠️ '+(e.message||'Error');err.style.display='';} }
 }
@@ -30720,7 +32010,7 @@ async function _authRenderUsersList() {
         '</td>'+
         '<td style="padding:9px 8px;color:#64748b;font-size:0.78rem;">'+_e(u.username)+'</td>'+
         '<td style="padding:9px 8px;"><span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:0.65rem;font-weight:700;'+
-          (u.role==='admin'?'background:#fef3c7;color:#92400e;':'background:#e0e7ff;color:#3730a3;')+
+          (u.role==='admin'?'background:#fef3c7;color:#92400e;':u.role==='manager'?'background:#ccfbf1;color:#115e59;':'background:#e0e7ff;color:#3730a3;')+
           '">'+_e(u.role).toUpperCase()+'</span></td>'+
         '<td style="padding:9px 8px;color:#64748b;font-size:0.72rem;white-space:nowrap;">'+_e(ll)+'</td>'+
         '<td style="padding:9px 8px;white-space:nowrap;">'+
@@ -31006,7 +32296,7 @@ async function _authCheckPermissions() {
     } catch(_photoErr) { console.warn('[Auth] Photo poll error:', _photoErr); }
 
     // Admin always has full access — skip permission checks below
-    if (sess.role === 'admin') { _authPermPollRunning = false; return; }
+    if (_authIsElevated(sess)) { _authPermPollRunning = false; return; }
 
     // Build new permissions object
     var newPerm = {
