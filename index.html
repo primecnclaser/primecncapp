@@ -5458,7 +5458,17 @@ async function _upsertCustomerPaymentWithOCC(invoiceRef, type, newAmount, meta, 
         _auditNewData = null;
       }
     } else if (newAmount > 0) {
-      await sb.from('customer_payments').insert(_newRow);
+      const { data: rpcResult, error } = await sb.rpc('upsert_customer_payment_live', {
+        p_invoice_ref: invoiceRef, p_type: type,
+        p_customer_name: _newRow.customer_name, p_phone: _newRow.phone,
+        p_amount: newAmount, p_payment_date: _newRow.payment_date,
+        p_note: _newRow.note, p_created_by: _newRow.created_by
+      });
+      if (error) throw error;
+      if (rpcResult && rpcResult[0] && rpcResult[0].was_conflict) {
+        console.warn('[customer_payments] insert-race collision detected and resolved for', invoiceRef, type);
+      }
+      _newRow.id = rpcResult && rpcResult[0] ? rpcResult[0].id : undefined;
       _auditAction = 'insert';
       _auditNewData = _newRow;
     }
@@ -7066,7 +7076,10 @@ async function adminApplyEdit() {
       if (existingCount > 0) {
         if (!confirm('⚠ "' + newName + '" already has ' + existingCount + ' record(s). This will merge them. Continue?')) return;
       }
-      var _rpc = await sb.rpc('update_customer_name', { p_old_name: oldName, p_new_name: newName });
+      var _rpc = await sb.rpc('update_customer_name', {
+        p_old_name: oldName, p_new_name: newName,
+        p_changed_by: sess ? sess.id : null, p_changed_by_username: sess ? sess.username : null
+      });
       rpcData = _rpc.data;
       if (_rpc.error) throw _rpc.error;
 
@@ -9166,6 +9179,24 @@ async function doSubmit(data) {
   const isAdvance = classifyAdvance(data);
   // If editing an existing invoice, update it in place
   if (typeof data._editIdx === 'number') {
+    // Safety check — the invoice number currently on screen must match the
+    // record _editIdx actually points to. A stray header rebuild (see
+    // _runApplyHeaderToInvoice/_applyHeaderSettingsNow) or any other code
+    // path that touches #invNumber during an in-progress edit could
+    // otherwise cause this save to silently corrupt a DIFFERENT invoice —
+    // saveToSupabase()'s edit path upserts by inv_num, not by _supaId, so
+    // a wrong number here would overwrite whatever real invoice owns it.
+    var _expectedInvNum = database[data._editIdx] ? database[data._editIdx].invNum : undefined;
+    if (data.invNum !== _expectedInvNum) {
+      console.error('[doSubmit] invoice number mismatch — refusing to save.', 'expected:', _expectedInvNum, 'got:', data.invNum);
+      alert('⚠️ SAVE BLOCKED — Invoice Number Mismatch\n\n' +
+        'The invoice number on screen ("' + data.invNum + '") does not match ' +
+        'the invoice you were editing ("' + _expectedInvNum + '").\n\n' +
+        'This edit was NOT saved, to protect against overwriting a different invoice.\n\n' +
+        'Please reload this invoice from Database → Edit and try again.');
+      return;
+    }
+
     const editDate = new Date().toLocaleDateString('en-PK', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
     const prevSupaId = database[data._editIdx]._supaId;
     database[data._editIdx] = {
@@ -9245,41 +9276,6 @@ async function doSubmit(data) {
           console.warn('[CP-EDIT] failed:', e);
           if (typeof Sentry !== 'undefined') Sentry.captureException(e);
         }
-      })();
-    }
-
-    // ── FLUSH cp_pending_sync when online ──
-    if (navigator.onLine && typeof sb !== 'undefined' && sb) {
-      (async function() {
-        try {
-          var _cpPend = JSON.parse(localStorage.getItem('cp_pending_sync') || '[]');
-          if (!_cpPend.length) return;
-          for (var _i = 0; _i < _cpPend.length; _i++) {
-            var _pe = _cpPend[_i];
-            var _chk = await sb.from('customer_payments').select('id,amount').eq('invoice_ref', _pe.invoice_ref).eq('type','payment').limit(1);
-            if (_chk.data && _chk.data.length > 0) {
-              if (_pe.amount > 0) {
-                await sb.from('customer_payments').update({ amount: _pe.amount }).eq('id', _chk.data[0].id);
-              } else {
-                await sb.from('customer_payments').delete().eq('id', _chk.data[0].id);
-              }
-            } else if (_pe.amount > 0) {
-              await sb.from('customer_payments').insert({
-                customer_name: _pe.customer_name,
-                phone: _pe.phone || null,
-                amount: _pe.amount,
-                payment_date: _pe.payment_date,
-                type: 'payment',
-                source: 'non_imported',
-                note: 'Invoice payment — ' + _pe.invoice_ref,
-                invoice_ref: _pe.invoice_ref,
-                created_by: _pe.created_by || 'unknown'
-              });
-            }
-          }
-          localStorage.removeItem('cp_pending_sync');
-          if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
-        } catch(_flushE) { console.warn('cp_pending_sync flush failed:', _flushE); }
       })();
     }
 
@@ -14199,6 +14195,7 @@ async function diagnoseMissingRows() {
 
 async function updateCustomerPhone(name, newPhone) {
   var trimName = name.trim();
+  var sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
 
   // ── 1. Update local memory (database array) — case-insensitive ──
   var updNew = 0;
@@ -14224,7 +14221,9 @@ async function updateCustomerPhone(name, newPhone) {
     try {
       var rpcResult = await sb.rpc('update_customer_phone', {
         p_name:  trimName,
-        p_phone: newPhone
+        p_phone: newPhone,
+        p_changed_by: sess ? sess.id : null,
+        p_changed_by_username: sess ? sess.username : null
       });
       if (rpcResult.error) throw rpcResult.error;
       supaTotal = (rpcResult.data && rpcResult.data.total) ? rpcResult.data.total : 0;
@@ -14235,6 +14234,12 @@ async function updateCustomerPhone(name, newPhone) {
       catch(e2) { console.warn('Phone update (invoices fallback):', e2); }
       try { await sb.from('excel_invoices').update({ phone: newPhone }).ilike('customer_name', trimName); }
       catch(e3) { console.warn('Phone update (excel_invoices fallback):', e3); }
+      try { await sb.from('customer_payments').update({ phone: newPhone }).ilike('customer_name', trimName); }
+      catch(e4) { console.warn('Phone update (customer_payments fallback):', e4); }
+      try { await sb.from('edit_access_grants').update({ phone: newPhone }).ilike('customer_name', trimName).neq('customer_name', '__ALL__'); }
+      catch(e5) { console.warn('Phone update (edit_access_grants fallback):', e5); }
+      try { await sb.from('customer_rates').update({ phone: newPhone, updated_at: new Date().toISOString() }).ilike('customer_name', trimName); }
+      catch(e6) { console.warn('Phone update (customer_rates fallback):', e6); }
     }
   }
 
@@ -14279,7 +14284,8 @@ async function approveIdentityChange(requestId) {
 
     if (req.new_name) {
       var { data: rpcData, error: rpcErr } = await sb.rpc('update_customer_name', {
-        p_old_name: req.old_name, p_new_name: req.new_name
+        p_old_name: req.old_name, p_new_name: req.new_name,
+        p_changed_by: sess ? sess.id : null, p_changed_by_username: sess ? sess.username : null
       });
       if (rpcErr) throw rpcErr;
       totalRows += (rpcData && rpcData[0] && rpcData[0].total) || 0;
@@ -14815,6 +14821,7 @@ function _showNameChooser(digits, existingName, enteredName) {
 // name differences. No merge-warning step here \u2014 Kamran confirmed this
 // flow should apply directly once old/new is chosen.
 async function _applyNameChoice(digits, oldName, newName) {
+  var sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
   // 1. Fill form with chosen name immediately
   var nameEl = document.getElementById('custName');
   var areaEl = document.getElementById('custArea');
@@ -14845,13 +14852,19 @@ async function _applyNameChoice(digits, oldName, newName) {
 
   try {
     // 2. Rename across invoices, excel_invoices, customer_payments, edit_access_grants
-    var _rpc = await sb.rpc('update_customer_name', { p_old_name: oldName, p_new_name: newName });
+    var _rpc = await sb.rpc('update_customer_name', {
+      p_old_name: oldName, p_new_name: newName,
+      p_changed_by: sess ? sess.id : null, p_changed_by_username: sess ? sess.username : null
+    });
     if (_rpc.error) throw _rpc.error;
 
     // 3. Normalize phone (same digits that triggered the conflict) across the
     // same 4 tables, in case any row under the old name had a stale/blank phone.
     try {
-      await sb.rpc('update_customer_phone', { p_name: newName, p_phone: digits });
+      await sb.rpc('update_customer_phone', {
+        p_name: newName, p_phone: digits,
+        p_changed_by: sess ? sess.id : null, p_changed_by_username: sess ? sess.username : null
+      });
     } catch(_phoneErr) { console.warn('[_applyNameChoice] phone normalize failed', _phoneErr); }
 
     // 4. Rename matching draft entries \u2014 atomic, targeted JSONB update inside
@@ -16368,6 +16381,10 @@ function sCatStartRename(type, idx) {
 }
 
 async function sCatDoRename(type, idx, oldName) {
+  if (!navigator.onLine || typeof sb === 'undefined' || !sb) {
+    toast('⚠️ Renaming categories requires an internet connection. Please try again once online.');
+    return;
+  }
   const inp = document.getElementById('catRenIn_'+type+'_'+idx);
   const newName = (inp ? inp.value.trim() : '');
   if (!newName) { toast('⚠️ Name cannot be empty'); return; }
@@ -16385,22 +16402,24 @@ async function sCatDoRename(type, idx, oldName) {
   if (typeof sb !== 'undefined' && sb) {
     try { await sb.from('shop_settings').upsert([{ key: 'pcnc_fin_categories', value: JSON.stringify(FIN_CATEGORIES), updated_at: new Date().toISOString() }], { onConflict: 'key' }); } catch(e) { console.warn('Supabase sync failed:', e); }
   }
-  // Update local ledger cache
+  // Update local ledger cache — display only. The direct bulk Supabase
+  // update below is the sole writer/syncer; this just renames what's
+  // already on screen. Deliberately does NOT touch _synced or push into
+  // _finPendingSync — that was the source of the duplicate-row risk
+  // (flushFinLedgerPending() blind-INSERTs, it doesn't check for an
+  // existing ref_id, so queuing an already-synced entry there would
+  // create a second row for it).
   if (typeof _finLedgerLocal !== 'undefined' && Array.isArray(_finLedgerLocal)) {
     let changed = false;
     _finLedgerLocal = _finLedgerLocal.map(e => {
       if (!e._deleted && e.entry_type===type && e.category===oldName) {
         changed = true;
-        return Object.assign({}, e, {category: newName, _synced: false});
+        return Object.assign({}, e, {category: newName});
       }
       return e;
     });
     if (changed) {
       if (typeof _savefinLocal==='function') _savefinLocal();
-      _finLedgerLocal.filter(e=>e.entry_type===type&&e.category===newName&&!e._deleted)
-        .forEach(e=>{ if(typeof _finPendingSync!=='undefined'&&!_finPendingSync.includes(e.local_id)) _finPendingSync.push(e.local_id); });
-      if (typeof _saveFinPending==='function') _saveFinPending();
-      if (navigator.onLine && typeof flushFinLedgerPending==='function') flushFinLedgerPending();
     }
   }
   // Update Supabase directly for all cloud entries with old name
@@ -17782,6 +17801,7 @@ function _runApplyHeaderToInvoice() {
   var invNum  = invNumEl  ? (invNumEl.textContent  || invNumEl.value  || '') : '';
   var invDate = invDateEl ? (invDateEl.textContent || invDateEl.value || '') : '';
   var invDateIso = invDateEl ? (invDateEl.dataset.iso || '') : '';
+  var _wasEditing = (typeof window._currentEditIdx === 'number');
 
   var invTitle = s.invTitle || localStorage.getItem('inv_inv_title') || 'INVOICE';
   var rightHtml =
@@ -17822,6 +17842,14 @@ function _runApplyHeaderToInvoice() {
   if (invDateIso) {
     var _newDateEl = document.getElementById('invDate');
     if (_newDateEl) { _newDateEl.textContent = invDate; _newDateEl.dataset.iso = invDateIso; }
+  }
+
+  // setInvoiceNumber() above always resets to the next fresh preview number —
+  // if we're mid-edit of an existing invoice (not just a new, not-yet-submitted
+  // one), restore the real invoice number we preserved above instead.
+  if (_wasEditing) {
+    var _newNumEl = document.getElementById('invNumber');
+    if (_newNumEl) _newNumEl.textContent = invNum;
   }
 
   applyHeaderSettings();
@@ -17880,6 +17908,7 @@ function _applyHeaderSettingsNow() {
   var _invNum  = _numEl  ? (_numEl.textContent  || '') : '';
   var _invDate = _datEl  ? (_datEl.textContent  || '') : '';
   var _invDateIso = _datEl ? (_datEl.dataset.iso || '') : '';
+  var _wasEditing = (typeof window._currentEditIdx === 'number');
   var rightHtml =
     '<span class="ph-lbl">' + (s.invTitle || 'INVOICE') + ' #</span>' +
     '<span class="ph-val" id="invNumber" style="font-size:1.05rem;">' + (_invNum  || '&mdash;') + '</span>' +
@@ -17930,6 +17959,14 @@ function _applyHeaderSettingsNow() {
   if (_invDateIso) {
     var _newDatEl = document.getElementById('invDate');
     if (_newDatEl) { _newDatEl.textContent = _invDate; _newDatEl.dataset.iso = _invDateIso; }
+  }
+
+  // setInvoiceNumber() above always resets to the next fresh preview number —
+  // if we're mid-edit of an existing invoice (not just a new, not-yet-submitted
+  // one), restore the real invoice number we preserved above instead.
+  if (_wasEditing) {
+    var _newNumEl2 = document.getElementById('invNumber');
+    if (_newNumEl2) _newNumEl2.textContent = _invNum;
   }
 
   if (typeof applyUrduFont === 'function') applyUrduFont();
