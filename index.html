@@ -30353,6 +30353,20 @@ async function hashPassword(plain) {
 }
 window.hashPassword = hashPassword;
 
+// ─── Per-user random salt (16 bytes, hex-encoded) ──────────────
+function generateSalt() {
+  var arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(function(b){ return b.toString(16).padStart(2,'0'); }).join('');
+}
+window.generateSalt = generateSalt;
+
+// ─── Salted SHA-256 password hashing ───────────────────────────
+async function hashPasswordSalted(plain, salt) {
+  return await hashPassword(salt + plain);
+}
+window.hashPasswordSalted = hashPasswordSalted;
+
 // ─── AUDIT LOG (fire-and-forget) ──────────────────────────────
 function _authLog(action, detail) {
   try {
@@ -30590,9 +30604,10 @@ async function _authFpResetAdmin() {
   if (!window._authFpUserId||!window.sb) { if(err){err.textContent='Session expired. Start again.';err.style.display='';} return; }
   if (btn) { btn.disabled=true; btn.textContent='Saving...'; }
   try {
-    var hash = await hashPassword(pw1);
+    var salt = generateSalt();
+    var hash = await hashPasswordSalted(pw1, salt);
     var res = await window.sb.from('app_users')
-      .update({password_hash:hash, force_pw_change:false}).eq('id', window._authFpUserId);
+      .update({password_hash:hash, password_salt:salt, force_pw_change:false}).eq('id', window._authFpUserId);
     if (res.error) {
       if(err){err.textContent='❌ '+(res.error.message||'Error');err.style.display='';}
       if(btn){btn.disabled=false;btn.textContent='Set New Password';}
@@ -30769,9 +30784,8 @@ async function _authDoLogin() {
   if (btn) { btn.disabled = true; btn.textContent = 'Logging in...'; }
 
   try {
-    var hash = await hashPassword(password);
     var res = await window.sb.from('app_users')
-      .select('*').eq('username', username).eq('password_hash', hash).single();
+      .select('*').eq('username', username).single();
 
     if (res.error || !res.data) {
       if (errEl) { errEl.textContent = '❌ Incorrect username or password.'; errEl.style.display = ''; }
@@ -30780,6 +30794,38 @@ async function _authDoLogin() {
     }
 
     var data = res.data;
+    var hash;
+
+    if (data.password_salt) {
+      hash = await hashPasswordSalted(password, data.password_salt);
+      if (hash !== data.password_hash) {
+        if (errEl) { errEl.textContent = '❌ Incorrect username or password.'; errEl.style.display = ''; }
+        if (btn) { btn.disabled = false; btn.textContent = 'Login'; }
+        return;
+      }
+    } else {
+      hash = await hashPassword(password);
+      if (hash !== data.password_hash) {
+        if (errEl) { errEl.textContent = '❌ Incorrect username or password.'; errEl.style.display = ''; }
+        if (btn) { btn.disabled = false; btn.textContent = 'Login'; }
+        return;
+      }
+      // ── Transparent upgrade: legacy unsalted password verified — salt it now.
+      // Write failure must not block login; DB still holds the legacy hash we just matched. ──
+      try {
+        var upgradeSalt = generateSalt();
+        var upgradeHash = await hashPasswordSalted(password, upgradeSalt);
+        var upgradeRes = await window.sb.from('app_users')
+          .update({ password_hash: upgradeHash, password_salt: upgradeSalt }).eq('id', data.id);
+        if (upgradeRes.error) {
+          console.warn('[_authDoLogin] Salt upgrade failed, continuing with legacy hash:', upgradeRes.error);
+        } else {
+          hash = upgradeHash;
+        }
+      } catch (_ue) {
+        console.warn('[_authDoLogin] Salt upgrade failed, continuing with legacy hash:', _ue);
+      }
+    }
 
     // ── Validate the selected role tab matches this account's actual role ──
     var _adminTabEl = document.getElementById('authTabAdmin');
@@ -31118,10 +31164,11 @@ async function _authDoSetup() {
   if (btn) { btn.disabled = true; btn.textContent = 'Setting up...'; }
 
   try {
-    var hash = await hashPassword(password);
+    var salt = generateSalt();
+    var hash = await hashPasswordSalted(password, salt);
     var res = await window.sb.from('app_users').insert({
       username: username, display_name: displayName,
-      password_hash: hash, role: 'admin',
+      password_hash: hash, password_salt: salt, role: 'admin',
       tab_invoice:true, tab_database:true, tab_search:true,
       tab_summary:true, tab_finance:true,  tab_settings:true,
       tab_payment:true, tab_production:true,
@@ -31180,9 +31227,11 @@ async function _authDoForceChange() {
   if(btn){btn.disabled=true;btn.textContent='Saving...';}
 
   try {
-    var hash = await hashPassword(newPw);
+    var salt = generateSalt();
+    var hash = await hashPasswordSalted(newPw, salt);
     var res = await window.sb.from('app_users').update({
       password_hash: hash,
+      password_salt: salt,
       force_pw_change: false,
       email: email || null,
       phone: phone || null,
@@ -31423,15 +31472,22 @@ function _authCanAccess(sess, tab) {
 
     if(btn){btn.disabled=true;btn.textContent='🔄 Verifying...';}
     try {
-      var currHash = await hashPassword(currentPw);
-      var chk = await window.sb.from('app_users').select('id').eq('id',sess.id).eq('password_hash',currHash).single();
-      if(chk.error||!chk.data){
+      var chk = await window.sb.from('app_users').select('id,password_hash,password_salt').eq('id',sess.id).single();
+      var currOk = false;
+      if (!chk.error && chk.data) {
+        var currHash = chk.data.password_salt
+          ? await hashPasswordSalted(currentPw, chk.data.password_salt)
+          : await hashPassword(currentPw);
+        currOk = (currHash === chk.data.password_hash);
+      }
+      if (!currOk) {
         if(typeof window.showPwError==='function') window.showPwError('❌ Current password is incorrect.');
         if(btn){btn.disabled=false;btn.textContent='🔑 Update Password';}
         return;
       }
-      var newHash = await hashPassword(newPw);
-      await window.sb.from('app_users').update({password_hash:newHash}).eq('id',sess.id);
+      var newSalt = generateSalt();
+      var newHash = await hashPasswordSalted(newPw, newSalt);
+      await window.sb.from('app_users').update({password_hash:newHash, password_salt:newSalt}).eq('id',sess.id);
       _authLog('pw_change','User changed own password');
       if(typeof window.showPwSuccess==='function') window.showPwSuccess('✅ Password updated successfully!');
       if(cur) cur.value=''; if(nw) nw.value=''; if(conf) conf.value='';
@@ -31590,13 +31646,14 @@ window._renderCashCustodyPanel = async function() {
       + '<div class="ctrl-section-title">💰 Cash Custody — who holds the cash</div>'
       + totalLine
       + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:8px 10px;background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:8px;">'
-      +   '<input type="text" value="' + (names[1]||'').replace(/"/g,'&quot;') + '" placeholder="Main Responsible name" '
-      +     'onchange="window._saveCashHolderName(1,this.value)" '
+      +   '<select onchange="window._saveCashHolderName(1,this.value)" '
       +     'style="flex:1;border:1px solid #cbd5e1;border-radius:6px;padding:6px 8px;font-size:0.82rem;font-weight:700;color:#1e293b;">'
+      +     window._cashHolderNameOptions(names[1], [names[2], names[3]])
+      +   '</select>'
       +   '<span style="font-weight:800;font-size:0.85rem;color:' + (mainAmt < 0 ? '#dc2626' : '#059669') + ';white-space:nowrap;">' + fmtAmt(mainAmt) + '</span>'
       + '</div>'
-      + window._cashCustodyRowHtml(2, names[2], total2)
-      + window._cashCustodyRowHtml(3, names[3], total3)
+      + window._cashCustodyRowHtml(2, names[2], total2, [names[1], names[3]])
+      + window._cashCustodyRowHtml(3, names[3], total3, [names[1], names[2]])
       + '<div style="font-size:0.7rem;color:#94a3b8;margin-top:6px;">Main Responsible amount is auto-computed: Cash in Hand − Person 2 − Person 3.</div>'
       + '</div>';
 
@@ -31606,16 +31663,45 @@ window._renderCashCustodyPanel = async function() {
   }
 };
 
+// Build <option> HTML for a holder-name <select> — active employees from
+// sEmps(), sorted by name. If the currently-stored name doesn't match any
+// active employee (e.g. former staff, or free text from before this fix),
+// add it as a separate labeled option so existing data stays visible
+// instead of silently disappearing from the dropdown. The 3 placeholder
+// defaults ('Main Responsible','Person 2','Person 3') count as no name at
+// all, so a never-configured slot just shows the plain "— Select —" state.
+window._cashHolderNameOptions = function(currentName, excludeNames) {
+  var placeholderDefaults = ['Main Responsible', 'Person 2', 'Person 3'];
+  var isPlaceholder = placeholderDefaults.indexOf(currentName) !== -1;
+  var exclude = (excludeNames || []).filter(function(n){ return n && n !== currentName; });
+  var emps = (typeof sEmps === 'function' ? sEmps() : []).filter(function(e){
+    return e.status === 'active' && exclude.indexOf(e.name) === -1;
+  });
+  emps.sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+  var esc = function(s){ return (s||'').replace(/"/g,'&quot;'); };
+  var matchesActive = emps.some(function(e){ return e.name === currentName; });
+  var html = '<option value="">— Select —</option>';
+  if (currentName && !isPlaceholder && !matchesActive) {
+    html += '<option value="' + esc(currentName) + '" selected>(current, not active) ' + esc(currentName) + '</option>';
+  }
+  emps.forEach(function(e){
+    var sel = (e.name === currentName) ? ' selected' : '';
+    html += '<option value="' + esc(e.name) + '"' + sel + '>' + esc(e.name) + '</option>';
+  });
+  return html;
+};
+
 // HTML for an editable Person 2/3 row
-window._cashCustodyRowHtml = function(slot, name, total) {
+window._cashCustodyRowHtml = function(slot, name, total, excludeNames) {
   var fmtAmt = function(v) {
     var neg = v < 0;
     return (neg ? '-Rs. ' : 'Rs. ') + Math.abs(Math.round(v)).toLocaleString('en-PK');
   };
   return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:8px 10px;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:8px;flex-wrap:wrap;">'
-    + '<input type="text" value="' + (name||'').replace(/"/g,'&quot;') + '" placeholder="Person ' + slot + ' name" '
-    +   'onchange="window._saveCashHolderName(' + slot + ',this.value)" '
+    + '<select onchange="window._saveCashHolderName(' + slot + ',this.value)" '
     +   'style="flex:1 1 120px;border:1px solid #cbd5e1;border-radius:6px;padding:6px 8px;font-size:0.82rem;font-weight:700;color:#1e293b;">'
+    +   window._cashHolderNameOptions(name, excludeNames)
+    + '</select>'
     + '<span style="font-weight:800;font-size:0.82rem;color:' + (total < 0 ? '#dc2626' : '#1d4ed8') + ';white-space:nowrap;">' + fmtAmt(total) + '</span>'
     + '<button onclick="window._openAddAmountPopup(' + slot + ')" style="border:1.5px solid #16a34a;background:#f0fdf4;color:#16a34a;border-radius:6px;padding:5px 10px;font-size:0.74rem;font-weight:700;cursor:pointer;">➕ Add</button>'
     + '<button onclick="window._openCashHolderDetails(' + slot + ')" style="border:1.5px solid #6366f1;background:#eef2ff;color:#6366f1;border-radius:6px;padding:5px 10px;font-size:0.74rem;font-weight:700;cursor:pointer;">📜 Details</button>'
@@ -31624,10 +31710,35 @@ window._cashCustodyRowHtml = function(slot, name, total) {
 
 // Save name (slot 1/2/3)
 window._saveCashHolderName = async function(slot, value) {
+  if (!navigator.onLine || typeof sb === 'undefined' || !sb) {
+    toast('⚠️ This requires an internet connection. Please try again once online.');
+    return;
+  }
+  var sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
   try {
-    if (sb && navigator.onLine) {
-      await sb.from('cash_holder_names').upsert({ slot: slot, name: value, updated_at: new Date().toISOString() });
-    }
+    var oldRow = null;
+    try {
+      var _fetchRes = await sb.from('cash_holder_names').select('*').eq('slot', slot).maybeSingle();
+      oldRow = _fetchRes.data || null;
+    } catch(fetchErr) { console.warn('[cash_holder_names audit fetch]', fetchErr); }
+
+    var nowIso = new Date().toISOString();
+    var { error } = await sb.from('cash_holder_names').upsert({ slot: slot, name: value, updated_at: nowIso });
+    if (error) throw error;
+
+    try {
+      await sb.from('audit_log').insert({
+        table_name: 'cash_holder_names',
+        record_key: 'slot_' + slot,
+        action: oldRow ? 'update' : 'insert',
+        old_data: oldRow,
+        new_data: { slot: slot, name: value, updated_at: nowIso },
+        changed_by: sess ? sess.id : null,
+        changed_by_username: sess ? sess.username : null,
+        source: 'app'
+      });
+    } catch(auditErr) { console.warn('[cash_holder_names audit]', auditErr); }
+
     if (window._cashCustodyState) window._cashCustodyState.names[slot] = value;
     try {
       var cached = JSON.parse(localStorage.getItem('cash_holders_cache') || '{}');
@@ -31669,19 +31780,31 @@ window._openAddAmountPopup = function(slot) {
 
 // Save a new entry to Supabase + refresh
 window._saveCashHolderEntry = async function(slot, amount, remark) {
+  if (!navigator.onLine || typeof sb === 'undefined' || !sb) {
+    toast('⚠️ This requires an internet connection. Please try again once online.');
+    return;
+  }
+  var sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
   try {
     var today = new Date().toISOString().split('T')[0];
-    if (sb && navigator.onLine) {
-      await sb.from('cash_holder_entries').insert({ holder_slot: slot, amount: amount, remark: remark || '', entry_date: today });
-    } else {
-      // Offline fallback — keep in local cache, will not sync automatically
-      var cached = JSON.parse(localStorage.getItem('cash_holders_cache') || '{}');
-      var key = 'entries' + slot;
-      cached[key] = cached[key] || [];
-      cached[key].push({ id: '_local_' + Date.now(), holder_slot: slot, amount: amount, remark: remark||'', entry_date: today, created_at: new Date().toISOString() });
-      localStorage.setItem('cash_holders_cache', JSON.stringify(cached));
-      toast('📴 Offline — saved locally, will need to sync manually.');
-    }
+    var { data: newRow, error } = await sb.from('cash_holder_entries')
+      .insert({ holder_slot: slot, amount: amount, remark: remark || '', entry_date: today })
+      .select().single();
+    if (error) throw error;
+
+    try {
+      await sb.from('audit_log').insert({
+        table_name: 'cash_holder_entries',
+        record_key: newRow.id,
+        action: 'insert',
+        old_data: null,
+        new_data: newRow,
+        changed_by: sess ? sess.id : null,
+        changed_by_username: sess ? sess.username : null,
+        source: 'app'
+      });
+    } catch(auditErr) { console.warn('[cash_holder_entries audit]', auditErr); }
+
     toast('✅ Entry saved');
     await window._renderCashCustodyPanel();
   } catch(err) { console.warn('[saveCashHolderEntry]', err); toast('❌ Failed to save entry'); }
@@ -31716,20 +31839,40 @@ window._openCashHolderDetails = function(slot) {
 
 // Update an entry's amount/remark
 window._updateCashHolderEntry = async function(id, slot) {
+  if (!navigator.onLine || typeof sb === 'undefined' || !sb) {
+    toast('⚠️ This requires an internet connection. Please try again once online.');
+    return;
+  }
+  var sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
   try {
     var amtEl = document.getElementById('_chEditAmt_' + id);
     var remEl = document.getElementById('_chEditRem_' + id);
     var amt = parseFloat(amtEl ? amtEl.value : '');
     if (isNaN(amt)) { toast('⚠️ Invalid amount'); return; }
     var remark = remEl ? remEl.value.trim() : '';
-    if (sb && navigator.onLine && !String(id).startsWith('_local_')) {
-      await sb.from('cash_holder_entries').update({ amount: amt, remark: remark }).eq('id', id);
-    } else {
-      var cached = JSON.parse(localStorage.getItem('cash_holders_cache') || '{}');
-      var key = 'entries' + slot;
-      (cached[key]||[]).forEach(function(e){ if (e.id === id) { e.amount = amt; e.remark = remark; } });
-      localStorage.setItem('cash_holders_cache', JSON.stringify(cached));
-    }
+
+    var oldRow = null;
+    try {
+      var _fetchRes = await sb.from('cash_holder_entries').select('*').eq('id', id).maybeSingle();
+      oldRow = _fetchRes.data || null;
+    } catch(fetchErr) { console.warn('[cash_holder_entries audit fetch]', fetchErr); }
+
+    var { error } = await sb.from('cash_holder_entries').update({ amount: amt, remark: remark }).eq('id', id);
+    if (error) throw error;
+
+    try {
+      await sb.from('audit_log').insert({
+        table_name: 'cash_holder_entries',
+        record_key: id,
+        action: 'update',
+        old_data: oldRow,
+        new_data: oldRow ? Object.assign({}, oldRow, { amount: amt, remark: remark }) : { id: id, amount: amt, remark: remark },
+        changed_by: sess ? sess.id : null,
+        changed_by_username: sess ? sess.username : null,
+        source: 'app'
+      });
+    } catch(auditErr) { console.warn('[cash_holder_entries audit]', auditErr); }
+
     toast('✅ Entry updated');
     closeModal();
     await window._renderCashCustodyPanel();
@@ -31738,15 +31881,34 @@ window._updateCashHolderEntry = async function(id, slot) {
 
 // Delete an entry
 window._deleteCashHolderEntry = async function(id, slot) {
+  if (!navigator.onLine || typeof sb === 'undefined' || !sb) {
+    toast('⚠️ This requires an internet connection. Please try again once online.');
+    return;
+  }
+  var sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
   try {
-    if (sb && navigator.onLine && !String(id).startsWith('_local_')) {
-      await sb.from('cash_holder_entries').delete().eq('id', id);
-    } else {
-      var cached = JSON.parse(localStorage.getItem('cash_holders_cache') || '{}');
-      var key = 'entries' + slot;
-      cached[key] = (cached[key]||[]).filter(function(e){ return e.id !== id; });
-      localStorage.setItem('cash_holders_cache', JSON.stringify(cached));
-    }
+    var oldRow = null;
+    try {
+      var _fetchRes = await sb.from('cash_holder_entries').select('*').eq('id', id).maybeSingle();
+      oldRow = _fetchRes.data || null;
+    } catch(fetchErr) { console.warn('[cash_holder_entries audit fetch]', fetchErr); }
+
+    var { error } = await sb.from('cash_holder_entries').delete().eq('id', id);
+    if (error) throw error;
+
+    try {
+      await sb.from('audit_log').insert({
+        table_name: 'cash_holder_entries',
+        record_key: id,
+        action: 'delete',
+        old_data: oldRow,
+        new_data: null,
+        changed_by: sess ? sess.id : null,
+        changed_by_username: sess ? sess.username : null,
+        source: 'app'
+      });
+    } catch(auditErr) { console.warn('[cash_holder_entries audit]', auditErr); }
+
     toast('🗑️ Entry deleted');
     closeModal();
     await window._renderCashCustodyPanel();
@@ -31882,11 +32044,18 @@ async function _authDoChangePw() {
   var sess=_authGetSession();
   if(!sess||!window.sb){_msg('Session error. Please log in again.',false);return;}
   try {
-    var currHash = await hashPassword(currPw);
-    var chk = await window.sb.from('app_users').select('id').eq('id',sess.id).eq('password_hash',currHash).single();
-    if(chk.error||!chk.data){_msg('❌ Current password is incorrect.',false);return;}
-    var newHash = await hashPassword(newPw);
-    await window.sb.from('app_users').update({password_hash:newHash}).eq('id',sess.id);
+    var chk = await window.sb.from('app_users').select('id,password_hash,password_salt').eq('id',sess.id).single();
+    var currOk = false;
+    if (!chk.error && chk.data) {
+      var currHash = chk.data.password_salt
+        ? await hashPasswordSalted(currPw, chk.data.password_salt)
+        : await hashPassword(currPw);
+      currOk = (currHash === chk.data.password_hash);
+    }
+    if (!currOk) {_msg('❌ Current password is incorrect.',false);return;}
+    var newSalt = generateSalt();
+    var newHash = await hashPasswordSalted(newPw, newSalt);
+    await window.sb.from('app_users').update({password_hash:newHash, password_salt:newSalt}).eq('id',sess.id);
     _authLog('pw_change','User changed own password');
     _msg('✅ Password updated successfully.',true);
     if(cur)cur.value=''; if(nw)nw.value=''; if(conf)conf.value='';
@@ -31987,7 +32156,8 @@ async function _authCreateUser() {
   var email = ((document.getElementById('nuEmail')||{}).value||'').trim();
   var phone = ((document.getElementById('nuPhone')||{}).value||'').trim();
   try {
-    var hash = await hashPassword(pw);
+    var salt = generateSalt();
+    var hash = await hashPasswordSalted(pw, salt);
     var roleEl = document.getElementById('nuRole');
     var role = (roleEl && roleEl.value === 'manager') ? 'manager' : 'user';
     var perms = {};
@@ -32005,7 +32175,7 @@ async function _authCreateUser() {
       var fe=document.getElementById('nuPerm_finance_edit'); perms.finance_edit=fe?fe.checked:false;
     }
     var res = await window.sb.from('app_users').insert({
-      display_name:dn, username:un, password_hash:hash, role:role,
+      display_name:dn, username:un, password_hash:hash, password_salt:salt, role:role,
       email: email||null, phone: phone||null,
       profile_setup: !!(email||phone),
       tab_invoice:perms.invoice, tab_database:perms.database,
@@ -32170,8 +32340,9 @@ async function _authDoResetPw() {
   var btn=document.getElementById('authEditSaveBtn');
   if(btn){btn.disabled=true;btn.textContent='Saving...';}
   try{
-    var hash=await hashPassword(p1);
-    var res=await window.sb.from('app_users').update({password_hash:hash,force_pw_change:true}).eq('id',_authEditTarget.id);
+    var salt=generateSalt();
+    var hash=await hashPasswordSalted(p1, salt);
+    var res=await window.sb.from('app_users').update({password_hash:hash,password_salt:salt,force_pw_change:true}).eq('id',_authEditTarget.id);
     if(res.error){if(err){err.textContent='❌ '+(res.error.message||'');err.style.display='';}}
     else{
       _authLog('reset_password','Password reset for: '+_authEditTarget.username);
