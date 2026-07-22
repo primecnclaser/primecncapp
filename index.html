@@ -7978,34 +7978,6 @@ async function saveToSupabase(data) {
   }
 }
 
-// ══════════════════════════════════════════════
-// SUPABASE — UPDATE FIELD (badDebt)
-// ══════════════════════════════════════════════
-async function updateSupabaseField(supaId, field, value, baselineUpdatedAt) {
-  if (!supaId) return;
-  const fieldMap = { badDebt: 'bad_debt' };
-  const col = fieldMap[field];
-  if (!col) return;
-  const update = { [col]: value || 0, updated_at: new Date().toISOString() };
-  if (!navigator.onLine || !sb) {
-    _addToPendingUpdates(supaId, update, baselineUpdatedAt);
-    setSyncStatus('offline', '● Offline — update queued');
-    return;
-  }
-  if (baselineUpdatedAt) {
-    const occ = await _checkOCC('invoices', 'id', supaId, baselineUpdatedAt, [{key: col, label: field, localValue: value}]);
-    if (!occ.ok) return { conflict: true, remoteRow: occ.remoteRow, changedFields: occ.changedFields };
-  }
-  try {
-    const { error } = await sb.from('invoices').update(update).eq('id', supaId);
-    if (error) throw error;
-  } catch(e) {
-    console.error('Update error — queued for retry:', e);
-    _addToPendingUpdates(supaId, update, baselineUpdatedAt);
-    setSyncStatus('offline', '● Update queued — will retry');
-  }
-}
-
 function setSyncStatus(state, label) {
   const el = document.getElementById('syncStatus');
   if (!el) return;
@@ -10351,69 +10323,6 @@ function updateDBCount() {
   if (ac) ac.textContent = advanceInvs.length;
   if (dc) dc.textContent = visibleDraftCount;
   if (nc) nc.textContent = nullCount;
-}
-
-async function saveDBField(idx, field, value) {
-  if (field === 'badDebt') {
-    const amt = parseFloat(value) || 0;
-    const _baselineUpdatedAt = database[idx].updatedAt || null;
-    const supaId = database[idx]._supaId;
-
-    if (supaId && navigator.onLine && sb && _baselineUpdatedAt) {
-      const occ = await _checkOCC('invoices', 'id', supaId, _baselineUpdatedAt, [
-        {key:'bad_debt', label:'Bad Debt'}, {key:'remaining', label:'Remaining'}
-      ]);
-      if (!occ.ok) {
-        _showOCCConflictDialog('Invoice ' + (database[idx].invNum || ''), 'invoices', database[idx].invNum,
-          occ.changedFields.map(f => Object.assign({}, f, {localValue: f.key === 'bad_debt' ? database[idx].badDebt : database[idx].remaining})),
-          async function onKeepLocal() { await _saveDBFieldBadDebtCommit(idx, amt); },
-          async function onUseRemote() {
-            database[idx].bad_debt = occ.remoteRow.bad_debt;
-            database[idx].badDebt = occ.remoteRow.bad_debt;
-            database[idx].remaining = occ.remoteRow.remaining;
-            database[idx].updatedAt = occ.remoteRow.updated_at;
-            localStorage.setItem('inv_database', JSON.stringify(database));
-            renderDB(); renderSummary();
-            toast('☁ Loaded the current value from the server instead');
-          });
-        return;
-      }
-    }
-    await _saveDBFieldBadDebtCommit(idx, amt);
-    return;
-  }
-  database[idx][field] = value === '' ? '' : parseFloat(value) || '';
-  localStorage.setItem('inv_database', JSON.stringify(database));
-  const supaId = database[idx]._supaId;
-  if (supaId) updateSupabaseField(supaId, field, database[idx][field], database[idx].updatedAt || null);
-}
-
-async function _saveDBFieldBadDebtCommit(idx, amt) {
-  database[idx].badDebt = amt;
-  const afterDisc = (database[idx].afterDiscount != null ? database[idx].afterDiscount : database[idx].total) || 0;
-  database[idx].remaining = Math.max(0, afterDisc - (database[idx].received||0) - amt);
-  localStorage.setItem('inv_database', JSON.stringify(database));
-  const supaId = database[idx]._supaId;
-  if (supaId) {
-    const _nowIso = new Date().toISOString();
-    const _bdUpd = { bad_debt: amt, remaining: database[idx].remaining, updated_at: _nowIso };
-    if (!navigator.onLine || !sb) {
-      _addToPendingUpdates(supaId, _bdUpd, database[idx].updatedAt || null);
-    } else {
-      try {
-        const { error } = await sb.from('invoices').update(_bdUpd).eq('id', supaId);
-        if (error) throw error;
-        database[idx].updatedAt = _nowIso;
-        localStorage.setItem('inv_database', JSON.stringify(database));
-      } catch(e) {
-        console.error('badDebt save failed — queued:', e);
-        _addToPendingUpdates(supaId, _bdUpd, database[idx].updatedAt || null);
-      }
-    }
-  }
-  renderDB();
-  renderSummary();
-  toast('✅ Bad debt set to Rs.' + fmt(amt));
 }
 
 // ══════════════════════════════════════════════
@@ -13405,63 +13314,6 @@ function showExcelCustDetail(encodedKey) {
 
 
 
-function deleteInvoice(idx) {
-  const inv = database[idx];
-  if (!inv) return;
-  showModal('Delete Invoice', `Delete ${inv.invNum}? This cannot be undone.`,
-    [
-      { label:'Cancel', cls:'btn-outline', fn:closeModal },
-      { label:'Delete', cls:'btn-danger', fn:async () => {
-        closeModal();
-        // Remove from local array immediately
-        database.splice(idx, 1);
-        localStorage.setItem('inv_database', JSON.stringify(database));
-        renderDB(); updateDBCount();
-        if (document.getElementById('summaryTab') && document.getElementById('summaryTab').style.display !== 'none') renderSummary();
-        toast('🗑️ Deleting ' + inv.invNum + '...');
-
-        if (sb) {
-          try {
-            // 1. Delete matching finance_ledger entries (Sheets Cutting posted from this invoice)
-            const { error: ledgerErr } = await sb
-              .from('finance_ledger')
-              .delete()
-              .eq('ref_id', inv.invNum)
-              .eq('source', 'invoice');
-            if (ledgerErr) console.warn('Ledger delete error:', ledgerErr);
-
-            // 2. Find the invoice row in Supabase by inv_num
-            const { data: invRows } = await sb
-              .from('invoices')
-              .select('id')
-              .eq('inv_num', inv.invNum)
-              .limit(1);
-
-            if (invRows && invRows.length > 0) {
-              const supaId = invRows[0].id;
-              // 3. Delete invoice_items first (foreign key)
-              await sb.from('invoice_items').delete().eq('invoice_id', supaId);
-              // 4. Delete the invoice row
-              await sb.from('invoices').delete().eq('id', supaId);
-            }
-
-            toast('✅ ' + inv.invNum + ' deleted & finance updated');
-
-            // 5. Refresh finance views if open
-            refreshAllFinanceViews();
-
-          } catch(e) {
-            console.error('Delete sync error:', e);
-            toast('⚠️ Local deleted; cloud sync error: ' + (e.message || e));
-          }
-        } else {
-          toast('✅ Invoice deleted (offline — cloud sync pending)');
-        }
-      }}
-    ]
-  );
-}
-
 async function viewInvoice(idx) {
   const inv = database[idx];
   if (!inv) return;
@@ -16006,52 +15858,6 @@ function autoSavePDF(data) {
   html = html.replace("orientation:'portrait'", "orientation:'"+_aoOrient+"'");
   var pdfWin = window.open('','_blank');
   if (pdfWin) { pdfWin.document.write(html); pdfWin.document.close(); }
-}
-
-function confirmClearDB() {
-  showModal('⚠️ Clear All Data', 'This will permanently delete ALL saved invoices and their finance ledger entries. Are you sure?',
-    [
-      { label:'Cancel', cls:'btn-outline', fn:closeModal },
-      { label:'Clear All', cls:'btn-danger', fn:async () => {
-        closeModal();
-        const snapshot = [...database];
-        database = [];
-        localStorage.setItem('inv_database', JSON.stringify(database));
-        renderDB(); updateDBCount();
-        toast('🗑️ Clearing all invoices...');
-
-        if (sb) {
-          try {
-            // 1. Delete all invoice-sourced finance_ledger entries
-            await sb.from('finance_ledger').delete().eq('source', 'invoice');
-
-            // 2. Delete all invoice_items then all invoices
-            // Get all invoice ids
-            const { data: allInvs } = await sb.from('invoices').select('id');
-            if (allInvs && allInvs.length > 0) {
-              const ids = allInvs.map(r => r.id);
-              // Delete items in chunks of 100
-              for (let i = 0; i < ids.length; i += 100) {
-                await sb.from('invoice_items').delete().in('invoice_id', ids.slice(i, i + 100));
-              }
-              await sb.from('invoices').delete().in('id', ids);
-            }
-
-            toast('✅ All invoices & finance entries cleared');
-
-            // 3. Refresh finance views if open
-            refreshAllFinanceViews();
-
-          } catch(e) {
-            console.error('Clear all sync error:', e);
-            toast('⚠️ Local cleared; cloud sync error: ' + (e.message || e));
-          }
-        } else {
-          toast('✅ All invoices cleared (offline)');
-        }
-      }}
-    ]
-  );
 }
 
 function exportCSV() {
@@ -19323,58 +19129,6 @@ async function rpAddEntry() {
   }
 }
 
-async function rpDeletePayment(paymentId, encodedName) {
-  var confirmed = confirm('Are you sure you want to delete this payment entry? This cannot be undone.');
-  if (!confirmed) return;
-
-  try {
-    if (typeof sb === 'undefined' || !sb) throw new Error('Not connected to Supabase.');
-
-    // Audit trail: capture pre-delete state. Own try/catch — a failed
-    // fetch must not block the delete below; old_data just stays null.
-    var oldRow = null;
-    try {
-      var _fetchRes = await sb.from('customer_payments').select('*').eq('id', paymentId).maybeSingle();
-      oldRow = _fetchRes.data || null;
-    } catch(fetchErr) {
-      console.warn('[audit_log] failed to fetch prior customer_payments row for '+paymentId+':', fetchErr);
-    }
-
-    var res = await sb.from('customer_payments').delete().eq('id', paymentId);
-    if (res.error) throw res.error;
-
-    // Audit trail: log this delete. Own try/catch — must never affect the
-    // delete above, or the renderSummary()/panel refresh/toast that follow.
-    try {
-      var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
-      var auditRes = await sb.from('audit_log').insert({
-        table_name:          'customer_payments',
-        record_key:          paymentId,
-        action:              'delete',
-        old_data:             oldRow || null,
-        new_data:             null,
-        changed_by:           _sess ? _sess.id : null,
-        changed_by_username:  _sess ? _sess.username : null,
-        source:               'app'
-      });
-      if (auditRes.error) throw auditRes.error;
-    } catch(auditErr) {
-      console.warn('[audit_log sync] failed for '+paymentId+':', auditErr);
-    }
-
-    _rpInvalidateSummaryCache();
-    if (typeof renderSummary === 'function') renderSummary();
-    var name = decodeURIComponent(encodedName);
-    await rpRenderCustomerPanel(name, _rpCurrentCustomer ? _rpCurrentCustomer.phone : '');
-    toast && toast('Payment entry deleted.');
-
-  } catch(e) {
-    console.error('rpDeletePayment error:', e);
-    if (typeof Sentry !== 'undefined') Sentry.captureException(e);
-    alert('Failed to delete: ' + (e.message || e));
-  }
-}
-
 function rpEditPayment(paymentId, currentAmount, encodedName, entryType, noDelete) {
   var _color = entryType === 'payment' ? '#059669' : entryType === 'bad_debt' ? '#ea580c' : '#7c3aed';
   var _label = entryType === 'payment' ? 'Payment' : entryType === 'bad_debt' ? 'Bad Debt' : 'Discount';
@@ -21568,59 +21322,6 @@ let _chartMonthly = null, _chartExpense = null, _chartCash = null;
 
 // ─── INIT ───
 
-// ─── FIX MAY 2026 LEDGER DATES: move 2026-05-15 entries to 2026-05-12 ───
-async function fixMay2026LedgerDates() {
-  const btn = document.getElementById('may12FixBtn');
-  if (!sb) { toast('❌ Not connected to Supabase'); return; }
-
-  if (!confirm('This will update all May 2026 ledger entries with entry_date = 2026-05-15 to 2026-05-12.\n\nThis is a one-time fix for imported data. Continue?')) return;
-
-  if (btn) { btn.textContent = '⏳ Fixing…'; btn.disabled = true; }
-
-  try {
-    // 1. Find all May 15 2026 entries
-    const { data: rows, error: fetchErr } = await sb
-      .from('finance_ledger')
-      .select('id,entry_date,category,entry_type,amount,source')
-      .eq('entry_date', '2026-05-15');
-
-    if (fetchErr) throw fetchErr;
-    if (!rows || rows.length === 0) {
-      toast('ℹ️ No May 15 2026 entries found — already fixed or not imported yet.');
-      if (btn) { btn.textContent = '✅ Already Fixed'; btn.disabled = false; }
-      return;
-    }
-
-    // 2. Update each row's entry_date to 2026-05-12
-    const ids = rows.map(r => r.id);
-    const { error: updateErr } = await sb
-      .from('finance_ledger')
-      .update({ entry_date: '2026-05-12' })
-      .in('id', ids);
-
-    if (updateErr) throw updateErr;
-
-    // 3. Update local cache too
-    _finLedgerLocal = _finLedgerLocal.map(e => {
-      if (e.entry_date === '2026-05-15') return Object.assign({}, e, { entry_date: '2026-05-12' });
-      return e;
-    });
-    _savefinLocal();
-
-    // 4. Refresh offline cache
-    await refreshOfflineCache();
-    await refreshAllFinanceViews();
-
-    toast(`✅ Fixed ${ids.length} entries — moved from May 15 to May 12.`);
-    if (btn) { btn.textContent = '✅ May 12 Fixed'; btn.style.background = '#d1fae5'; btn.style.borderColor = '#6ee7b7'; btn.style.color = '#065f46'; btn.disabled = false; }
-  } catch(e) {
-    toast('❌ Fix failed: ' + (e.message || e));
-    if (btn) { btn.textContent = '📅 Fix May 12 Dates'; btn.disabled = false; }
-    console.error('fixMay2026LedgerDates error:', e);
-  }
-}
-
-
 // Runs once on finance tab init (version-gated). Seeds DAILY_2026 + MONTHLY_2026
 // into _finLedgerLocal so ledger, dashboard and KPIs all see 2026 data.
 // Data is now in Supabase — just purge any local seed entries, no more seeding
@@ -22861,133 +22562,6 @@ function _cleanSyncedLocalEntries() {
 window._cleanSyncedLocalEntries = _cleanSyncedLocalEntries;
 setInterval(_cleanSyncedLocalEntries, 1000 * 60 * 30);
 
-// ─── CLEAN DUPLICATE ENTRIES FROM SUPABASE ───
-// Removes duplicate historical_daily entries where same date+type+category exists more than once
-async function cleanSupaDuplicates() {
-  if (!sb) { toast('⚠️ No Supabase connection.'); return; }
-
-  const statusEl = document.getElementById('migrateStatus');
-  const logEl    = document.getElementById('migrateLog');
-  const barEl    = document.getElementById('migrateBar');
-  const countEl  = document.getElementById('migrateCount');
-  const progress = document.getElementById('migrateProgress');
-
-  progress.style.display = '';
-  logEl.innerHTML = '';
-  barEl.style.width = '0%';
-  let totalDeleted = 0;
-
-  async function deleteBatch(ids, progressOffset, progressScale) {
-    const BATCH = 50;
-    let deleted = 0;
-    for (let i = 0; i < ids.length; i += BATCH) {
-      const batch = ids.slice(i, i + BATCH);
-      const { error } = await sb.from('finance_ledger').delete().in('id', batch);
-      if (!error) deleted += batch.length;
-      barEl.style.width = Math.round(progressOffset + ((i + BATCH) / ids.length) * progressScale) + '%';
-      countEl.textContent = `${Math.min(i + BATCH, ids.length)} / ${ids.length}`;
-      await new Promise(r => setTimeout(r, 50));
-    }
-    return deleted;
-  }
-
-  try {
-    // ── STEP 1: Delete all "2025 Annual Summary Import" rows ──
-    // These are month-end cumulative totals that duplicate the per-day historical_daily entries.
-    // Every category is affected: Sheets Cutting, Scrap, expenses, investments, savings.
-    statusEl.textContent = 'Step 1/3: Removing 2025 Annual Summary Import duplicates...';
-    logEl.innerHTML += '<div>🔍 Fetching "2025 Annual Summary Import" entries...</div>';
-
-    const { data: annualData, error: annualError } = await sb
-      .from('finance_ledger')
-      .select('id')
-      .eq('note', '2025 Annual Summary Import');
-
-    if (annualError) throw annualError;
-
-    const annualIds = (annualData || []).map(e => e.id);
-    logEl.innerHTML += `<div>Found <strong>${annualIds.length}</strong> Annual Summary Import rows to delete.</div>`;
-
-    if (annualIds.length > 0) {
-      const deleted = await deleteBatch(annualIds, 0, 33);
-      totalDeleted += deleted;
-      logEl.innerHTML += `<div style="color:#16a34a;font-weight:700;">✅ Removed ${deleted} Annual Summary Import rows.</div>`;
-    }
-
-    // ── STEP 2: Delete all invoice-source Sheets Cutting entries for 2025 ──
-    statusEl.textContent = 'Step 2/3: Removing 2025 invoice-source duplicates...';
-    logEl.innerHTML += '<div>🔍 Fetching 2025 invoice-source Sheets Cutting entries...</div>';
-
-    const { data: invData, error: invError } = await sb
-      .from('finance_ledger')
-      .select('id')
-      .eq('source', 'invoice')
-      .eq('category', 'Sheets Cutting')
-      .gte('entry_date', '2025-01-01')
-      .lte('entry_date', '2025-12-31');
-
-    if (invError) throw invError;
-
-    const invIds = (invData || []).map(e => e.id);
-    logEl.innerHTML += `<div>Found <strong>${invIds.length}</strong> 2025 invoice-source entries.</div>`;
-
-    if (invIds.length > 0) {
-      const deleted = await deleteBatch(invIds, 33, 33);
-      totalDeleted += deleted;
-      logEl.innerHTML += `<div style="color:#16a34a;font-weight:700;">✅ Removed ${deleted} invoice-source entries.</div>`;
-    }
-
-    // ── STEP 3: Remove any remaining historical_daily duplicates (same date+type+category) ──
-    statusEl.textContent = 'Step 3/3: Scanning for any remaining duplicates...';
-    logEl.innerHTML += '<div>🔍 Scanning all historical_daily entries...</div>';
-
-    const { data: hdData, error: hdError } = await sb
-      .from('finance_ledger')
-      .select('id, entry_date, entry_type, category')
-      .eq('source', 'historical_daily')
-      .order('id', { ascending: true });
-
-    if (hdError) throw hdError;
-
-    const seen = new Map();
-    const hdToDelete = [];
-    (hdData || []).forEach(e => {
-      const key = `${e.entry_date}|${e.entry_type}|${e.category}`;
-      if (seen.has(key)) {
-        hdToDelete.push(e.id);
-      } else {
-        seen.set(key, e.id);
-      }
-    });
-
-    logEl.innerHTML += `<div>Found <strong>${hdToDelete.length}</strong> further duplicate rows.</div>`;
-
-    if (hdToDelete.length > 0) {
-      const deleted = await deleteBatch(hdToDelete, 66, 34);
-      totalDeleted += deleted;
-      logEl.innerHTML += `<div style="color:#16a34a;font-weight:700;">✅ Removed ${deleted} further duplicates.</div>`;
-    }
-
-    barEl.style.width = '100%';
-    if (totalDeleted === 0) {
-      statusEl.textContent = '✅ Supabase is already clean — nothing to remove.';
-      logEl.innerHTML += '<div>All entries are unique — no cleanup needed.</div>';
-    } else {
-      statusEl.textContent = `✅ Done. Removed ${totalDeleted} duplicate entries total.`;
-      logEl.innerHTML += `<div style="color:#16a34a;font-weight:800;margin-top:6px;">✅ Total removed: ${totalDeleted} rows. Supabase is now clean.</div>`;
-    }
-
-    await refreshOfflineCache();
-    localStorage.setItem(MIGRATE_DONE_KEY, 'yes');
-    toast('✅ Supabase cleaned. Offline cache refreshed.');
-
-  } catch(e) {
-    console.error('[cleanSupaDuplicates:finance_ledger select]', e);
-    statusEl.textContent = '❌ Error: ' + e.message;
-    logEl.innerHTML += `<div style="color:#dc2626;">Error: ${e.message}</div>`;
-  }
-}
-
 // ─── OFFLINE CACHE: cache Supabase data locally for offline use ───
 const FIN_CACHE_KEY     = 'pcnc_fin_supa_cache';
 const FIN_CACHE_TS_KEY  = 'pcnc_fin_cache_ts';
@@ -23028,172 +22602,8 @@ function shouldRefreshCache() {
   return Date.now() - ts > FIN_CACHE_TTL;
 }
 
-// ─── MIGRATE HISTORICAL DATA TO SUPABASE ───
-const MIGRATE_DONE_KEY = 'pcnc_migrate_done_v1';
-
 function showFinanceSQLHelper() {
   toast('ℹ️ Use the Supabase dashboard to manage your database tables.');
-}
-
-function showMigrateModal() {
-  const modal = document.getElementById('migrateModal');
-  if (!modal) return;
-  // Reset state
-  document.getElementById('migrateProgress').style.display  = 'none';
-  document.getElementById('migrateDone').style.display      = 'none';
-  document.getElementById('migrateAlreadyDone').style.display = 'none';
-  document.getElementById('migrateStartBtn').style.display  = '';
-  document.getElementById('migrateStartBtn').disabled       = false;
-  document.getElementById('migrateLog').innerHTML           = '';
-  document.getElementById('migrateBar').style.width         = '0%';
-  // Check if already done
-  if (localStorage.getItem(MIGRATE_DONE_KEY) === 'yes') {
-    document.getElementById('migrateAlreadyDone').style.display = '';
-    document.getElementById('migrateStartBtn').textContent = '🔄 Re-run Migration';
-  }
-  modal.style.display = 'flex';
-}
-
-function closeMigrateModal() {
-  const modal = document.getElementById('migrateModal');
-  if (modal) modal.style.display = 'none';
-}
-
-async function runMigration() {
-  if (!_isJauharabadBranch) { toast('Migration only applies to the Jauharabad branch.'); return; }
-  if (!sb) { toast('⚠️ No Supabase connection. Check your internet.'); return; }
-
-  const startBtn  = document.getElementById('migrateStartBtn');
-  const progress  = document.getElementById('migrateProgress');
-  const statusEl  = document.getElementById('migrateStatus');
-  const countEl   = document.getElementById('migrateCount');
-  const barEl     = document.getElementById('migrateBar');
-  const logEl     = document.getElementById('migrateLog');
-  const doneEl    = document.getElementById('migrateDone');
-  const alreadyEl = document.getElementById('migrateAlreadyDone');
-
-  startBtn.disabled = true;
-  startBtn.textContent = '⏳ Migrating...';
-  progress.style.display = '';
-  alreadyEl.style.display = 'none';
-  doneEl.style.display = 'none';
-  logEl.innerHTML = '';
-
-  // ── Build all entries to migrate ──
-  const entries = [];
-
-  function addEntry(date, type, cat, amount, note, src) {
-    if (!amount || amount <= 0) return;
-    entries.push({ entry_date: date, entry_type: type, category: cat, amount, note: note || '', source: src, created_by: 'migration' });
-  }
-
-  // DAILY_2025 — already in Supabase as historical_daily. Constant removed from file.
-  // Migration of 2025 data is complete and skipped here.
-
-  // DAILY_2026 — per-day Sheets Cutting + Scrap
-  if (typeof DAILY_2026 !== 'undefined') {
-    const _d2026migrate = _brOnly(DAILY_2026);
-    Object.keys(_d2026migrate).sort().forEach(date => {
-      const r = _d2026migrate[date];
-      if (r.sc > 0) addEntry(date, 'income', 'Sheets Cutting', r.sc, 'Sheets Cutting — ' + date, 'historical_daily');
-      if (r.sr > 0) addEntry(date, 'income', 'Scrap', r.sr, 'Scrap — ' + date.slice(0,7), 'historical_daily');
-    });
-  }
-
-  // MONTHLY_2026 — all non-Sheets-Cutting categories on the 15th
-  if (typeof MONTHLY_2026 !== 'undefined') {
-    const _m2026migrate = _brOnly(MONTHLY_2026);
-    Object.keys(_m2026migrate).sort().forEach(date15 => {
-      const rec = _m2026migrate[date15];
-      Object.keys(rec).forEach(key => {
-        const amount = rec[key];
-        if (!amount || amount <= 0) return;
-        const pipe = key.indexOf('|');
-        const type = key.slice(0, pipe);
-        const cat  = key.slice(pipe + 1);
-        if (type === 'income' && (cat === 'Sheets Cutting' || cat === 'Scrap')) return; // covered by DAILY_2026
-        addEntry(date15, type, cat, amount, cat + ' — ' + date15.slice(0,7), 'historical_daily');
-      });
-    });
-  }
-
-  if (!entries.length) {
-    statusEl.textContent = 'No data to migrate.';
-    startBtn.disabled = false;
-    startBtn.textContent = '🚀 Start Migration';
-    return;
-  }
-
-  // ── Check what's already in Supabase to avoid duplicates ──
-  statusEl.textContent = 'Checking existing Supabase data...';
-  let existingKeys = new Set();
-  try {
-    const { data: existing } = await sb.from('finance_ledger')
-      .select('entry_date, entry_type, category, source')
-      .eq('source', 'historical_daily');
-    if (existing) {
-      existing.forEach(e => existingKeys.add(`${e.entry_date}|${e.entry_type}|${e.category}`));
-    }
-  } catch(e) { console.warn('Could not check existing:', e); }
-
-  // Filter out already-uploaded entries
-  const toUpload = entries.filter(e => !existingKeys.has(`${e.entry_date}|${e.entry_type}|${e.category}`));
-
-  if (!toUpload.length) {
-    statusEl.textContent = 'All data already in Supabase.';
-    barEl.style.width = '100%';
-    countEl.textContent = '0 new entries';
-    localStorage.setItem(MIGRATE_DONE_KEY, 'yes');
-    doneEl.style.display = '';
-    startBtn.style.display = 'none';
-    // Refresh offline cache
-    await refreshOfflineCache();
-    return;
-  }
-
-  // ── Upload in batches of 50 ──
-  const BATCH = 50;
-  let done = 0;
-  let failed = 0;
-  const total = toUpload.length;
-  countEl.textContent = `0 / ${total}`;
-
-  for (let i = 0; i < toUpload.length; i += BATCH) {
-    const batch = toUpload.slice(i, i + BATCH);
-    const monthLabel = batch[0].entry_date.slice(0,7);
-    statusEl.textContent = `Uploading ${monthLabel}...`;
-    try {
-      const { error } = await sb.from('finance_ledger').insert(batch);
-      if (error) throw error;
-      done += batch.length;
-      logEl.innerHTML += `<div>✅ Uploaded ${batch.length} entries (${monthLabel})</div>`;
-    } catch(e) {
-      console.error('[runMigration:finance_ledger insert]', e);
-      failed += batch.length;
-      logEl.innerHTML += `<div style="color:#dc2626;">❌ Failed batch at ${monthLabel}: ${e.message}</div>`;
-    }
-    logEl.scrollTop = logEl.scrollHeight;
-    const pct = Math.round(((done + failed) / total) * 100);
-    barEl.style.width = pct + '%';
-    countEl.textContent = `${done + failed} / ${total}`;
-    await new Promise(r => setTimeout(r, 50)); // small delay to not hammer Supabase
-  }
-
-  // ── Finish ──
-  if (failed === 0) {
-    statusEl.textContent = `✅ Done! ${done} entries uploaded.`;
-    localStorage.setItem(MIGRATE_DONE_KEY, 'yes');
-    doneEl.style.display = '';
-  } else {
-    statusEl.textContent = `⚠️ Done with ${failed} failures. Re-run to retry.`;
-  }
-  startBtn.style.display = 'none';
-
-  // Refresh offline cache with all the new data
-  statusEl.textContent += ' Refreshing offline cache...';
-  await refreshOfflineCache();
-  statusEl.textContent = failed === 0 ? '✅ All done. Offline cache updated.' : '⚠️ Partial. Re-run to retry failed batches.';
-  toast(failed === 0 ? '☁️ Migration complete! Data is now in Supabase.' : '⚠️ Migration partial. Some batches failed.');
 }
 
 // ─── HELPER: get last day of a YYYY-MM month string ───
@@ -24235,28 +23645,6 @@ async function deleteFinEntryFromModal(id, date, isLocal) {
   const remaining = _recentEntriesCache.filter(e => e.entry_date === date);
   if (remaining.length > 0) openDayDetail(date);
   else closeDayDetail();
-}
-
-async function deleteFinEntry(id, isLocal) {
-  if (!id) return;
-  if (!confirm('Delete this entry?')) return;
-
-  if (isLocal) {
-    _finLedgerLocal = _finLedgerLocal.filter(e => e.local_id !== id);
-    _savefinLocal();
-    _finPendingSync = _finPendingSync.filter(pid => pid !== id);
-    _saveFinPending();
-    if (navigator.onLine && sb) {
-      try { await sb.from('finance_ledger').delete().eq('ref_id', id).eq('source','manual'); }
-      catch(e) { console.error('[deleteFinEntry:finance_ledger delete]', e); _finDeleteQueue.push(id); _saveFinDelete(); }
-    } else { _finDeleteQueue.push(id); _saveFinDelete(); }
-  } else {
-    if (!sb) { toast('❌ Not connected'); return; }
-    try { await sb.from('finance_ledger').delete().eq('id', id); }
-    catch(e) { console.error('[deleteFinEntry:finance_ledger delete]', e); toast('❌ Error: ' + e.message); return; }
-  }
-  toast('🗑️ Entry deleted');
-  refreshAllFinanceViews();
 }
 
 // ─── RENDER LEDGER ───
@@ -26546,42 +25934,6 @@ function sCalcOT(empId, ym){
 }
 
 
-// Save — reads raw input values, stores as numbers (0 is valid)
-function sSave(empId,ym){
-  const emps=sEmps(), emp=emps.find(e=>e.id===empId); if(!emp) return;
-  const rec = sGetRec(empId,ym);
-  const gv=id=>{
-    const el=document.getElementById(id+'_'+empId);
-    if(!el) return 0;
-    return el.value===''?0:parseFloat(el.value)||0;
-  };
-  const updated = {
-    ...rec,
-    otAmount: gv('otAmt'),
-    nights:   gv('otNights'),
-    days:     gv('otDays'),
-    mess: emp.mess==='included'?0:gv('mess'),
-    room: emp.room==='included'?0:gv('room'),
-    tax:  gv('tax'),
-    ...(emp.wageType==='daily' ? { daysWorked: gv('daysWorked') } : {}),
-  };
-  var _sessSv = (typeof _authGetSession === 'function') ? _authGetSession() : null;
-  if (typeof _isPeriodLocked === 'function' && _isPeriodLocked(ym+'-01', _sessSv)) {
-    toast('🔒 This period is locked. Submit an amendment request to make changes.');
-    if (typeof _promptAmendmentRequest === 'function') {
-      _promptAmendmentRequest('salaries', empId+'|'+ym, 'update', updated);
-    }
-    return;
-  }
-  sSetRec(empId,ym,updated);
-  _syncSalaryRow(empId, ym, updated);
-  toast('✅ Saved — '+emp.name);
-  sRenderBar(ym);
-  // Re-render the card so the right-side breakdown updates immediately
-  const container = document.getElementById('card_'+empId);
-  if(container && emp) container.outerHTML = sCard(emp,ym);
-}
-
 // sLockMonth removed — auto-lock Apr2025-Dec2025
 
 // Add daily payment (with optional per-date OT and shop pay)
@@ -27821,53 +27173,6 @@ async function exportFullBackup() {
 }
 
 </script>
-
-<!-- ═══════════════════════════════════════════════════════ -->
-<!-- ║  SECTION 14 — POST-MAIN-SCRIPT MODALS              ║ -->
-<!-- ═══════════════════════════════════════════════════════ -->
-<!-- ☁️ Migrate to Cloud Modal — at body level so position:fixed works regardless of tab state -->
-<div id="migrateModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)closeMigrateModal()">
-  <div style="background:#fff;border-radius:18px;width:100%;max-width:560px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.4);font-family:'Montserrat',sans-serif;">
-    <div style="background:linear-gradient(135deg,#166534,#15803d);padding:20px 24px;display:flex;align-items:center;justify-content:space-between;">
-      <div>
-        <div style="font-family:'Playfair Display',serif;font-size:1.15rem;font-weight:700;color:#fff;">☁️ Migrate Historical Data to Cloud</div>
-        <div style="font-size:0.7rem;color:#bbf7d0;margin-top:4px;">Push DAILY_2025, DAILY_2026 & MONTHLY_2026 to Supabase permanently</div>
-      </div>
-      <button onclick="closeMigrateModal()" style="background:rgba(255,255,255,0.15);border:none;color:#fff;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:1rem;">✕</button>
-    </div>
-    <div style="padding:22px 24px;">
-      <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:0.78rem;color:#166534;line-height:1.7;">
-        This will push <strong>all historical data from the JS constants</strong> into your Supabase <code>finance_ledger</code> table:<br>
-        • <strong>DAILY_2025</strong> — per-day Sheets Cutting &amp; Scrap (2025)<br>
-        • <strong>DAILY_2026</strong> — per-day Sheets Cutting &amp; Scrap (2026)<br>
-        • <strong>MONTHLY_2026</strong> — monthly expenses, income, savings (2026)<br><br>
-        Already-uploaded data (MONTHLY_2025) will be skipped automatically.
-      </div>
-      <div id="migrateProgress" style="display:none;margin-bottom:16px;">
-        <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:#64748b;margin-bottom:6px;">
-          <span id="migrateStatus">Preparing...</span>
-          <span id="migrateCount">0 / 0</span>
-        </div>
-        <div style="background:#e2e8f0;border-radius:99px;height:8px;overflow:hidden;">
-          <div id="migrateBar" style="background:linear-gradient(90deg,#16a34a,#4ade80);height:100%;width:0%;transition:width 0.3s;border-radius:99px;"></div>
-        </div>
-        <div id="migrateLog" style="margin-top:10px;max-height:140px;overflow-y:auto;font-size:0.68rem;color:#475569;line-height:1.8;border:1px solid #e2e8f0;border-radius:8px;padding:8px;background:#f8fafc;"></div>
-      </div>
-      <div id="migrateDone" style="display:none;background:#f0fdf4;border:1.5px solid #4ade80;border-radius:10px;padding:12px 16px;font-size:0.78rem;color:#166534;font-weight:600;text-align:center;">
-        ✅ Migration complete! All data is now in Supabase.
-      </div>
-      <div id="migrateAlreadyDone" style="display:none;background:#fef9c3;border:1.5px solid #fde047;border-radius:10px;padding:12px 16px;font-size:0.78rem;color:#854d0e;font-weight:600;text-align:center;">
-        ✅ Already migrated. Data is in Supabase. Click Re-run to upload again.
-      </div>
-    </div>
-    <div style="padding:0 24px 20px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
-      <button onclick="closeMigrateModal()" style="padding:9px 20px;border:1.5px solid #cbd5e1;border-radius:8px;background:#fff;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.82rem;cursor:pointer;color:#64748b;">Cancel</button>
-      <button onclick="cleanSupaDuplicates()" style="padding:9px 20px;border:1.5px solid #fca5a5;border-radius:8px;background:#fff1f2;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.82rem;cursor:pointer;color:#dc2626;">🧹 Remove Duplicates</button>
-      <button id="migrateStartBtn" onclick="runMigration()" style="padding:9px 22px;border:none;border-radius:8px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.82rem;cursor:pointer;">🚀 Start Migration</button>
-    </div>
-  </div>
-</div>
-
 
 <script>
 function pbLoadXLSX() {
@@ -31705,6 +31010,7 @@ window._cashCustodyRowHtml = function(slot, name, total, excludeNames) {
     + '<span style="font-weight:800;font-size:0.82rem;color:' + (total < 0 ? '#dc2626' : '#1d4ed8') + ';white-space:nowrap;">' + fmtAmt(total) + '</span>'
     + '<button onclick="window._openAddAmountPopup(' + slot + ')" style="border:1.5px solid #16a34a;background:#f0fdf4;color:#16a34a;border-radius:6px;padding:5px 10px;font-size:0.74rem;font-weight:700;cursor:pointer;">➕ Add</button>'
     + '<button onclick="window._openCashHolderDetails(' + slot + ')" style="border:1.5px solid #6366f1;background:#eef2ff;color:#6366f1;border-radius:6px;padding:5px 10px;font-size:0.74rem;font-weight:700;cursor:pointer;">📜 Details</button>'
+    + (total === 0 ? '<button onclick="window._saveCashHolderName(' + slot + ',\'' + (slot === 2 ? 'Person 2' : 'Person 3') + '\')" style="border:1.5px solid #fbbf24;background:#fffbeb;color:#b45309;border-radius:6px;padding:5px 10px;font-size:0.74rem;font-weight:700;cursor:pointer;">🔄 Clear</button>' : '')
     + '</div>';
 };
 
