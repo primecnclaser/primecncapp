@@ -4752,6 +4752,13 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
             <button onclick="salOpenAdd()" style="padding:8px 16px;background:#059669;color:#fff;border:none;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.8rem;cursor:pointer;align-self:flex-end;">+ Employee</button>
           </div>
         </div>
+        <!-- ═══ EMPLOYEE CHANGE REQUESTS (Admin only) ═══ -->
+        <div id="empReqPanel" style="display:none;margin-bottom:20px;">
+          <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.85rem;color:#92400e;margin-bottom:10px;display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;background:#d97706;border-radius:50%;display:inline-block;"></span>Employee Change Requests — Pending</div>
+          <div id="empReqPendingList" style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:12px;">
+            <div style="text-align:center;color:#94a3b8;padding:16px;font-family:Montserrat,sans-serif;font-size:0.8rem;">Loading...</div>
+          </div>
+        </div>
         <div id="salBar" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;"></div>
         <div id="salCards"></div>
         <div id="salLeftSection" style="margin-top:24px;"></div>
@@ -14352,6 +14359,102 @@ async function markAmendmentApprovedManually(requestId) {
   } catch(e) { console.error(e); toast('⚠ Failed to mark approved: ' + (e.message || e)); }
 }
 
+async function renderEmployeeRequestsPanel() {
+  var sess = _authGetSession();
+  var panelEl = document.getElementById('empReqPanel');
+  if (panelEl) panelEl.style.display = (sess && sess.role === 'admin') ? '' : 'none';
+  if (!sess || sess.role !== 'admin') return;
+  if (!sb) return;
+  var pendingEl = document.getElementById('empReqPendingList');
+  if (!pendingEl) return;
+  try {
+    var { data: pending } = await sb.from('employee_change_requests')
+      .select('id, record_key, old_data, proposed_new_data, reason, created_at, requested_by, app_users!employee_change_requests_requested_by_fkey(display_name)')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    if (!pending || !pending.length) {
+      pendingEl.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:16px;font-family:Montserrat,sans-serif;font-size:0.8rem;">No pending requests</div>';
+      return;
+    }
+
+    var emps = sEmps();
+    pendingEl.innerHTML = pending.map(function(r) {
+      var staffName = (r.app_users && r.app_users.display_name) || 'Unknown';
+      var currentEmp = emps.find(function(e){ return e.id === r.record_key; });
+      var empName = (currentEmp && currentEmp.name) || (r.old_data && r.old_data.name) || 'Unknown Employee';
+      var oldBase = (r.old_data && r.old_data.base != null) ? r.old_data.base : '—';
+      var newBase = (r.proposed_new_data && r.proposed_new_data.base != null) ? r.proposed_new_data.base : '—';
+
+      return '<div style="background:#fff;border-radius:8px;padding:10px 12px;margin-bottom:8px;">'
+        + '<div style="font-family:Montserrat,sans-serif;font-size:0.78rem;">'
+        + '<strong>' + staffName + '</strong> requests: <strong>' + empName + '</strong>\'s base rate '
+        + 'Rs.' + oldBase + ' → Rs.' + newBase
+        + (r.reason ? '<div style="color:#64748b;font-size:0.72rem;margin-top:2px;">"' + r.reason + '"</div>' : '')
+        + '<div style="color:#94a3b8;font-size:0.68rem;margin-top:2px;">' + new Date(r.created_at).toLocaleString() + '</div>'
+        + '</div>'
+        + '<div style="display:flex;gap:6px;margin-top:8px;">'
+        + '<button onclick="approveEmployeeRequest(\'' + r.id + '\')" style="padding:5px 12px;background:#059669;color:#fff;border:none;border-radius:6px;font-size:0.72rem;cursor:pointer;">✅ Approve</button>'
+        + '<button onclick="denyEmployeeRequest(\'' + r.id + '\')" style="padding:5px 12px;background:#dc2626;color:#fff;border:none;border-radius:6px;font-size:0.72rem;cursor:pointer;">✕ Deny</button>'
+        + '</div></div>';
+    }).join('');
+  } catch(e) { console.warn(e); }
+}
+window.renderEmployeeRequestsPanel = renderEmployeeRequestsPanel;
+
+async function approveEmployeeRequest(requestId) {
+  var sess = _authGetSession();
+  if (!sess || sess.role !== 'admin') { toast('⛔ Admin only'); return; }
+  if (!sb) { toast('📵 Cannot approve — offline'); return; }
+  try {
+    var { data: reqRows } = await sb.from('employee_change_requests').select('*').eq('id', requestId).limit(1);
+    if (!reqRows || !reqRows.length) { toast('⚠ Request not found'); return; }
+    var req = reqRows[0];
+
+    var emps = sEmps();
+    var idx = emps.findIndex(function(e){ return e.id === req.record_key; });
+    if (idx > -1) emps[idx] = req.proposed_new_data; else emps.push(req.proposed_new_data);
+    await sSaveEmps(emps, req.record_key);
+
+    try {
+      await sb.from('audit_log').insert({
+        table_name: 'employee_roster',
+        record_key: req.record_key,
+        action: 'update',
+        old_data: req.old_data,
+        new_data: req.proposed_new_data,
+        changed_by: sess.id,
+        changed_by_username: sess.username,
+        source: 'app'
+      });
+    } catch(auditErr) {
+      console.warn('[approveEmployeeRequest] audit_log insert failed', auditErr);
+    }
+
+    await sb.from('employee_change_requests').update({
+      status: 'approved', reviewed_by: sess.id, reviewed_at: new Date().toISOString()
+    }).eq('id', requestId);
+
+    toast('✅ Employee change approved and applied');
+    if (typeof renderEmployeeRequestsPanel === 'function') renderEmployeeRequestsPanel();
+    if (typeof salRender === 'function') salRender();
+  } catch(e) { console.error(e); toast('⚠ Failed to approve: ' + (e.message || e)); }
+}
+window.approveEmployeeRequest = approveEmployeeRequest;
+
+async function denyEmployeeRequest(requestId) {
+  var sess = _authGetSession();
+  if (!sess || sess.role !== 'admin') { toast('⛔ Admin only'); return; }
+  try {
+    await sb.from('employee_change_requests').update({
+      status: 'denied', reviewed_by: sess.id, reviewed_at: new Date().toISOString()
+    }).eq('id', requestId);
+    toast('✕ Request denied');
+    if (typeof renderEmployeeRequestsPanel === 'function') renderEmployeeRequestsPanel();
+  } catch(e) { console.error(e); toast('⚠ Failed to deny'); }
+}
+window.denyEmployeeRequest = denyEmployeeRequest;
+
 async function _checkNameExists(name) {
   var empty = { inv_count: 0, excel_count: 0, pay_count: 0, grant_count: 0 };
   if (!sb || !name) return empty;
@@ -21401,7 +21504,7 @@ function switchFinTab(tab, el) {
   if (tab === 'dashboard') renderDashboard();
   if (tab === 'daily')     { initRecentYearDropdown(); }
   if (tab === 'ledger')    { _ledgerPage = 1; populateLedgerYears().then(() => renderLedger()); }
-  if (tab === 'salaries')  { salInit(); }
+  if (tab === 'salaries')  { salInit(); renderEmployeeRequestsPanel(); }
   if (tab === 'investors') { renderInvestSavings(); }
   if (tab === 'plreport')  { renderPLReport(); }
 }
@@ -26936,7 +27039,7 @@ function sOpenEdit(empId, ym){
   document.getElementById('salEmpModal').style.display='flex';
 }
 
-function salSaveEmp(){
+async function salSaveEmp(){
   const id=document.getElementById('salEmpId').value.trim();
   const name=document.getElementById('salEmpName').value.trim();
   if(!name){toast('⚠️ Name required');return;}
@@ -26945,6 +27048,7 @@ function salSaveEmp(){
   const leftDate=document.getElementById('salEmpLeftDate').value||'';
   const emps=sEmps();
   const existingEmp=id?emps.find(e=>e.id===id):null;
+  const sess=(typeof _authGetSession==='function')?_authGetSession():null;
   let periods=existingEmp
     ?JSON.parse(JSON.stringify(existingEmp.periods||[{joinDate:existingEmp.joinDate||'',leftDate:existingEmp.leftDate||''}]))
     :[{joinDate,leftDate:''}];
@@ -26977,10 +27081,56 @@ function salSaveEmp(){
     status:isRejoin?'active':status,
     periods,
   };
+  // Manager base-rate change gate: a base-rate change on an EXISTING
+  // employee by a non-Admin must go through Admin approval instead of
+  // saving directly — mirrors the amendment_requests pattern already
+  // proven for finance_ledger. Admin, an unchanged base, or a brand-new
+  // employee (existingEmp null) all bypass this and save normally below.
+  if(existingEmp && sess && sess.role!=='admin' && parseFloat(existingEmp.base)!==parseFloat(emp.base)){
+    const reason=prompt('This changes '+name+'\'s base rate from Rs.'+existingEmp.base+' to Rs.'+emp.base+'.\nAn Admin must approve this change. Why is it needed?');
+    if(reason===null) return; // cancelled — no save, no request submitted
+    if(typeof sb==='undefined'||!sb){ toast('⚠️ This requires being online — try again when connected'); return; }
+    try{
+      const res=await sb.from('employee_change_requests').insert({
+        table_name:'employee_roster',
+        record_key: emp.id,
+        action:'update',
+        old_data: existingEmp,
+        proposed_new_data: emp,
+        requested_by: sess.id,
+        status:'pending',
+        reason: reason
+      });
+      if(res.error) throw res.error;
+      toast('✅ Base-rate change submitted for Admin approval');
+    } catch(reqErr){
+      console.warn('[salSaveEmp] employee_change_requests insert failed', reqErr);
+      toast('❌ Failed to submit request — try again');
+    }
+    return; // never reaches the real save
+  }
+
   // (Month-wise base salary overrides removed — values come from SAL_EXCEL_2026)
   if(id){const idx=emps.findIndex(e=>e.id===id);if(idx>-1)emps[idx]=emp;else emps.push(emp);}
   else emps.push(emp);
-  sSaveEmps(emps, emp.id);
+  sSaveEmps(emps, emp.id).then(async function(){
+    if(typeof sb==='undefined'||!sb) return; // offline — audit log is best-effort only
+    try{
+      const res=await sb.from('audit_log').insert({
+        table_name:'employee_roster',
+        record_key: emp.id,
+        action: existingEmp ? 'update' : 'insert',
+        old_data: existingEmp || null,
+        new_data: emp,
+        changed_by: sess ? sess.id : null,
+        changed_by_username: sess ? sess.username : null,
+        source:'app'
+      });
+      if(res.error) throw res.error;
+    } catch(auditErr){
+      console.warn('[salSaveEmp] audit_log insert failed', auditErr);
+    }
+  });
   document.getElementById('salEmpModal').style.display='none';
   salRender(); toast('✅ Employee saved');
 }
