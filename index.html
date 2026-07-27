@@ -6566,7 +6566,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.1.1';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -9107,6 +9107,18 @@ async function submitInvoice() {
 }
 
 function recordAsNull() {
+  // ── Genuinely editing an existing, already-submitted invoice ──
+  // Must clear that exact row in place (by its real Supabase id) — never
+  // fall through to the "new invoice" path below, which would either
+  // silently create an unrelated blank invoice at the next free number
+  // (leaving THIS invoice untouched) or land on a still-free number and
+  // mask the mistake entirely. Mirrors _convertSubmittedToDraft()'s real
+  // identification pattern (editIdx/_supaId), not #invNumber's text.
+  if (typeof window._currentEditIdx === 'number') {
+    return _recordExistingInvoiceAsNull();
+  }
+
+  // ── Blank, new, not-yet-submitted invoice — unchanged from before ──
   var invNum = document.getElementById('invNumber').textContent;
   var date   = (document.getElementById('invDate').dataset.iso || document.getElementById('invDate').textContent);
   showModal('⛔ Record as Null',
@@ -9135,6 +9147,180 @@ function recordAsNull() {
       }
     ]
   );
+}
+
+// ── Nulling an EXISTING, already-submitted invoice that's genuinely open
+// for editing (window._currentEditIdx is real). Updates that exact row by
+// its real Supabase id, never creates a new row, never touches inv_num.
+function _recordExistingInvoiceAsNull() {
+  var editIdx  = window._currentEditIdx;
+  var original = database[editIdx];
+  var supaId   = original ? original._supaId : null;
+
+  if (!supaId) {
+    alert('⚠️ Cannot Record as Null\n\n' +
+      'This invoice has no known server record (missing _supaId) — refusing to guess which row to clear.\n\n' +
+      'Please reload this invoice from Database → Edit and try again.');
+    return;
+  }
+
+  showModal('⛔ Record as Null',
+    'Invoice <strong>' + original.invNum + '</strong> (' + (original.custName || '—') + ') will be cleared — customer details, items, and totals removed. The invoice number stays exactly as it is.<br><br>' +
+    '<span style="color:#c0392b;font-weight:600;">This cannot be undone easily. Continue?</span>',
+    [
+      { label: 'Cancel', cls: 'btn-outline', fn: closeModal },
+      { label: '⛔ Record as Null', cls: 'btn-danger', fn: function() {
+          closeModal();
+          _doRecordExistingInvoiceAsNull(editIdx, original, supaId);
+        }
+      }
+    ]
+  );
+}
+
+async function _doRecordExistingInvoiceAsNull(editIdx, original, supaId) {
+  if (!navigator.onLine || typeof sb === 'undefined' || !sb) {
+    toast('📵 Cannot record as null while offline — this needs to update the live server record.');
+    return;
+  }
+  setSyncStatus('syncing', '● Saving...');
+  try {
+    // Audit trail: capture the real prior row before clearing it.
+    var oldRow = null;
+    try {
+      var _fetchRes = await sb.from('invoices').select('*').eq('id', supaId).maybeSingle();
+      oldRow = _fetchRes.data || null;
+    } catch(fetchErr) {
+      console.warn('[recordAsNull] failed to fetch prior invoices row for '+supaId+':', fetchErr);
+    }
+
+    var _editedAtStr = new Date().toLocaleDateString('en-PK', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    var _clearedRow = {
+      cust_name: null, phone: null, area: null, del_date: null,
+      sub_total: 0, discount: 0, total: 0, received: 0, remaining: 0, bad_debt: 0,
+      extra_charges: 0, extra_charges_label: 'Extra Charges',
+      total_sqft: 0, total_kg: 0,
+      edited_at: _editedAtStr,
+      updated_at: new Date().toISOString()
+    };
+
+    // UPDATE the exact existing row by its real id — never a new INSERT,
+    // never touching inv_num.
+    var _upd = await sb.from('invoices').update(_clearedRow).eq('id', supaId).select().single();
+    if (_upd.error) throw _upd.error;
+
+    // Delete this invoice's real line items — matches the "no items"
+    // definition of a null invoice.
+    await sb.from('invoice_items').delete().eq('invoice_id', supaId);
+
+    // Delete any real customer_payments rows tied to this invoice (linked
+    // by invoice_ref = the invoice's real inv_num — verified against the
+    // live schema, not assumed; customer_payments has no FK to invoices.id).
+    // Fetch first so audit_log gets each row's real old_data, matching the
+    // same pre-fetch-then-delete pattern used for the invoices row above.
+    var oldPayments = [];
+    try {
+      var _fetchPayRes = await sb.from('customer_payments').select('*').eq('invoice_ref', original.invNum);
+      oldPayments = _fetchPayRes.data || [];
+    } catch(fetchPayErr) {
+      console.warn('[recordAsNull] failed to fetch prior customer_payments rows for '+original.invNum+':', fetchPayErr);
+    }
+    if (oldPayments.length) {
+      await sb.from('customer_payments').delete().eq('invoice_ref', original.invNum);
+    }
+
+    // Audit trail — invoices row: same pattern as every other write in this codebase.
+    try {
+      var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+      var auditRes = await sb.from('audit_log').insert({
+        table_name:          'invoices',
+        record_key:          supaId,
+        action:               'update',
+        old_data:              oldRow,
+        new_data:              _upd.data,
+        changed_by:            _sess ? _sess.id : null,
+        changed_by_username:   _sess ? _sess.username : null,
+        source:                'app'
+      });
+      if (auditRes.error) throw auditRes.error;
+    } catch(auditErr) {
+      console.warn('[audit_log sync] failed for '+supaId+':', auditErr);
+    }
+
+    // Audit trail — customer_payments rows: each deleted payment gets its OWN
+    // dedicated audit_log entry (table_name:'customer_payments'), matching the
+    // established convention used everywhere else this table is deleted from
+    // (e.g. rpEditPayment's delete, the discount-reset and bad_debt-reset
+    // flows) — never folded into the invoices row's audit_log entry above.
+    // Per-row try/catch, same as those existing call sites.
+    if (oldPayments.length) {
+      var _sess2 = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+      for (var _pi = 0; _pi < oldPayments.length; _pi++) {
+        try {
+          var payAuditRes = await sb.from('audit_log').insert({
+            table_name:          'customer_payments',
+            record_key:          oldPayments[_pi].id,
+            action:              'delete',
+            old_data:             oldPayments[_pi],
+            new_data:             null,
+            changed_by:           _sess2 ? _sess2.id : null,
+            changed_by_username:  _sess2 ? _sess2.username : null,
+            source:               'app'
+          });
+          if (payAuditRes.error) throw payAuditRes.error;
+        } catch(payAuditErr) {
+          console.warn('[audit_log sync] failed for customer_payments row '+oldPayments[_pi].id+':', payAuditErr);
+        }
+      }
+    }
+
+    if (typeof _rpInvalidateSummaryCache === 'function') _rpInvalidateSummaryCache();
+
+    // Update the in-memory database entry to reflect the cleared state.
+    database[editIdx] = Object.assign({}, database[editIdx], {
+      custName: null, phone: null, area: '', delDate: '',
+      items: [], total: 0, discount: 0, afterDiscount: 0,
+      received: 0, remaining: 0, badDebt: 0,
+      extraCharges: 0, extraChargesLabel: 'Extra Charges',
+      totalSqft: 0, totalKg: 0,
+      isNull: true, isAdvance: false,
+      editedAt: _editedAtStr,
+      updatedAt: _clearedRow.updated_at
+    });
+    localStorage.setItem('inv_database', JSON.stringify(database));
+
+    // Close the edit view WITHOUT clearForm()'s normal post-submit flow
+    // (which calls setInvoiceNumber() and would auto-advance the preview
+    // to a new number) — nothing new was created, so the number preview
+    // shouldn't move.
+    if (typeof unlockAllCustFields === 'function') unlockAllCustFields();
+    document.getElementById('custName').value  = '';
+    document.getElementById('custPhone').value = '';
+    document.getElementById('custArea').value  = '';
+    document.getElementById('deliveryDate').value = '';
+    document.getElementById('billReceived').value = '';
+    document.getElementById('billDiscount').value = '';
+    if (document.getElementById('extraChargesAmt'))   document.getElementById('extraChargesAmt').value   = '';
+    if (document.getElementById('extraChargesLabel')) document.getElementById('extraChargesLabel').value = 'Transport Charges';
+    buildItemRows();
+    calcTotals();
+    document.getElementById('invNumber').textContent = original.invNum;
+    window._currentEditIdx = undefined;
+    window._editBaselineUpdatedAt = undefined;
+    window._editBaselineCpAmount = undefined;
+    window._editBaselineCpUpdatedAt = undefined;
+    var banner = document.getElementById('editBanner');
+    if (banner) banner.remove();
+
+    renderDB(); updateDBCount();
+    if (document.getElementById('summaryTab') && document.getElementById('summaryTab').style.display !== 'none') renderSummary();
+    setSyncStatus('synced', '● Synced');
+    toast('⛔ ' + original.invNum + ' recorded as NULL.');
+  } catch(e) {
+    console.error('[recordAsNull]', e);
+    setSyncStatus('offline', '● Save failed');
+    alert('⚠️ Failed to record ' + original.invNum + ' as Null.\n\n' + (e.message || e) + '\n\nNo changes were saved — please try again.');
+  }
 }
 
 // Helper — classify an invoice object based on its current data
