@@ -1,0 +1,80 @@
+JAUHARABAD MIGRATION SCOPE AUDIT — 26 Jul 2026
+Source: jazxyebbbaitvcjeyjly (main Jauharabad Supabase project, live query)
+
+1. NEW CONNECTION STATUS (supabase-jauharabad-new, project txztiagmsanitsljcggz)
+Not yet confirmed working. ToolSearch for its tools returned nothing this
+session — .mcp.json was edited correctly but this session was already
+running before that edit, so it hasn't loaded the new server yet. A full
+Claude Code restart is required before it can be tested. Because it's
+unconfirmed, jauharabad_new_pat.txt was NOT deleted (per your own
+instruction: delete only after confirmation). It remains gitignored on
+disk in the meantime.
+
+2. TABLES + REAL ROW COUNTS (21 tables, exact COUNT(*), not estimates)
+customer_payments        1,988
+excel_invoices           1,426
+invoice_items               838
+finance_ledger               942
+invoices                     335
+audit_log                    134
+salaries                     123
+shop_settings                  58
+customer_rates                 37
+cash_holder_entries            29
+sync_conflict_log              26
+identity_change_requests       22
+app_users                       4
+cash_holder_names               3
+edit_access_grants              2
+inventory_sizes                 2
+amendment_requests               0
+auth_log                         0
+employee_change_requests         0
+inventory_purchases              0
+pending_bills                    0
+
+3. TOTAL DATABASE SIZE
+22 MB (23,096,467 bytes)
+
+4. CUSTOM FUNCTIONS / RPCs (8 real, app-authored — dblink extension
+   functions excluded from this count)
+count_customer_invoices(p_name text)
+get_latest_production_orders(p_limit integer)
+merge_shop_setting_array_item(p_key, p_id_field, p_id_value, p_item jsonb)
+merge_shop_setting_subkey(p_key, p_subkey, p_value jsonb)
+rename_customer_in_drafts(p_old_name, p_new_name)
+update_customer_name(p_old_name, p_new_name, p_changed_by uuid, p_changed_by_username)
+update_customer_phone(p_name, p_phone, p_changed_by uuid, p_changed_by_username)
+upsert_customer_payment_live(p_invoice_ref, p_type, p_customer_name, p_phone, p_amount, p_payment_date, p_note, p_created_by)
+
+5. RLS STATUS + POLICY COUNTS
+17 of 21 tables have RLS enabled. 4 tables have RLS DISABLED:
+  amendment_requests        - no RLS, 0 policies
+  audit_log                 - no RLS, 0 policies
+  employee_change_requests  - no RLS, 0 policies
+  salaries                  - no RLS, 0 policies
+
+Policy counts (tables with RLS on):
+  finance_ledger        3
+  invoices               3
+  excel_invoices          2
+  invoice_items            2
+  shop_settings             2
+  app_users                  2
+  auth_log                    1
+  cash_holder_entries          1
+  cash_holder_names              1
+  customer_payments                1
+  customer_rates                     1
+  edit_access_grants                   1
+  identity_change_requests               1
+  inventory_purchases                      1
+  inventory_sizes                             1
+  pending_bills                                  1
+  sync_conflict_log                                 1
+
+SUMMARY
+21 tables, ~5,800 total rows, 22 MB database, 8 custom RPCs to recreate,
+17/21 tables carry RLS policies that also need replicating on the new
+project. 4 no-RLS tables flagged above as a deliberate gap to decide on
+in the new project, not an accidental one.
