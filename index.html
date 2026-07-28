@@ -6129,6 +6129,23 @@ const _HO_SUPA_DEFAULTS = {
   hoSupaKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impiam91cHl5cmF2cmFwcGhub3psIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ3MzcwODUsImV4cCI6MjEwMDMxMzA4NX0.fY4SCl_FE0kj0SlDYfxxP_iE2MaLRRfdKt7TxHL9AoQ'
 };
 
+// Bump BRANCH_CONFIG_VERSION whenever a value below changes (e.g. a branch's
+// Supabase project migrates, as Jauharabad's did on 27 Jul 2026). Every
+// device compares its stored configVersion against this on next boot and
+// self-corrects supaUrl/supaKey if they've drifted — see the check right
+// after _branchCfg is settled, below.
+const BRANCH_CONFIG_VERSION = 2;
+const BRANCH_DEFAULTS = {
+  branch_main: {
+    supaUrl: 'https://txztiagmsanitsljcggz.supabase.co',
+    supaKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR4enRpYWdtc2FuaXRzbGpjZ2d6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwNzQ2NTgsImV4cCI6MjEwMDY1MDY1OH0.1589Z7EzAlG3Y5iEQfxlWoEhjcfsMifOXcxXT0fKde4'
+  },
+  branch_mianwali: {
+    supaUrl: 'https://fmaitcnrqclojaqwncmz.supabase.co',
+    supaKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZtYWl0Y25ycWNsb2phcXduY216Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNTMwMDcsImV4cCI6MjA5OTYyOTAwN30.LlnaX4N8_MweUP2rT8okdFQWc2RuzmSAHvd15OAVgE8'
+  }
+};
+
 // ── The branch-scoped key list, declared BEFORE detection/migration runs,
 // since the existing-install path needs it to actually copy each key's
 // CURRENT unprefixed value over to its new prefixed name — not just start
@@ -6239,6 +6256,33 @@ if (!_branchCfg) {
     // Genuinely first-ever launch on this computer — the setup screen (added
     // later in this script) will render and block further boot.
     window._branchSetupPending = true;
+  }
+}
+
+// ── One-time-per-version self-check: does this device's stored
+// supaUrl/supaKey still match the known-good value for its branch? ──
+// Skipped entirely while _branchSetupPending (nothing stored yet — the
+// setup screen's own save is current-at-save-time by construction).
+// Zero network calls: BRANCH_DEFAULTS is a hardcoded map shipped in this
+// file, not fetched from HO — identical behavior online or offline.
+if (_branchCfg && _branchCfg.configVersion !== BRANCH_CONFIG_VERSION) {
+  var _knownGood = BRANCH_DEFAULTS[_branchCfg.branchId];
+  if (_knownGood && (_branchCfg.supaUrl !== _knownGood.supaUrl || _branchCfg.supaKey !== _knownGood.supaKey)) {
+    // Drift detected — refresh ONLY the connection fields, leave
+    // branchId/branchName/branchUuid/hoSupaUrl/hoSupaKey untouched.
+    _branchCfg.supaUrl = _knownGood.supaUrl;
+    _branchCfg.supaKey = _knownGood.supaKey;
+    _branchCfg.configVersion = BRANCH_CONFIG_VERSION;
+    try { window.localStorage.setItem('branch_config', JSON.stringify(_branchCfg)); }
+    catch(e) { console.error('[branch_config] failed to persist refreshed connection details', e); }
+    window.location.reload();
+  } else {
+    // Either this branchId isn't in BRANCH_DEFAULTS yet (a future branch —
+    // skip silently) or the stored values already match (nothing to fix).
+    // Stamp configVersion either way so this doesn't re-check every boot.
+    _branchCfg.configVersion = BRANCH_CONFIG_VERSION;
+    try { window.localStorage.setItem('branch_config', JSON.stringify(_branchCfg)); }
+    catch(e) { console.error('[branch_config] failed to persist configVersion stamp', e); }
   }
 }
 
@@ -6566,7 +6610,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.1.1';
+const APP_VERSION = '1.1.2';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
