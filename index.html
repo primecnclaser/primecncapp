@@ -6610,7 +6610,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.1.5';
+const APP_VERSION = '1.1.6';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -22617,7 +22617,7 @@ function _saveFinEditMeta(){ localStorage.setItem(FIN_EDIT_META_KEY, JSON.string
 // Runs only when _finLedgerLocal is empty AND Supabase is reachable.
 // Pulls all source='manual' rows from finance_ledger and seeds localStorage so the
 // ledger, dashboard, and daily-entry locked states all work correctly on first load.
-(function _hydrateFromSupabase() {
+function _hydrateFromSupabase() {
   if (_finLedgerLocal.length > 0) return; // already have local data — nothing to do
   if (typeof sb === 'undefined' || !sb) return; // Supabase not ready yet — will retry via initFinanceTab
   if (!navigator.onLine) return; // offline — nothing to fetch
@@ -22648,7 +22648,9 @@ function _saveFinEditMeta(){ localStorage.setItem(FIN_EDIT_META_KEY, JSON.string
       console.log('[hydrate] Restored', _finLedgerLocal.length, 'manual entries from Supabase');
     })
     .catch(function(e) { console.warn('[hydrate] Failed:', e); });
-})();
+}
+window._hydrateFromSupabase = _hydrateFromSupabase;
+_hydrateFromSupabase(); // preserve the existing "run once at page load" behavior
 
 // ─── Helper: should the pen (edit) icon be shown for this entry? ───
 // Rules:
