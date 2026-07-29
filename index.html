@@ -6610,7 +6610,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.1.6';
+const APP_VERSION = '1.1.7';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -21896,7 +21896,8 @@ function onDailyCatChange() {
         amtInput.style.border      = '2px solid #059669';
         amtInput.style.borderColor = '#059669';
         amtInput.dataset.editLocalId = existingLocal.local_id;
-        badge.style.display = 'none';
+        var _badgeFresh = document.getElementById('scFetchBadge');
+        if (_badgeFresh) _badgeFresh.style.display = 'none';
         if (isSheetsCutting) {
           refreshBtn.style.display = '';
           refreshBtn.onclick = fetchAutoAmount;
@@ -21933,7 +21934,8 @@ function onDailyCatChange() {
               const r = data[0];
               const isManual = r.source === 'manual';
               amtInput.dataset.editLocalId = r.ref_id || r.id || '';
-              badge.style.display = 'none';
+              var _badgeFreshAsync = document.getElementById('scFetchBadge');
+              if (_badgeFreshAsync) _badgeFreshAsync.style.display = 'none';
               refreshBtn.style.display = 'none';
               const _penBtn = document.getElementById('dailyAmtEditBtn');
               if (_penBtn) _penBtn.style.display = (isManual && _shouldShowPen(type, cat, date, r.ref_id || r.id || '')) ? '' : 'none';
