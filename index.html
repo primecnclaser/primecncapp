@@ -6610,7 +6610,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.1.4';
+const APP_VERSION = '1.1.5';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -14325,7 +14325,7 @@ async function updateCustomerPhone(name, newPhone) {
       catch(e3) { console.warn('Phone update (excel_invoices fallback):', e3); }
       try { await sb.from('customer_payments').update({ phone: newPhone }).ilike('customer_name', trimName); }
       catch(e4) { console.warn('Phone update (customer_payments fallback):', e4); }
-      try { await sb.from('edit_access_grants').update({ phone: newPhone }).ilike('customer_name', trimName).neq('customer_name', '__ALL__'); }
+      try { await sb.from('edit_access_grants').update({ phone: newPhone }).ilike('customer_name', trimName).neq('customer_name', '*'); }
       catch(e5) { console.warn('Phone update (edit_access_grants fallback):', e5); }
       try { await sb.from('customer_rates').update({ phone: newPhone, updated_at: new Date().toISOString() }).ilike('customer_name', trimName); }
       catch(e6) { console.warn('Phone update (customer_rates fallback):', e6); }
