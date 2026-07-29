@@ -6610,7 +6610,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.1.7';
+const APP_VERSION = '1.1.8';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -11639,7 +11639,9 @@ async function _renderGeneralSummary(totalRemaining, totalBadDebt) {
           + '</div>';
       }
 
-      bd.innerHTML = rowHtml(names[1], mainAmt) + rowHtml(names[2], total2) + rowHtml(names[3], total3);
+      bd.innerHTML = rowHtml(names[1], mainAmt)
+        + (total2 !== 0 ? rowHtml(names[2], total2) : '')
+        + (total3 !== 0 ? rowHtml(names[3], total3) : '');
 
     } catch(err) {
       console.warn('[cashHolders]', err);
