@@ -6610,7 +6610,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.1.3';
+const APP_VERSION = '1.1.4';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -30535,8 +30535,15 @@ async function _authDoLogin() {
       return;
     }
 
-    // Update last_login (fire-and-forget)
-    window.sb.from('app_users').update({ last_login: new Date().toISOString() }).eq('id', data.id);
+    // Update last_login — deliberately non-blocking (must not delay dashboard
+    // load), but a failure is now logged instead of fully silent.
+    window.sb.from('app_users').update({ last_login: new Date().toISOString() }).eq('id', data.id)
+      .then(function(_llRes) {
+        if (_llRes.error) console.warn('[last_login] update failed:', _llRes.error);
+      })
+      .catch(function(_llErr) {
+        console.warn('[last_login] update threw:', _llErr);
+      });
 
     var sess = {
       id: data.id, username: data.username,
