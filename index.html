@@ -6026,20 +6026,22 @@ window.addEventListener('online', async () => {
         if (_res.data && _res.data.length > 0) {
           var _conflicted = new Set(_res.data.map(function(r){ return r.inv_num; }));
           var _fixed = false;
-          draftsDB.forEach(function(d, i) {
+          for (var _di = 0; _di < draftsDB.length; _di++) {
+            var d = draftsDB[_di];
             if (_conflicted.has(d.invNum)) {
               var _oldNum = d.invNum;
-              draftsDB[i].invNum = "INV-" + invoiceCounter;
-              invoiceCounter++;
-              localStorage.setItem("inv_counter", invoiceCounter);
-              _fixed = true;
-              toast("⚠️ Draft " + _oldNum + " conflicted — reassigned to " + draftsDB[i].invNum);
+              var _newNum = "INV-" + invoiceCounter;
+              var _updRes = await sb.from("drafts").update({ inv_num: _newNum }).eq("id", d.id).select().single();
+              if (!_updRes.error) {
+                draftsDB[_di].invNum = _newNum;
+                invoiceCounter++;
+                localStorage.setItem("inv_counter", invoiceCounter);
+                _fixed = true;
+                toast("⚠️ Draft " + _oldNum + " conflicted — reassigned to " + _newNum);
+              }
             }
-          });
-          if (_fixed) {
-            localStorage.setItem("drafts_db", JSON.stringify(draftsDB));
-            if (typeof renderDB === "function") renderDB();
           }
+          if (_fixed && typeof renderDB === "function") renderDB();
         }
       }
     } catch(_de) { console.warn("[draft number check]", _de); }
@@ -6363,7 +6365,87 @@ let _supabaseDataReady = false;
 // page load. A genuine reload resets this to false naturally (fresh script
 // execution), so the one-time fast-first-load behavior still applies then.
 let _mobileFullDatasetLoaded = false;
-let draftsDB   = JSON.parse(localStorage.getItem('inv_drafts')   || '[]');
+let draftsDB   = [];   // populated from the real drafts table by loadDraftsCache()
+
+// ── Maps a real drafts-table row (snake_case, from Supabase) into the
+// camelCase shape every existing consumer of draftsDB already expects
+// (loadInvoiceIntoForm, renderDB, getAllCustomerNames, the invoice-number
+// dedup checks, etc.). ──
+function _draftRowToObj(row) {
+  return {
+    id:                 row.id,
+    invNum:             row.inv_num,
+    date:               row.date,
+    custName:           row.cust_name,
+    phone:              row.phone,
+    area:               row.area,
+    delDate:            row.del_date,
+    items:              row.items || [],
+    total:              parseFloat(row.total) || 0,
+    discount:           parseFloat(row.discount) || 0,
+    afterDiscount:      parseFloat(row.after_discount) || 0,
+    received:           parseFloat(row.received) || 0,
+    remaining:          parseFloat(row.remaining) || 0,
+    badDebt:            row.bad_debt != null ? parseFloat(row.bad_debt) : '',
+    extraCharges:       parseFloat(row.extra_charges) || 0,
+    extraChargesLabel:  row.extra_charges_label,
+    isDraft:            true,
+    isNullEntry:        !!row.is_null_entry,
+    _isHistDraft:       !!row.is_hist_draft,
+    savedAt:            row.saved_at
+  };
+}
+
+// ── Maps the camelCase in-form draft object back to the drafts table's
+// real column names, for insert/update. ──
+function _draftObjToRow(data) {
+  return {
+    inv_num:             data.invNum,
+    date:                data.date,
+    cust_name:           data.custName,
+    phone:               data.phone,
+    area:                data.area,
+    del_date:             data.delDate,
+    items:                data.items || [],
+    total:                data.total,
+    discount:             data.discount,
+    after_discount:       data.afterDiscount,
+    received:             data.received,
+    remaining:            data.remaining,
+    bad_debt:             data.badDebt || null,
+    extra_charges:        data.extraCharges,
+    extra_charges_label:  data.extraChargesLabel,
+    is_null_entry:        !!data.isNullEntry,
+    is_hist_draft:        !!data._isHistDraft,
+    saved_at:             data.savedAt
+  };
+}
+
+let _draftsCacheLoaded = false;
+let _draftsCacheLoadPromise = null;
+
+// Same in-flight-promise guard shape as loadExcelDBCache() — safe to call
+// repeatedly/concurrently.
+function loadDraftsCache() {
+  if (_draftsCacheLoadPromise) return _draftsCacheLoadPromise;
+  if (_draftsCacheLoaded) return Promise.resolve();
+  _draftsCacheLoadPromise = _fetchDraftsCache().finally(function() {
+    _draftsCacheLoadPromise = null;
+  });
+  return _draftsCacheLoadPromise;
+}
+
+async function _fetchDraftsCache() {
+  if (typeof sb === 'undefined' || !sb) { draftsDB = []; _draftsCacheLoaded = true; return; }
+  try {
+    var res = await sb.from('drafts').select('*').order('saved_at', { ascending: true });
+    if (res.error) throw res.error;
+    draftsDB = (res.data || []).map(_draftRowToObj);
+    _draftsCacheLoaded = true;
+  } catch(e) {
+    console.warn('[loadDraftsCache]', e);
+  }
+}
 let currentUser = null;
 let _activeDbTab = 'submitted'; // 'submitted' | 'advance' | 'draft'
 let _excelDBCache = null; // cached excel_invoices rows for DB tab
@@ -6415,7 +6497,7 @@ function _patchExcelCacheCustomerName(oldName, newName) {
     }
   } catch(e) { console.warn('[_patchExcelCacheCustomerName] pcnc_excel_index', e); }
 }
-let _editingDraftIdx = null;    // index in draftsDB when editing a draft
+let _editingDraftId = null;     // real drafts.id (uuid) when editing a draft
 let _dbPage = 1;               // pagination page for submitted tab
 var _dbPageSize = 50;
 let _dbExactName = null;       // exact name selected from dropdown (null = partial/type search)
@@ -6610,7 +6692,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.1.8';
+const APP_VERSION = '1.1.9';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -7188,7 +7270,6 @@ async function adminApplyEdit() {
       (draftsDB || []).forEach(function(d) {
         if ((d.custName||'').trim().toLowerCase() === oldKey) d.custName = newName;
       });
-      localStorage.setItem('inv_drafts', JSON.stringify(draftsDB));
     }
 
     adminCancelEdit();
@@ -8189,6 +8270,7 @@ window.addEventListener('load', async () => {
       Promise.race([loadExcelDBCache(), _bootTimeout(9000)]).then(function(r) {
         if (r === '__TIMEOUT__') setSyncStatus('offline', '● Slow connection — showing cached data');
       });
+      Promise.race([loadDraftsCache(), _bootTimeout(9000)]).then(function(){ renderDB(); updateDBCount(); });
       fixExcelInvoiceDates(); // fix specific invoice dates — independent, fire-and-forget
 
       (async () => {
@@ -8283,25 +8365,6 @@ function setInvoiceNumber() {
   var _n = document.getElementById('invNumber'); if (_n) _n.textContent = _pfx + invoiceCounter;
   var _ho = document.getElementById('histOrder'); if (_ho) _ho.value = invoiceCounter;
 
-  // Also check localStorage's own draft cache directly (in case the in-memory
-  // draftsDB array isn't populated yet this early in boot) — display only.
-  try {
-    var _lsDrafts = JSON.parse(localStorage.getItem("inv_drafts") || "[]");
-    _lsDrafts.forEach(function(d) {
-      var _dm = (d.invNum || "").match(/(\d+)$/);
-      if (_dm) {
-        var _dn = parseInt(_dm[1]);
-        if (_dn >= invoiceCounter) {
-          invoiceCounter = _dn + 1;
-          var _nd = document.getElementById("invNumber");
-          if (_nd) _nd.textContent = "INV-" + invoiceCounter;
-          var _hod = document.getElementById("histOrder");
-          if (_hod) _hod.value = invoiceCounter;
-        }
-      }
-    });
-  } catch(_lde) { console.warn("[setInvoiceNumber drafts]", _lde); }
-
   // Query Supabase directly for a preview-accuracy check — display only, still
   // never persisted. Fetches a batch of recent rows (not just the single most
   // recent by created_at) and takes the true numeric max among them, since a
@@ -8323,14 +8386,6 @@ function setInvoiceNumber() {
           });
           if (sbMax >= _base) _base = sbMax + 1;
         }
-        // Also check local drafts one more time against this base
-        try {
-          var _lds2 = JSON.parse(localStorage.getItem("inv_drafts") || "[]");
-          _lds2.forEach(function(d) {
-            var _dm2 = (d.invNum || "").match(/(\d+)$/);
-            if (_dm2 && parseInt(_dm2[1]) >= _base) _base = parseInt(_dm2[1]) + 1;
-          });
-        } catch(_e2) { console.error('[setInvoiceNumber]', _e2); }
         if (_base !== invoiceCounter) {
           invoiceCounter = _base;
           var _n2 = document.getElementById("invNumber");
@@ -8353,11 +8408,8 @@ async function _liveInvNumConflict(numStr) {
     if (_invRes.data && _invRes.data.length) return true;
   } catch(e) { console.warn('[_liveInvNumConflict invoices]', e); }
   try {
-    var _dRes = await sb.from('shop_settings').select('value').eq('key', 'inv_drafts').maybeSingle();
-    if (_dRes.data && _dRes.data.value) {
-      var _liveDrafts = JSON.parse(_dRes.data.value);
-      if (Array.isArray(_liveDrafts) && _liveDrafts.some(function(d){ return d.invNum === numStr; })) return true;
-    }
+    var _draftRes = await sb.from('drafts').select('inv_num').eq('inv_num', numStr).limit(1);
+    if (_draftRes.data && _draftRes.data.length) return true;
   } catch(e) { console.warn('[_liveInvNumConflict drafts]', e); }
   return false;
 }
@@ -9569,19 +9621,32 @@ async function doSubmit(data) {
   }
 
   // If submitting from a draft, remove it from drafts
-  const _wasFromDraft = _editingDraftIdx !== null;
-  if (_editingDraftIdx !== null) {
-    draftsDB.splice(_editingDraftIdx, 1);
-    localStorage.setItem('inv_drafts', JSON.stringify(draftsDB));
-    if (typeof sb !== 'undefined' && sb) {
+  const _wasFromDraft = _editingDraftId !== null;
+  if (_editingDraftId !== null) {
+    if (typeof sb !== 'undefined' && sb && navigator.onLine) {
       try {
-        await sb.from('shop_settings').upsert(
-          [{ key: 'inv_drafts', value: JSON.stringify(draftsDB), updated_at: new Date().toISOString() }],
-          { onConflict: 'key' }
-        );
-      } catch(e) { console.warn('Drafts sync failed:', e); }
+        var _oldDraftRes = await sb.from('drafts').select('*').eq('id', _editingDraftId).maybeSingle();
+        var _oldDraftRow = _oldDraftRes.data || null;
+
+        var _delRes = await sb.from('drafts').delete().eq('id', _editingDraftId);
+        if (_delRes.error) throw _delRes.error;
+
+        var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+        try {
+          var auditRes = await sb.from('audit_log').insert({
+            table_name: 'drafts', record_key: _editingDraftId, action: 'delete',
+            old_data: _oldDraftRow, new_data: null,
+            changed_by: _sess ? _sess.id : null, changed_by_username: _sess ? _sess.username : null,
+            source: 'app'
+          });
+          if (auditRes.error) throw auditRes.error;
+        } catch(auditErr) { console.warn('[audit_log] draft finalize-delete log failed:', auditErr); }
+
+        var _cacheIdx = draftsDB.findIndex(function(d){ return d.id === _editingDraftId; });
+        if (_cacheIdx > -1) draftsDB.splice(_cacheIdx, 1);
+      } catch(e) { console.warn('[doSubmit] failed to delete finalized draft row:', e); }
     }
-    _editingDraftIdx = null;
+    _editingDraftId = null;
     // Remove draft banner
     const db = document.getElementById('draftBanner');
     if (db) db.remove();
@@ -9720,7 +9785,7 @@ function clearForm() {
   window._editBaselineUpdatedAt = undefined;
   window._editBaselineCpAmount = undefined;
   window._editBaselineCpUpdatedAt = undefined;
-  _editingDraftIdx = null;
+  _editingDraftId = null;
   const banner = document.getElementById('editBanner');
   if (banner) banner.remove();
   const draftBanner = document.getElementById('draftBanner');
@@ -10233,10 +10298,13 @@ async function renderDB() {
     document.head.appendChild(_msEl);
   }
 
+  // Populated from the real drafts table — no-op once already warm this session.
+  await loadDraftsCache();
+
   // Partition database into advance vs regular submitted vs null
   const advanceInvs   = database.filter(inv => inv.isAdvance && !inv.isNull);
   const submittedInvs = database.filter(inv => !inv.isAdvance && !inv.isNull);
-  const visibleDrafts = draftsDB.map(function(inv, i){ return { inv: inv, idx: i }; }).filter(function(x){ return !x.inv.isNullEntry; });
+  const visibleDrafts = draftsDB.filter(function(inv){ return !inv.isNullEntry; });
   const nullFromDb     = database.filter(function(inv){ return inv.isNull; });
   const nullFromDrafts = draftsDB.filter(function(inv){ return inv.isNullEntry; });
   const nullRows = nullFromDb.concat(nullFromDrafts);
@@ -10286,9 +10354,7 @@ async function renderDB() {
     }
     const oldLM3 = document.getElementById('dbLoadMore');
     if (oldLM3) oldLM3.remove();
-    tbody.innerHTML = visibleDrafts.slice().reverse().map((x, ri) => {
-      const inv = x.inv;
-      const draftIdx = x.idx;
+    tbody.innerHTML = visibleDrafts.slice().reverse().map((inv, ri) => {
       const remaining = Math.max(0, inv.remaining || 0);
       return `<tr style="border-left:4px solid #e67e22;background:rgba(230,126,34,0.06);">
         <td class="mono${_isMob ? ' _msr' : ''}" style="text-align:center;color:#e67e22">${visibleDrafts.length - ri}</td>
@@ -10299,9 +10365,9 @@ async function renderDB() {
         <td class="mono gold">Rs.${fmt((inv.total||0) + (inv.extraCharges||0))}</td>
         <td>
           <div class="db-action-row" style="flex-wrap:wrap;">
-            <button class="db-icon-btn submit" title="Submit" onclick="submitDraft(${draftIdx})">✅</button>
-            <button class="db-icon-btn edit" title="Edit" onclick="loadDraftForEdit(${draftIdx})">✎</button>
-            <button class="db-icon-btn danger" title="Delete" onclick="deleteDraft(${draftIdx})">🗑️</button>
+            <button class="db-icon-btn submit" title="Submit" onclick="submitDraft('${inv.id}')">✅</button>
+            <button class="db-icon-btn edit" title="Edit" onclick="loadDraftForEdit('${inv.id}')">✎</button>
+            <button class="db-icon-btn danger" title="Delete" onclick="deleteDraft('${inv.id}')">🗑️</button>
           </div>
         </td>
       </tr>`;
@@ -15080,7 +15146,6 @@ async function _applyNameChoice(digits, oldName, newName) {
     draftsDB.forEach(function(d) {
       if ((d.custName || '').trim().toLowerCase() === oldKey) d.custName = newName;
     });
-    localStorage.setItem('inv_drafts', JSON.stringify(draftsDB));
 
     var totalRows = (_rpc.data && _rpc.data[0] && _rpc.data[0].total) || 0;
     toast('\u2705 Renamed "' + oldName + '" \u2192 "' + newName + '" \u2014 ' + totalRows + ' record(s)'
@@ -15399,14 +15464,6 @@ async function _saveCustRateField(dbCol, val, name, digits, statusEl) {
 // customer_payments is never touched — payments are tracked independently by
 // invoice_ref regardless of draft/submitted state.
 async function _convertSubmittedToDraft(editIdx, data, supaId) {
-  // ── Update local state + UI FIRST — the Draft tab must reflect this instantly,
-  // not after waiting on network round trips. Server sync happens after, in the
-  // background, without blocking what the user sees. ──
-  if (editIdx > -1 && editIdx < database.length) {
-    database.splice(editIdx, 1);
-    localStorage.setItem('inv_database', JSON.stringify(database));
-  }
-
   const draftData = Object.assign({}, data);
   delete draftData._editIdx;
   delete draftData._baselineUpdatedAt;
@@ -15415,16 +15472,48 @@ async function _convertSubmittedToDraft(editIdx, data, supaId) {
   delete draftData._supaId;
   draftData.isDraft = true;
   draftData.savedAt = new Date().toISOString();
-  draftsDB.push(draftData);
-  localStorage.setItem('inv_drafts', JSON.stringify(draftsDB));
+
+  var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+  var row = _draftObjToRow(draftData);
+  row.created_by = _sess ? _sess.id : null;
+
+  // ── Insert the real draft row FIRST — this is now the authoritative write.
+  // Only once it succeeds do we remove the invoice locally/on the server, so a
+  // failed insert never leaves the invoice vanished with no draft to show for it. ──
+  var _ins = await sb.from('drafts').insert(row).select().single();
+  if (_ins.error) {
+    toast('⚠️ Could not move invoice to Drafts: ' + _ins.error.message);
+    return;
+  }
+
+  try {
+    var auditRes = await sb.from('audit_log').insert({
+      table_name:          'drafts',
+      record_key:          _ins.data.id,
+      action:              'insert',
+      old_data:             null,
+      new_data:             _ins.data,
+      changed_by:           _sess ? _sess.id : null,
+      changed_by_username:  _sess ? _sess.username : null,
+      source:               'app'
+    });
+    if (auditRes.error) throw auditRes.error;
+  } catch(auditErr) { console.warn('[audit_log] draft insert (from submitted) log failed:', auditErr); }
+
+  draftsDB.push(_draftRowToObj(_ins.data));
+
+  if (editIdx > -1 && editIdx < database.length) {
+    database.splice(editIdx, 1);
+    localStorage.setItem('inv_database', JSON.stringify(database));
+  }
 
   toast('📋 Moved to Drafts: ' + data.invNum);
   updateDBCount();
   renderDB();
   clearForm();
 
-  // ── Now sync to the server in the background ──
-  if (supaId && navigator.onLine && typeof sb !== 'undefined' && sb) {
+  // ── Now remove the live invoice ──
+  if (supaId) {
     try {
       await sb.from('invoice_items').delete().eq('invoice_id', supaId);
 
@@ -15441,11 +15530,9 @@ async function _convertSubmittedToDraft(editIdx, data, supaId) {
       await sb.from('invoices').delete().eq('id', supaId);
 
       // Audit trail: log this delete. Own try/catch — must never affect the
-      // delete above, the invoice_items delete, or the shop_settings/
-      // inv_drafts upsert that follows.
+      // delete above or the invoice_items delete.
       try {
-        var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
-        var auditRes = await sb.from('audit_log').insert({
+        var auditRes2 = await sb.from('audit_log').insert({
           table_name:          'invoices',
           record_key:          supaId,
           action:              'delete',
@@ -15455,19 +15542,11 @@ async function _convertSubmittedToDraft(editIdx, data, supaId) {
           changed_by_username:  _sess ? _sess.username : null,
           source:               'app'
         });
-        if (auditRes.error) throw auditRes.error;
-      } catch(auditErr) {
-        console.warn('[audit_log sync] failed for '+supaId+':', auditErr);
+        if (auditRes2.error) throw auditRes2.error;
+      } catch(auditErr2) {
+        console.warn('[audit_log sync] failed for '+supaId+':', auditErr2);
       }
     } catch(e) { console.warn('[saveDraft] failed to delete live invoice row:', e); }
-  }
-  if (typeof sb !== 'undefined' && sb) {
-    try {
-      await sb.from('shop_settings').upsert(
-        [{ key: 'inv_drafts', value: JSON.stringify(draftsDB), updated_at: new Date().toISOString() }],
-        { onConflict: 'key' }
-      );
-    } catch(e) { console.warn('Drafts sync failed:', e); }
   }
 }
 
@@ -15489,7 +15568,7 @@ async function saveDraft() {
   // Reuses invNum exactly (no duplicate check, no counter increment), OCC-protected
   // like any other write, deletes the live invoices row, and never touches
   // customer_payments — those are tracked independently of draft/submitted state.
-  if (typeof window._currentEditIdx === 'number' && _editingDraftIdx === null) {
+  if (typeof window._currentEditIdx === 'number' && _editingDraftId === null) {
     const editIdx = window._currentEditIdx;
     const original = database[editIdx];
     const supaId = original ? original._supaId : null;
@@ -15553,14 +15632,15 @@ async function saveDraft() {
   const invNum = data.invNum && data.invNum !== 'INV-' ? data.invNum : ('INV-' + invoiceCounter);
   data.invNum = invNum;
 
-  // Duplicate number check
+  // Duplicate number check — against the live drafts cache (id-based exclusion).
+  await loadDraftsCache();
   var _draftNum = data.invNum && data.invNum !== 'INV-' ? data.invNum : ('INV-' + invoiceCounter);
   var _numExists = database.some(function(inv){ return inv.invNum === _draftNum && !inv.isDraft; })
-    || draftsDB.some(function(inv){ return inv.invNum === _draftNum && inv.invNum !== (draftsDB[_editingDraftIdx||0]||{}).invNum; })
+    || draftsDB.some(function(inv){ return inv.invNum === _draftNum && inv.id !== _editingDraftId; })
     || (_excelDBCache||[]).some(function(inv){ return ('INV-'+inv.order_num) === _draftNum; })
     // Only for a brand-new draft — an existing draft being re-saved under its own
     // number would otherwise always "conflict" with its own live copy.
-    || (_editingDraftIdx === null && await _liveInvNumConflict(_draftNum));
+    || (_editingDraftId === null && await _liveInvNumConflict(_draftNum));
   if (_numExists) {
     invoiceCounter++;
     localStorage.setItem('inv_counter', invoiceCounter);
@@ -15571,38 +15651,73 @@ async function saveDraft() {
   data.isDraft = true;
   data.savedAt = new Date().toISOString();
 
-  if (_editingDraftIdx !== null) {
-    draftsDB[_editingDraftIdx] = { ...data, draftIdx: _editingDraftIdx };
-    _editingDraftIdx = null;
+  if (typeof sb === 'undefined' || !sb || !navigator.onLine) {
+    toast('📵 Cannot save draft while offline — drafts are stored on the server now.');
+    return;
+  }
+
+  var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+  var row = _draftObjToRow(data);
+
+  if (_editingDraftId !== null) {
+    // ── UPDATE existing draft row by its real id ──
+    var _oldRes = await sb.from('drafts').select('*').eq('id', _editingDraftId).maybeSingle();
+    var oldRow = _oldRes.data || null;
+
+    row.updated_at = new Date().toISOString();
+    var _upd = await sb.from('drafts').update(row).eq('id', _editingDraftId).select().single();
+    if (_upd.error) { toast('⚠️ Draft update failed: ' + _upd.error.message); return; }
+
+    try {
+      var auditRes = await sb.from('audit_log').insert({
+        table_name: 'drafts', record_key: _editingDraftId, action: 'update',
+        old_data: oldRow, new_data: _upd.data,
+        changed_by: _sess ? _sess.id : null, changed_by_username: _sess ? _sess.username : null,
+        source: 'app'
+      });
+      if (auditRes.error) throw auditRes.error;
+    } catch(auditErr) { console.warn('[audit_log] draft update log failed:', auditErr); }
+
+    var _cacheIdx = draftsDB.findIndex(function(d){ return d.id === _editingDraftId; });
+    if (_cacheIdx > -1) draftsDB[_cacheIdx] = _draftRowToObj(_upd.data);
+
+    _editingDraftId = null;
     toast('📋 Draft updated: ' + invNum);
   } else {
-    draftsDB.push({ ...data });
+    // ── INSERT new draft row ──
+    row.created_by = _sess ? _sess.id : null;
+    var _ins = await sb.from('drafts').insert(row).select().single();
+    if (_ins.error) { toast('⚠️ Save draft failed: ' + _ins.error.message); return; }
+
     invoiceCounter++;
     localStorage.setItem('inv_counter', invoiceCounter);
+
+    try {
+      var auditRes2 = await sb.from('audit_log').insert({
+        table_name: 'drafts', record_key: _ins.data.id, action: 'insert',
+        old_data: null, new_data: _ins.data,
+        changed_by: _sess ? _sess.id : null, changed_by_username: _sess ? _sess.username : null,
+        source: 'app'
+      });
+      if (auditRes2.error) throw auditRes2.error;
+    } catch(auditErr2) { console.warn('[audit_log] draft insert log failed:', auditErr2); }
+
+    draftsDB.push(_draftRowToObj(_ins.data));
     toast('📋 Saved as draft: ' + invNum);
   }
 
-  localStorage.setItem('inv_drafts', JSON.stringify(draftsDB));
-  if (typeof sb !== 'undefined' && sb) {
-    try {
-      await sb.from('shop_settings').upsert(
-        [{ key: 'inv_drafts', value: JSON.stringify(draftsDB), updated_at: new Date().toISOString() }],
-        { onConflict: 'key' }
-      );
-    } catch(e) { console.warn('Drafts sync failed:', e); }
-  }
   updateDBCount();
   renderDB();
   clearForm();
 }
 
-function submitDraft(draftIdx) {
-  const draft = draftsDB[draftIdx];
+function submitDraft(draftId) {
+  const draft = draftsDB.find(function(d){ return d.id === draftId; });
   if (!draft) return;
 
   // Load into form for review before submitting
   loadInvoiceIntoForm(draft, undefined);
-  _editingDraftIdx = draftIdx;
+  _editingDraftId = draftId;
 
   // Switch to invoice tab
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -15624,10 +15739,10 @@ function submitDraft(draftIdx) {
 }
 
 
-function loadDraftForEdit(draftIdx) {
-  const draft = draftsDB[draftIdx];
+function loadDraftForEdit(draftId) {
+  const draft = draftsDB.find(function(d){ return d.id === draftId; });
   if (!draft) return;
-  _editingDraftIdx = draftIdx;
+  _editingDraftId = draftId;
   loadInvoiceIntoForm(draft, undefined);
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab')[0].classList.add('active');
@@ -15890,6 +16005,10 @@ async function saveHistAsDraft() {
   var rem     = bill - recv - recv1 - disc - bd;
 
   if (!name && !phone) { toast('❌ Please enter at least a name or phone number'); return; }
+  if (typeof sb === 'undefined' || !sb || !navigator.onLine) {
+    toast('📵 Cannot save draft while offline — drafts are stored on the server now.');
+    return;
+  }
 
   var invNum = orderNo ? ('INV-' + orderNo) : ('INV-' + invoiceCounter);
   var draft = {
@@ -15909,6 +16028,7 @@ async function saveHistAsDraft() {
     items:        []
   };
 
+  await loadDraftsCache();
   // Duplicate number guard
   var _histNum = invNum;
   var _histExists = database.some(function(inv){ return inv.invNum === _histNum; })
@@ -15923,20 +16043,27 @@ async function saveHistAsDraft() {
     toast('⚠️ Order number already exists — reassigned to ' + invNum);
   }
 
-  draftsDB.push(draft);
+  var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+  var row = _draftObjToRow(draft);
+  row.created_by = _sess ? _sess.id : null;
+
+  var _ins = await sb.from('drafts').insert(row).select().single();
+  if (_ins.error) { toast('⚠️ Save draft failed: ' + _ins.error.message); return; }
+
   invoiceCounter++;
   localStorage.setItem('inv_counter', invoiceCounter);
-  localStorage.setItem('inv_drafts', JSON.stringify(draftsDB));
 
-  if (typeof sb !== 'undefined' && sb) {
-    try {
-      await sb.from('shop_settings').upsert(
-        [{ key: 'inv_drafts', value: JSON.stringify(draftsDB), updated_at: new Date().toISOString() }],
-        { onConflict: 'key' }
-      );
-    } catch(e) { console.warn('Hist draft sync failed:', e); }
-  }
+  try {
+    var auditRes = await sb.from('audit_log').insert({
+      table_name: 'drafts', record_key: _ins.data.id, action: 'insert',
+      old_data: null, new_data: _ins.data,
+      changed_by: _sess ? _sess.id : null, changed_by_username: _sess ? _sess.username : null,
+      source: 'app'
+    });
+    if (auditRes.error) throw auditRes.error;
+  } catch(auditErr) { console.warn('[audit_log] hist draft insert log failed:', auditErr); }
 
+  draftsDB.push(_draftRowToObj(_ins.data));
   toast('📋 Saved as draft: ' + invNum);
   updateDBCount();
   renderDB();
@@ -15981,31 +16108,43 @@ function renderHistoricalRecent() {
     + '</table></div>';
 }
 
-function deleteDraft(draftIdx) {
+function deleteDraft(draftId) {
+  var d = draftsDB.find(function(x){ return x.id === draftId; });
   showModal('🗑️ Delete Draft',
-    'Invoice <strong>' + (draftsDB[draftIdx]?.invNum || '') + '</strong> will be marked <strong>Null</strong> and moved to the Null tab.<br><br>' +
+    'Invoice <strong>' + (d ? d.invNum : '') + '</strong> will be marked <strong>Null</strong> and moved to the Null tab.<br><br>' +
     'The invoice number and date are preserved and can never be reused, but customer name, phone, area, delivery date, and all items will be permanently wiped.<br><br>' +
     '<span style="color:#c0392b;font-weight:600;">This invoice number will be marked Null and moved to the Null tab — the wiped details cannot be recovered.</span>',
     [
       { label:'Cancel', cls:'btn-outline', fn:closeModal },
       { label:'Delete', cls:'btn-danger', fn: async () => {
-        const d = draftsDB[draftIdx];
         if (!d) { closeModal(); return; }
-        d.custName = '';
-        d.phone = '';
-        d.area = '';
-        d.delDate = '';
-        d.items = [];
-        d.isNullEntry = true;
-        localStorage.setItem('inv_drafts', JSON.stringify(draftsDB));
-        if (typeof sb !== 'undefined' && sb) {
-          try {
-            await sb.from('shop_settings').upsert(
-              [{ key: 'inv_drafts', value: JSON.stringify(draftsDB), updated_at: new Date().toISOString() }],
-              { onConflict: 'key' }
-            );
-          } catch(e) { console.warn('Drafts sync failed:', e); }
+        if (typeof sb === 'undefined' || !sb || !navigator.onLine) {
+          toast('📵 Cannot delete draft while offline — this needs to update the live server record.');
+          closeModal();
+          return;
         }
+
+        var _oldRes = await sb.from('drafts').select('*').eq('id', draftId).maybeSingle();
+        var oldRow = _oldRes.data || null;
+
+        var clearedRow = { cust_name: '', phone: '', area: '', del_date: '', items: [], is_null_entry: true };
+        var _upd = await sb.from('drafts').update(clearedRow).eq('id', draftId).select().single();
+        if (_upd.error) { toast('⚠️ Delete failed: ' + _upd.error.message); closeModal(); return; }
+
+        var _sess = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+        try {
+          var auditRes = await sb.from('audit_log').insert({
+            table_name: 'drafts', record_key: draftId, action: 'update',
+            old_data: oldRow, new_data: _upd.data,
+            changed_by: _sess ? _sess.id : null, changed_by_username: _sess ? _sess.username : null,
+            source: 'app'
+          });
+          if (auditRes.error) throw auditRes.error;
+        } catch(auditErr) { console.warn('[audit_log] draft delete log failed:', auditErr); }
+
+        var _cacheIdx = draftsDB.findIndex(function(x){ return x.id === draftId; });
+        if (_cacheIdx > -1) draftsDB[_cacheIdx] = _draftRowToObj(_upd.data);
+
         renderDB(); updateDBCount(); closeModal();
         toast('Invoice ' + (d.invNum || '') + ' marked Null — moved to the Null tab');
       }}
@@ -17614,7 +17753,6 @@ function ctrlLoad(skipCloudSync) {
       if (map['pcnc_fin_categories'] != null) { try { var _fc=JSON.parse(map['pcnc_fin_categories']); if(_fc&&typeof _fc==='object'){FIN_CATEGORIES=_fc;localStorage.setItem('pcnc_fin_categories',JSON.stringify(_fc));if(typeof sCatRefreshApp==='function')sCatRefreshApp();} } catch(e){ console.error('[ctrlLoad]', e); } }
       if (map['inv_num_prefix']         != null) localStorage.setItem('inv_num_prefix',         map['inv_num_prefix']);
       for (var _ts = 1; _ts <= 5; _ts++) { var _tk = 'inv_tmpl_' + _ts; if (map[_tk] != null) { localStorage.setItem(_tk, map[_tk]); } }
-      if (map['inv_drafts'] != null) { try { var _dr=JSON.parse(map['inv_drafts']); if(Array.isArray(_dr)){ draftsDB=_dr; localStorage.setItem('inv_drafts',JSON.stringify(_dr)); } } catch(e){ console.error('[ctrlLoad]', e); } }
       if (map['pcnc_emp_v4'] != null) { localStorage.setItem('pcnc_emp_v4', map['pcnc_emp_v4']); }
       if (map['pcnc_mon_v4'] != null) { localStorage.setItem('pcnc_mon_v4', map['pcnc_mon_v4']); }
       if (map['pcnc_day_v4'] != null) { localStorage.setItem('pcnc_day_v4', map['pcnc_day_v4']); }
@@ -18223,7 +18361,6 @@ async function ctrlBootSync() {
     if (map['pcnc_fin_categories'] != null) { try { var _fc2=JSON.parse(map['pcnc_fin_categories']); if(_fc2&&typeof _fc2==='object'){FIN_CATEGORIES=_fc2;localStorage.setItem('pcnc_fin_categories',JSON.stringify(_fc2));if(typeof sCatRefreshApp==='function')sCatRefreshApp();} } catch(e){ console.error('[ctrlBootSync]', e); } }
     if (map['inv_num_prefix']         != null) localStorage.setItem('inv_num_prefix',         map['inv_num_prefix']);
     for (var _ts2 = 1; _ts2 <= 5; _ts2++) { var _tk2 = 'inv_tmpl_' + _ts2; if (map[_tk2] != null) { localStorage.setItem(_tk2, map[_tk2]); } }
-    if (map['inv_drafts'] != null) { try { var _dr2=JSON.parse(map['inv_drafts']); if(Array.isArray(_dr2)){ draftsDB=_dr2; localStorage.setItem('inv_drafts',JSON.stringify(_dr2)); } } catch(e){ console.error('[ctrlBootSync]', e); } }
     if (map['pcnc_emp_v4'] != null) { localStorage.setItem('pcnc_emp_v4', map['pcnc_emp_v4']); }
     if (map['pcnc_mon_v4'] != null) { localStorage.setItem('pcnc_mon_v4', map['pcnc_mon_v4']); }
     if (map['pcnc_day_v4'] != null) { localStorage.setItem('pcnc_day_v4', map['pcnc_day_v4']); }
