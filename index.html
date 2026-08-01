@@ -2688,6 +2688,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         <div class="tab-sub-item" id="authUsersSubTabSidebar" onclick="_activateSubItem(this);switchSettingsTab('users',this)" style="display:none;">👥 Users & Access</div>
         <div class="tab-sub-item" id="cashCustodySubTabSidebar" onclick="_activateSubItem(this);switchSettingsTab('cashcustody',this)" style="display:none;">💰 Cash Custody</div>
         <div class="tab-sub-item" id="eagEditAccessSubTabSidebar" onclick="_activateSubItem(this);switchSettingsTab('editaccess',this)" style="display:none;">🔐 Edit Access</div>
+        <div class="tab-sub-item" id="auditLogSubTabSidebar" onclick="_activateSubItem(this);switchSettingsTab('auditlog',this)" style="display:none;">📜 Audit Log</div>
       </div>
     </div>
   </div>
@@ -6692,7 +6693,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.1.9';
+const APP_VERSION = '1.2.0';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -31181,6 +31182,12 @@ function _authApplyPermissions(sess) {
   var eagEditAccessSubTabSidebar = document.getElementById('eagEditAccessSubTabSidebar');
   if(eagEditAccessSubTabSidebar) eagEditAccessSubTabSidebar.style.display = isAdmin ? '' : 'none';
 
+  // Show Audit Log sub-tab only for admin
+  var auditLogSubTab = document.getElementById('auditLogSubTab');
+  if(auditLogSubTab) auditLogSubTab.style.display = isAdmin ? '' : 'none';
+  var auditLogSubTabSidebar = document.getElementById('auditLogSubTabSidebar');
+  if(auditLogSubTabSidebar) auditLogSubTabSidebar.style.display = isAdmin ? '' : 'none';
+
 
   // Auto-switch to first permitted tab
   var order = ['invoice','payment','production','summary','search','database','finance','settings'];
@@ -31786,6 +31793,17 @@ function _authInjectSettingsTab() {
     eaBtn.onclick = function(){ window.switchSettingsTab('editaccess', this); };
     subTabs.appendChild(eaBtn);
   }
+
+  // 1d. Add Audit Log sub-tab button (admin only)
+  if(subTabs && !document.getElementById('auditLogSubTab')) {
+    var alBtn = document.createElement('div');
+    alBtn.id = 'auditLogSubTab';
+    alBtn.className = 'fin-sub-tab';
+    alBtn.textContent = '📜 Audit Log';
+    alBtn.style.display = 'none';
+    alBtn.onclick = function(){ window.switchSettingsTab('auditlog', this); };
+    subTabs.appendChild(alBtn);
+  }
   // 2. Inject panel container
   var sp = document.querySelector('#settingsTab .db-panel');
   if(sp && !document.getElementById('authUsersPanel')) {
@@ -31805,6 +31823,15 @@ function _authInjectSettingsTab() {
     sp.appendChild(ccPanel);
   }
 
+  // 2c. Inject Audit Log panel container
+  if(sp && !document.getElementById('auditLogPanel')) {
+    var alPanel = document.createElement('div');
+    alPanel.id = 'auditLogPanel';
+    alPanel.style.display = 'none';
+    alPanel.innerHTML = '<div style="padding:6px 2px;font-size:0.8rem;color:#94a3b8;">Loading...</div>';
+    sp.appendChild(alPanel);
+  }
+
 
 
   // 4. Re-override switchSettingsTab to handle 'users' key
@@ -31814,6 +31841,8 @@ function _authInjectSettingsTab() {
     if(usersPanel) usersPanel.style.display = 'none';
     var ccPanel2 = document.getElementById('cashCustodyPanel');
     if(ccPanel2) ccPanel2.style.display = 'none';
+    var alPanel2 = document.getElementById('auditLogPanel');
+    if(alPanel2) alPanel2.style.display = 'none';
     if(tab === 'users') {
       document.querySelectorAll('#setSubTabs .fin-sub-tab').forEach(function(t){ t.classList.remove('active'); });
       if(el) el.classList.add('active');
@@ -31832,6 +31861,16 @@ function _authInjectSettingsTab() {
       });
       if(ccPanel2) ccPanel2.style.display = '';
       if(typeof window._renderCashCustodyPanel === 'function') window._renderCashCustodyPanel();
+      return;
+    }
+    if(tab === 'auditlog') {
+      document.querySelectorAll('#setSubTabs .fin-sub-tab').forEach(function(t){ t.classList.remove('active'); });
+      if(el) el.classList.add('active');
+      ['setCategories','setInvoice','setPartners','setData','setDragEditor','setWatermark','setTemplates'].forEach(function(id){
+        var p=document.getElementById(id); if(p) p.style.display='none';
+      });
+      if(alPanel2) alPanel2.style.display = '';
+      if(typeof window._renderAuditLogPanel === 'function') window._renderAuditLogPanel();
       return;
     }
     if(typeof _prevSwitch === 'function') _prevSwitch(tab, el);
@@ -31855,8 +31894,142 @@ function _authInjectSettingsTab() {
     if (_e1) _e1.style.display = _isAdmin ? '' : 'none';
     var _e2 = document.getElementById('eagEditAccessSubTabSidebar');
     if (_e2) _e2.style.display = _isAdmin ? '' : 'none';
+    var _al1 = document.getElementById('auditLogSubTab');
+    if (_al1) _al1.style.display = _isAdmin ? '' : 'none';
+    var _al2 = document.getElementById('auditLogSubTabSidebar');
+    if (_al2) _al2.style.display = _isAdmin ? '' : 'none';
   } catch(_e) { console.warn('[settings inject] visibility error:', _e); }
 }
+
+// ─── AUDIT LOG PANEL (admin-only) ─────────────────────────────
+// Read-only viewer over the audit_log table: most recent 100 rows by
+// default (471 total rows currently — no pagination needed yet at this
+// volume), with server-side filters re-queried on change so filtering
+// isn't limited to whatever happened to be in the initial page.
+window._auditLogTables = ['customer_payments','finance_ledger','invoices','excel_invoices','cash_holder_names','drafts','cash_holder_entries','salaries','employee_roster'];
+window._auditLogState = { table: '', action: '', search: '' };
+
+window._renderAuditLogPanel = async function() {
+  var panel = document.getElementById('auditLogPanel');
+  if (!panel) return;
+  var state = window._auditLogState;
+
+  var tableOptions = '<option value="">All Tables</option>' + window._auditLogTables.map(function(t){
+    return '<option value="' + t + '"' + (state.table === t ? ' selected' : '') + '>' + t + '</option>';
+  }).join('');
+  var actionOptions = ['insert','update','delete'].map(function(a){
+    return '<option value="' + a + '"' + (state.action === a ? ' selected' : '') + '>' + a.charAt(0).toUpperCase() + a.slice(1) + '</option>';
+  }).join('');
+
+  panel.innerHTML = '<div style="max-width:920px;">'
+    + '<div class="ctrl-section-title">📜 Audit Log</div>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
+    +   '<select id="alFilterTable" onchange="window._auditLogApplyFilters()" style="border:1px solid #cbd5e1;border-radius:6px;padding:6px 8px;font-size:0.78rem;">' + tableOptions + '</select>'
+    +   '<select id="alFilterAction" onchange="window._auditLogApplyFilters()" style="border:1px solid #cbd5e1;border-radius:6px;padding:6px 8px;font-size:0.78rem;"><option value="">All Actions</option>' + actionOptions + '</select>'
+    +   '<input id="alFilterSearch" type="text" placeholder="Search by username..." value="' + _escHtml(state.search) + '" oninput="window._auditLogApplyFilters()" style="flex:1;min-width:160px;border:1px solid #cbd5e1;border-radius:6px;padding:6px 8px;font-size:0.78rem;">'
+    + '</div>'
+    + '<div id="auditLogRows"><div style="padding:6px 2px;font-size:0.8rem;color:#94a3b8;">Loading...</div></div>'
+    + '</div>';
+
+  await window._auditLogFetchAndRender();
+};
+
+// Debounced so the free-text username search doesn't re-query on every keystroke
+window._auditLogApplyFilters = function() {
+  clearTimeout(window._auditLogDebounce);
+  window._auditLogDebounce = setTimeout(function() {
+    var t = document.getElementById('alFilterTable');
+    var a = document.getElementById('alFilterAction');
+    var s = document.getElementById('alFilterSearch');
+    window._auditLogState = {
+      table: t ? t.value : '',
+      action: a ? a.value : '',
+      search: s ? s.value.trim() : ''
+    };
+    window._auditLogFetchAndRender();
+  }, 300);
+};
+
+window._auditLogFetchAndRender = async function() {
+  var rowsEl = document.getElementById('auditLogRows');
+  if (!rowsEl) return;
+  rowsEl.innerHTML = '<div style="padding:6px 2px;font-size:0.8rem;color:#94a3b8;">Loading...</div>';
+  var state = window._auditLogState;
+  try {
+    if (!sb || !navigator.onLine) {
+      rowsEl.innerHTML = '<div style="color:#dc2626;font-size:0.8rem;">⚠️ This requires an internet connection.</div>';
+      return;
+    }
+    var q = sb.from('audit_log').select('*').order('changed_at', { ascending: false }).limit(100);
+    if (state.table) q = q.eq('table_name', state.table);
+    if (state.action) q = q.eq('action', state.action);
+    if (state.search) q = q.ilike('changed_by_username', '%' + state.search + '%');
+    var { data, error } = await q;
+    if (error) throw error;
+    rowsEl.innerHTML = window._auditLogRowsHtml(data || []);
+  } catch(err) {
+    console.warn('[_auditLogFetchAndRender]', err);
+    rowsEl.innerHTML = '<div style="color:#dc2626;font-size:0.8rem;">⚠️ Could not load audit log.</div>';
+  }
+};
+
+window._auditLogRowsHtml = function(rows) {
+  if (!rows.length) return '<div style="padding:10px 2px;font-size:0.8rem;color:#94a3b8;">No matching entries.</div>';
+  var actionColor = { insert: '#15803d', update: '#b45309', delete: '#b91c1c' };
+  var fmtTs = function(iso) {
+    try { return new Date(iso).toLocaleString('en-GB', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }); }
+    catch(e) { return iso || '—'; }
+  };
+  var html = '<div style="overflow-x:auto;"><table class="auth-users-table" style="min-width:640px;">'
+    + '<thead><tr><th>When</th><th>Table</th><th>Action</th><th>By</th><th>Record</th></tr></thead><tbody>';
+  rows.forEach(function(r, i) {
+    var color = actionColor[r.action] || '#334155';
+    html += '<tr style="cursor:pointer;" onclick="window._auditLogToggleRow(' + i + ')">'
+      + '<td style="white-space:nowrap;">' + fmtTs(r.changed_at) + '</td>'
+      + '<td>' + _escHtml(r.table_name) + '</td>'
+      + '<td style="color:' + color + ';font-weight:700;text-transform:capitalize;">' + _escHtml(r.action) + '</td>'
+      + '<td>' + _escHtml(r.changed_by_username || '—') + '</td>'
+      + '<td>' + _escHtml(r.record_key) + '</td>'
+      + '</tr>'
+      + '<tr id="alDiffRow_' + i + '" style="display:none;">'
+      +   '<td colspan="5" style="padding:6px 10px 14px 24px;background:#f8fafc;">' + window._auditDiffHtml(r.old_data, r.new_data) + '</td>'
+      + '</tr>';
+  });
+  html += '</tbody></table></div>';
+  return html;
+};
+
+window._auditLogToggleRow = function(i) {
+  var el = document.getElementById('alDiffRow_' + i);
+  if (!el) return;
+  el.style.display = (el.style.display === 'none') ? '' : 'none';
+};
+
+// Readable key/value diff between old_data and new_data (both jsonb, either
+// may be null: insert has no old_data, delete has no new_data). Only rows
+// whose value actually changed are shown.
+window._auditDiffHtml = function(oldData, newData) {
+  var oldObj = oldData || {};
+  var newObj = newData || {};
+  var keys = Object.keys(Object.assign({}, oldObj, newObj)).sort();
+  var fmtVal = function(v) {
+    if (v === undefined || v === null) return '<span style="color:#cbd5e1;">—</span>';
+    if (typeof v === 'object') return _escHtml(JSON.stringify(v));
+    return _escHtml(String(v));
+  };
+  var rowsHtml = keys.filter(function(k){
+    return JSON.stringify(oldObj[k]) !== JSON.stringify(newObj[k]);
+  }).map(function(k){
+    return '<tr>'
+      + '<td style="padding:4px 8px;font-weight:700;color:#475569;white-space:nowrap;vertical-align:top;">' + _escHtml(k) + '</td>'
+      + '<td style="padding:4px 8px;color:#b91c1c;vertical-align:top;">' + fmtVal(oldObj[k]) + '</td>'
+      + '<td style="padding:4px 4px;color:#94a3b8;vertical-align:top;">→</td>'
+      + '<td style="padding:4px 8px;color:#15803d;vertical-align:top;">' + fmtVal(newObj[k]) + '</td>'
+      + '</tr>';
+  }).join('');
+  if (!rowsHtml) return '<div style="color:#94a3b8;font-size:0.75rem;">No changed fields.</div>';
+  return '<table style="width:100%;border-collapse:collapse;font-size:0.74rem;font-family:Montserrat,sans-serif;">' + rowsHtml + '</table>';
+};
 
 // ─── CHANGE MY PASSWORD SECTION ───────────────────────────────
 
