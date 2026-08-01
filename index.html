@@ -3988,7 +3988,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
               <div style="font-size:0.72rem;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">⚠️ Danger Zone</div>
               <div style="font-size:0.72rem;color:#64748b;margin-bottom:10px;">These actions are permanent and cannot be undone.</div>
               <div style="display:flex;flex-direction:column;gap:8px;">
-                <button onclick="clearAllInvoicesData()" style="padding:8px 14px;border:1.5px solid #fca5a5;background:#fff5f5;color:#dc2626;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;text-align:left;">🗑️ Clear All Invoices &amp; Finance Entries</button>
+                <button onclick="toast('⚠️ This feature is not yet implemented. Contact support if you need to clear invoice data.')" style="padding:8px 14px;border:1.5px solid #fca5a5;background:#fff5f5;color:#dc2626;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;text-align:left;">🗑️ Clear All Invoices &amp; Finance Entries</button>
                 <button onclick="sCatReset()" style="padding:8px 14px;border:1.5px solid #fde68a;background:#fffbeb;color:#92400e;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;text-align:left;">↩ Reset Categories to Defaults</button>
               </div>
             </div>
@@ -6693,7 +6693,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -31590,6 +31590,7 @@ window._saveCashHolderName = async function(slot, value) {
       localStorage.setItem('cash_holders_cache', JSON.stringify(cached));
     } catch(_e) { console.error('[_saveCashHolderName]', _e); }
     toast('✅ Name updated');
+    if (typeof window._renderCashCustodyPanel === 'function') window._renderCashCustodyPanel();
   } catch(err) { console.warn('[saveCashHolderName]', err); toast('❌ Failed to save name'); }
 };
 
