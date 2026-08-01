@@ -5477,7 +5477,7 @@ async function _upsertCustomerPaymentWithOCC(invoiceRef, type, newAmount, meta, 
         console.warn('[customer_payments] insert-race collision detected and resolved for', invoiceRef, type);
       }
       _newRow.id = rpcResult && rpcResult[0] ? rpcResult[0].id : undefined;
-      _auditAction = 'insert';
+      _auditAction = (rpcResult && rpcResult[0] && rpcResult[0].was_conflict) ? 'update' : 'insert';
       _auditNewData = _newRow;
     }
 
@@ -5517,16 +5517,21 @@ async function _flushCpPending() {
   for (var i = 0; i < _cpPending.length; i++) {
     try {
       var entry = _cpPending[i];
-      await sb.from('customer_payments').upsert(entry, { onConflict: 'id' });
+      var { error } = await sb.from('customer_payments').upsert(entry, { onConflict: 'id' });
+      if (error) throw error;
       synced.push(entry.id || i);
     } catch(e) { console.warn('[cpPending]', e); }
   }
-  if (synced.length) {
+  if (_cpPending.length) {
     var remaining = _cpPending.filter(function(e, idx) {
       return !synced.includes(e.id || idx);
     });
     localStorage.setItem('cp_pending_sync', JSON.stringify(remaining));
-    if (!remaining.length) toast('☁ ' + synced.length + ' payment(s) synced');
+    if (remaining.length) {
+      toast('☁ ' + synced.length + ' payment(s) synced, ' + remaining.length + ' still pending');
+    } else {
+      toast('☁ ' + synced.length + ' payment(s) synced');
+    }
   }
 }
 
@@ -6693,7 +6698,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.2.1';
+const APP_VERSION = '1.2.2';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
