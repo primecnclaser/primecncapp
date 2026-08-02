@@ -6634,7 +6634,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.2.5';
+const APP_VERSION = '1.2.6';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -30436,6 +30436,10 @@ async function _authDoLogin() {
     var res = await window.sb.from('app_users')
       .select('*').eq('username', username).single();
 
+    if (res.error) {
+      var _isQueryNetErr = !navigator.onLine || (res.error.message && /network|fetch|failed to fetch|load failed/i.test(res.error.message));
+      if (_isQueryNetErr) throw res.error;
+    }
     if (res.error || !res.data) {
       if (errEl) { errEl.textContent = '❌ Incorrect username or password.'; errEl.style.display = ''; }
       if (btn) { btn.disabled = false; btn.textContent = 'Login'; }
@@ -30556,7 +30560,8 @@ async function _authDoLogin() {
       localStorage.setItem('_offlineAuth', JSON.stringify({
         username: sess.username, display_name: sess.display_name,
         role: sess.role, id: sess.id, password_hash: hash,
-        permissions: sess.permissions, active: data.is_active, savedAt: Date.now()
+        password_salt: data.password_salt, permissions: sess.permissions,
+        active: data.is_active, savedAt: Date.now()
       }));
     } catch(_oe) { console.warn('[Offline] Could not save offline auth:', _oe); }
     _authLog('login', 'Logged in');
@@ -30584,7 +30589,9 @@ async function _authDoLogin() {
           if (btn) { btn.disabled = false; btn.textContent = 'Login'; }
           return;
         }
-        var _offHash = await hashPassword(password);
+        var _offHash = _offAuth.password_salt
+          ? await hashPasswordSalted(password, _offAuth.password_salt)
+          : await hashPassword(password);
         if (_offHash !== _offAuth.password_hash) {
           if (errEl) { errEl.textContent = 'Incorrect password.'; errEl.style.display = ''; }
           if (btn) { btn.disabled = false; btn.textContent = 'Login'; }
