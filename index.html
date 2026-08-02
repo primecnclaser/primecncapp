@@ -1522,11 +1522,11 @@ body {
 /* Role tabs on login card */
 .auth-role-tabs { display:flex; gap:8px; margin-bottom:20px; }
 .auth-role-tab {
-  flex:1; padding:10px; border-radius:9px;
+  flex:1; padding:10px 6px; border-radius:9px;
   border:2px solid #e2e8f0; background:#f8fafc;
-  font-family:'Montserrat',sans-serif; font-size:0.88rem;
+  font-family:'Montserrat',sans-serif; font-size:0.74rem;
   font-weight:700; cursor:pointer; transition:all .2s;
-  color:#64748b; min-height:44px;
+  color:#64748b; min-height:44px; white-space:nowrap;
 }
 .auth-role-tab.active { background:#1e293b; color:#fff; border-color:#1e293b; }
 .auth-role-tab:hover:not(.active) { background:#f1f5f9; border-color:#cbd5e1; }
@@ -1924,10 +1924,11 @@ body {
     <!-- Role tabs -->
     <div class="auth-role-tabs">
       <button class="auth-role-tab active" id="authTabAdmin"
-              onclick="_authSelectRole('admin',this)">🔐 Admin</button>
+              onclick="_authSelectRole('admin',this)">🔐 Admin / Manager</button>
       <button class="auth-role-tab" id="authTabUser"
-              onclick="_authSelectRole('user',this)">👤 User</button>
+              onclick="_authSelectRole('user',this)">👤 Staff</button>
     </div>
+    <div id="authRoleCaption" style="text-align:center;font-size:0.78rem;color:#94a3b8;margin:6px 0 18px;font-weight:500;min-height:16px;transition:opacity 0.15s ease;">Full access for Admin &amp; Manager accounts</div>
 
     <div class="auth-field">
       <label>Username</label>
@@ -6635,7 +6636,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.2.7';
+const APP_VERSION = '1.2.8';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -30182,6 +30183,8 @@ window._branchSetupSaveNewBranch = _branchSetupSaveNewBranch;
 function _authSelectRole(role, btn) {
   document.querySelectorAll('.auth-role-tab').forEach(function(t){ t.classList.remove('active'); });
   if (btn) btn.classList.add('active');
+  var caption = document.getElementById('authRoleCaption');
+  if (caption) caption.textContent = (role === 'admin') ? 'Full access for Admin & Manager accounts' : 'For general Staff accounts';
   var err = document.getElementById('authError');
   if (err) err.style.display = 'none';
   window._authSelectedRole = role;
