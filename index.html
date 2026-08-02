@@ -6634,7 +6634,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.2.4';
+const APP_VERSION = '1.2.5';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -6931,8 +6931,8 @@ async function renderEditAccessPanel() {
   var userSelect = document.getElementById('eagUserSelect');
   if (userSelect) {
     try {
-      var { data: users } = await sb.from('app_users').select('id,display_name,username,role').order('display_name');
-      userSelect.innerHTML = (users||[]).filter(function(u){ return u.role !== 'admin'; }).map(function(u) {
+      var { data: users } = await sb.from('app_users').select('id,display_name,username,role,is_active').order('display_name');
+      userSelect.innerHTML = (users||[]).filter(function(u){ return u.role !== 'admin' && u.is_active !== false; }).map(function(u) {
         return '<option value="'+u.id+'">'+(u.display_name||u.username)+'</option>';
       }).join('') || '<option value="">No staff users</option>';
     } catch(e) { console.warn(e); }
@@ -30206,13 +30206,18 @@ async function _authFpLookup() {
   try {
     // Search by username, email, OR phone — whichever matches
     var res = await window.sb.from('app_users')
-      .select('id,username,display_name,role,email,phone')
+      .select('id,username,display_name,role,email,phone,is_active')
       .or('username.eq.' + un + ',email.eq.' + un + ',phone.eq.' + un)
       .limit(1);
 
     var user = res.data && res.data.length ? res.data[0] : null;
     if (res.error || !user) {
       if(err){err.textContent='❌ No account found with that username, email, or phone.';err.style.display='';}
+      if(btn){btn.disabled=false;btn.textContent='Find My Account';}
+      return;
+    }
+    if (user.is_active === false) {
+      if(err){err.textContent='🚫 This account has been deactivated. Contact your admin.';err.style.display='';}
       if(btn){btn.disabled=false;btn.textContent='Find My Account';}
       return;
     }
@@ -30494,6 +30499,19 @@ async function _authDoLogin() {
       return;
     }
 
+    // ── Block deactivated accounts ──
+    if (data.is_active === false) {
+      if (errEl) {
+        errEl.textContent = '🚫 This account has been deactivated. Contact your admin.';
+        errEl.style.background = '';
+        errEl.style.color = '';
+        errEl.style.border = '';
+        errEl.style.display = 'block';
+      }
+      if (btn) { btn.disabled = false; btn.textContent = 'Login'; }
+      return;
+    }
+
     // Update last_login — deliberately non-blocking (must not delay dashboard
     // load), but a failure is now logged instead of fully silent.
     window.sb.from('app_users').update({ last_login: new Date().toISOString() }).eq('id', data.id)
@@ -30538,7 +30556,7 @@ async function _authDoLogin() {
       localStorage.setItem('_offlineAuth', JSON.stringify({
         username: sess.username, display_name: sess.display_name,
         role: sess.role, id: sess.id, password_hash: hash,
-        permissions: sess.permissions, savedAt: Date.now()
+        permissions: sess.permissions, active: data.is_active, savedAt: Date.now()
       }));
     } catch(_oe) { console.warn('[Offline] Could not save offline auth:', _oe); }
     _authLog('login', 'Logged in');
@@ -30591,6 +30609,11 @@ async function _authDoLogin() {
             errEl.style.border = '';
             errEl.style.display = 'block';
           }
+          if (btn) { btn.disabled = false; btn.textContent = 'Login'; }
+          return;
+        }
+        if (_offAuth.active === false) {
+          if (errEl) { errEl.textContent = '🚫 This account has been deactivated. Contact your admin.'; errEl.style.display = ''; }
           if (btn) { btn.disabled = false; btn.textContent = 'Login'; }
           return;
         }
@@ -32036,9 +32059,11 @@ async function _authRenderUsersList() {
       var online = u.last_login && (now - new Date(u.last_login).getTime()) < 30*60*1000;
       var ll = u.last_login ? new Date(u.last_login).toLocaleString() : 'Never';
       var isSelf = sess && u.id === sess.id;
-      return '<tr>'+
+      var isActive = u.is_active !== false;
+      return '<tr'+(isActive?'':' style="opacity:0.55;"')+'>'+
         '<td style="padding:9px 8px;font-weight:600;color:#1e293b;">'+_e(u.display_name||u.username)+
           (online?' <span title="Active within 30 min" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;margin-left:4px;vertical-align:middle;"></span>':'')+
+          (isActive?'':' <span style="display:inline-block;background:#f1f5f9;color:#64748b;font-size:0.58rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:4px;letter-spacing:0.5px;">INACTIVE</span>')+
         '</td>'+
         '<td style="padding:9px 8px;color:#64748b;font-size:0.78rem;">'+_e(u.username)+'</td>'+
         '<td style="padding:9px 8px;"><span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:0.65rem;font-weight:700;'+
@@ -32048,6 +32073,7 @@ async function _authRenderUsersList() {
         '<td style="padding:9px 8px;white-space:nowrap;">'+
           '<button onclick="_authShowEditModal(\''+_e(u.id)+'\')" style="padding:4px 9px;border-radius:5px;border:1px solid #c7d2fe;background:#eef2ff;color:#4338ca;font-size:0.65rem;font-weight:700;cursor:pointer;margin-right:3px;min-height:30px;">Edit</button>'+
           '<button onclick="_authShowResetPwModal(\''+_e(u.id)+'\',\''+_e(u.username)+'\')" style="padding:4px 9px;border-radius:5px;border:1px solid #fde68a;background:#fef9c3;color:#92400e;font-size:0.65rem;font-weight:700;cursor:pointer;margin-right:3px;min-height:30px;">Reset PW</button>'+
+          (!isSelf?('<button onclick="_authToggleUserActive(\''+_e(u.id)+'\',\''+_e(u.username)+'\',\''+_e(u.role)+'\','+(isActive?'true':'false')+')" style="padding:4px 9px;border-radius:5px;border:1px solid '+(isActive?'#cbd5e1;background:#f1f5f9;color:#475569;':'#6ee7b7;background:#f0fdf4;color:#065f46;')+'font-size:0.65rem;font-weight:700;cursor:pointer;margin-right:3px;min-height:30px;">'+(isActive?'Deactivate':'Reactivate')+'</button>'):'')+
           (!isSelf?'<button onclick="_authDeleteUser(\''+_e(u.id)+'\',\''+_e(u.username)+'\',\''+_e(u.role)+'\')" style="padding:4px 9px;border-radius:5px;border:1px solid #fca5a5;background:#fef2f2;color:#dc2626;font-size:0.65rem;font-weight:700;cursor:pointer;min-height:30px;">Delete</button>':'')+
         '</td>'+
       '</tr>';
@@ -32198,6 +32224,26 @@ async function _authDeleteUser(userId, username, role) {
   }catch(e){ console.error('[_authDeleteUser:app_users delete]', e); if(typeof window.toast==='function')window.toast('❌ Delete failed.'); }
 }
 window._authDeleteUser = _authDeleteUser;
+
+// ─── DEACTIVATE / REACTIVATE USER ──────────────────────────────
+async function _authToggleUserActive(userId, username, role, currentlyActive) {
+  if(currentlyActive && role==='admin' && window.sb) {
+    var chk=await window.sb.from('app_users').select('id').eq('role','admin');
+    if(chk.data && chk.data.length<=1){
+      if(typeof window.toast==='function')window.toast('❌ Cannot deactivate the last admin account.');
+      return;
+    }
+  }
+  if(currentlyActive && !confirm('Deactivate user "'+username+'"? They will no longer be able to log in.')) return;
+  try{
+    var res=await window.sb.from('app_users').update({ is_active: !currentlyActive }).eq('id',userId);
+    if(res.error){if(typeof window.toast==='function')window.toast('❌ Update failed.');return;}
+    _authLog(currentlyActive?'user_deactivated':'user_reactivated',(currentlyActive?'Deactivated':'Reactivated')+' user: '+username);
+    if(typeof window.toast==='function')window.toast(currentlyActive?'🚫 User deactivated.':'✅ User reactivated.');
+    _authRenderUsersList();
+  }catch(e){ console.error('[_authToggleUserActive:app_users update]', e); if(typeof window.toast==='function')window.toast('❌ Update failed.'); }
+}
+window._authToggleUserActive = _authToggleUserActive;
 
 // ─── AUDIT LOG ────────────────────────────────────────────────
 var _authAuditOffset = 0;
