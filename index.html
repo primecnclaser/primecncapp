@@ -2255,90 +2255,6 @@ body {
   </div>
 </div>
 
-
-<!-- ═══════════════════════════════════════════════════════ -->
-<!-- ║  SECTION 7 — OLD LOGIN SCREEN (legacy, keep)       ║ -->
-<!-- ═══════════════════════════════════════════════════════ -->
-<div id="loginScreen">
-  <div class="login-box">
-
-    <!-- ── PANEL 1: Normal Login ── -->
-    <div class="recovery-panel active" id="panelLogin">
-      <div class="login-logo">
-        <span class="urdu-name" id="loginUrduName">پرائم سی این سی لیزر ورکس</span>
-        <span class="en-name" id="loginEnName">Prime CNC Laser Works</span>
-        <div class="sub">🔐 Invoice Management System</div>
-      </div>
-      <div class="login-field">
-        <label>Username</label>
-        <input type="text" id="loginUser" placeholder="Enter username" autocomplete="username"
-          onkeydown="if(event.key==='Enter') doLogin()">
-      </div>
-      <div class="login-field">
-        <label>Password</label>
-        <input type="password" id="loginPass" placeholder="Enter password" autocomplete="current-password"
-          onkeydown="if(event.key==='Enter') doLogin()">
-      </div>
-      <button class="login-btn" id="loginBtn" onclick="doLogin()">🔐 Login</button>
-      <div class="login-error" id="loginError"></div>
-      <div class="forgot-link">
-        <a onclick="showRecovery()">Forgot username or password?</a>
-      </div>
-      <div class="login-status" id="loginStatus">Connecting to database...</div>
-    </div>
-
-    <!-- ── PANEL 2: Enter Email or Phone ── -->
-    <div class="recovery-panel" id="panelRecovery">
-      <button class="back-link" onclick="showPanel('panelLogin')">← Back to Login</button>
-      <div class="recovery-step-title">🔍 Account Recovery</div>
-      <p style="font-size:0.82rem;color:rgba(255,255,255,0.5);margin-bottom:20px;text-align:center;line-height:1.6">
-        Enter your registered email address<br>or phone number to find your account.
-      </p>
-      <div class="login-field">
-        <label>Email or Phone Number</label>
-        <input type="text" id="recoveryInput"
-          placeholder="e.g. you@email.com or 03001234567"
-          onkeydown="if(event.key==='Enter') doRecoveryLookup()">
-      </div>
-      <div class="rec-error"  id="recError"></div>
-      <div class="rec-success" id="recSuccess"></div>
-      <!-- Found account result -->
-      <div class="recovery-result" id="recResult">
-        <div class="label">Account Found — Username</div>
-        <div class="value" id="recFoundUser">—</div>
-      </div>
-      <button class="login-btn" id="recLookupBtn" onclick="doRecoveryLookup()">
-        🔍 Find My Account
-      </button>
-    </div>
-
-    <!-- ── PANEL 3: Set New Password ── -->
-    <div class="recovery-panel" id="panelNewPass">
-      <button class="back-link" onclick="showPanel('panelRecovery')">← Back</button>
-      <div class="recovery-step-title">🔑 Set New Password</div>
-      <p style="font-size:0.82rem;color:rgba(255,255,255,0.5);margin-bottom:20px;text-align:center;line-height:1.6">
-        Account verified ✅<br>Choose a new password below.
-      </p>
-      <div class="login-field">
-        <label>New Password</label>
-        <input type="password" id="newPassInput" placeholder="Min 6 characters"
-          onkeydown="if(event.key==='Enter') document.getElementById('newPassConfirm').focus()">
-      </div>
-      <div class="login-field">
-        <label>Confirm New Password</label>
-        <input type="password" id="newPassConfirm" placeholder="Repeat new password"
-          onkeydown="if(event.key==='Enter') doSetNewPassword()">
-      </div>
-      <div class="rec-error"   id="newPassError"></div>
-      <div class="rec-success" id="newPassSuccess"></div>
-      <button class="login-btn" id="newPassBtn" onclick="doSetNewPassword()">
-        ✅ Save New Password & Login
-      </button>
-    </div>
-
-  </div>
-</div>
-
 <!-- ═══════════════════════════════════════════════════════ -->
 <!-- ║  SECTION 8 — USER BAR / HEADER                     ║ -->
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -6698,7 +6614,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.2.2';
+const APP_VERSION = '1.2.3';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -7468,16 +7384,6 @@ function fmtDateDisplay(d) {
 // ══════════════════════════════════════════════
 // LOGIN / LOGOUT
 // ══════════════════════════════════════════════
-async function doLogin() {
-  return; // disabled — use new auth system
-}
-
-function showLoginError(msg) {
-  const el = document.getElementById('loginError');
-  el.textContent = msg;
-  el.style.display = 'block';
-}
-
 function doLogout() {
   if (typeof _stopAdminTimer === 'function') _stopAdminTimer();
   if (typeof _authClearSession === 'function') _authClearSession();
@@ -7486,15 +7392,7 @@ function doLogout() {
   if (typeof _authShowPanel === 'function') _authShowPanel('authLoginCard');
   currentUser = null;
   localStorage.removeItem('inv_logged_user');
-  showPanel('panelLogin');
-  document.getElementById('loginScreen').style.display = 'flex';
   document.getElementById('userBar').style.display = 'none';
-  document.getElementById('loginUser').value = '';
-  document.getElementById('loginPass').value = '';
-  document.getElementById('loginStatus').textContent = 'Logged out.';
-  document.getElementById('loginError').style.display = 'none';
-  document.getElementById('loginBtn').disabled = false;
-  document.getElementById('loginBtn').textContent = '🔐 Login';
   // Clear old keyless profile keys (legacy cleanup)
   localStorage.removeItem('userProfilePhoto');
   localStorage.removeItem('userDisplayName');
@@ -7519,124 +7417,6 @@ function doLogout() {
   if (ubImg) { ubImg.src = ''; ubImg.style.display = 'none'; }
   if (ubIni) { ubIni.style.display = ''; ubIni.textContent = '?'; }
   if (ubName) ubName.textContent = '—';
-}
-
-// ══════════════════════════════════════════════
-// RECOVERY — PANEL SWITCHER
-// ══════════════════════════════════════════════
-function showPanel(id) {
-  document.querySelectorAll('.recovery-panel').forEach(p => p.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-}
-
-function showRecovery() {
-  document.getElementById('recoveryInput').value = '';
-  document.getElementById('recError').style.display    = 'none';
-  document.getElementById('recSuccess').style.display  = 'none';
-  document.getElementById('recResult').style.display   = 'none';
-  document.getElementById('recLookupBtn').disabled     = false;
-  document.getElementById('recLookupBtn').textContent  = '🔍 Find My Account';
-  showPanel('panelRecovery');
-  setTimeout(() => document.getElementById('recoveryInput').focus(), 100);
-}
-
-// ══════════════════════════════════════════════
-// RECOVERY STEP 1 — LOOKUP BY EMAIL OR PHONE
-// ══════════════════════════════════════════════
-let _recoveredUserId   = null;
-let _recoveredUsername = null;
-
-async function doRecoveryLookup() {
-  const input = document.getElementById('recoveryInput').value.trim();
-  const btn   = document.getElementById('recLookupBtn');
-  const err   = document.getElementById('recError');
-  const suc   = document.getElementById('recSuccess');
-  const res   = document.getElementById('recResult');
-
-  err.style.display = 'none';
-  suc.style.display = 'none';
-  res.style.display = 'none';
-
-  if (!input) {
-    err.textContent = 'Please enter your email or phone number.';
-    err.style.display = 'block'; return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = '🔄 Searching...';
-
-  try {
-    err.textContent = '❌ Account recovery is not available. Please contact admin to reset your password.';
-    err.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = '🔍 Find Account';
-    return;
-  } catch(e) {
-    console.error('[doRecoveryLookup]', e);
-    err.textContent = '⚠️ Connection error. Check internet and try again.';
-    err.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = '🔍 Find My Account';
-  }
-}
-
-function goToSetPassword() {
-  document.getElementById('newPassInput').value   = '';
-  document.getElementById('newPassConfirm').value = '';
-  document.getElementById('newPassError').style.display   = 'none';
-  document.getElementById('newPassSuccess').style.display = 'none';
-  document.getElementById('newPassBtn').disabled  = false;
-  document.getElementById('newPassBtn').textContent = '✅ Save New Password & Login';
-  showPanel('panelNewPass');
-  setTimeout(() => document.getElementById('newPassInput').focus(), 100);
-  // Reset lookup button for next time
-  document.getElementById('recLookupBtn').onclick   = doRecoveryLookup;
-  document.getElementById('recLookupBtn').textContent = '🔍 Find My Account';
-}
-
-// ══════════════════════════════════════════════
-// RECOVERY STEP 2 — SET NEW PASSWORD
-// ══════════════════════════════════════════════
-async function doSetNewPassword() {
-  const nw      = document.getElementById('newPassInput').value.trim();
-  const confirm = document.getElementById('newPassConfirm').value.trim();
-  const btn     = document.getElementById('newPassBtn');
-  const err     = document.getElementById('newPassError');
-  const suc     = document.getElementById('newPassSuccess');
-
-  err.style.display = 'none';
-  suc.style.display = 'none';
-
-  if (!nw || !confirm) {
-    err.textContent = 'Please fill in both password fields.';
-    err.style.display = 'block'; return;
-  }
-  if (nw.length < 6) {
-    err.textContent = 'Password must be at least 6 characters.';
-    err.style.display = 'block'; return;
-  }
-  if (nw !== confirm) {
-    err.textContent = 'Passwords do not match. Please try again.';
-    err.style.display = 'block'; return;
-  }
-  if (!_recoveredUserId) {
-    err.textContent = 'Session expired. Please start recovery again.';
-    err.style.display = 'block'; return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = '🔄 Saving...';
-
-  try {
-    suc.textContent = '❌ Password recovery is not available. Please contact admin.';
-    return;
-  } catch(e) {
-    console.error('[doSetNewPassword]', e);
-    err.textContent = '⚠️ Error saving password. Check connection and try again.';
-    err.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = '✅ Save New Password & Login';
-  }
 }
 
 // ══════════════════════════════════════════════
@@ -8215,11 +7995,13 @@ window.addEventListener('load', async () => {
 
   // If supabase failed to load, show clear message and let user work offline
   if (!sb) {
-    document.getElementById('loginStatus').textContent = '⚠️ Could not connect to database. Check internet connection and reload.';
+    var lsEl1 = document.getElementById('loginStatus');
+    if (lsEl1) lsEl1.textContent = '⚠️ Could not connect to database. Check internet connection and reload.';
     if (saved) {
       // Still let them in with local data
       currentUser = saved;
-      document.getElementById('loginScreen').style.display = 'none';
+      var lsc1 = document.getElementById('loginScreen');
+      if (lsc1) lsc1.style.display = 'none';
       document.getElementById('userBar').style.display = 'flex';
       document.getElementById('loggedInUser').textContent = currentUser;
       setSyncStatus('offline', '● Offline — saved locally');
@@ -8229,10 +8011,12 @@ window.addEventListener('load', async () => {
     return;
   }
 
-  document.getElementById('loginStatus').textContent = 'Connecting to database...';
+  var lsEl2 = document.getElementById('loginStatus');
+  if (lsEl2) lsEl2.textContent = 'Connecting to database...';
   if (saved) {
     currentUser = saved;
-    document.getElementById('loginScreen').style.display = 'none';
+    var lsc2 = document.getElementById('loginScreen');
+    if (lsc2) lsc2.style.display = 'none';
     document.getElementById('userBar').style.display = 'flex';
     document.getElementById('loggedInUser').textContent = currentUser;
 
@@ -8326,7 +8110,8 @@ window.addEventListener('load', async () => {
       if (sb && navigator.onLine && currentUser && typeof _syncToHO === 'function') _syncToHO(true);
     }, 8000);
   } else {
-    document.getElementById('loginStatus').textContent = 'Please log in to continue.';
+    var lsEl3 = document.getElementById('loginStatus');
+    if (lsEl3) lsEl3.textContent = 'Please log in to continue.';
   }
 });
 
