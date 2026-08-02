@@ -3906,6 +3906,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
               <div style="display:flex;flex-direction:column;gap:8px;">
                 <button onclick="toast('⚠️ This feature is not yet implemented. Contact support if you need to clear invoice data.')" style="padding:8px 14px;border:1.5px solid #fca5a5;background:#fff5f5;color:#dc2626;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;text-align:left;">🗑️ Clear All Invoices &amp; Finance Entries</button>
                 <button onclick="sCatReset()" style="padding:8px 14px;border:1.5px solid #fde68a;background:#fffbeb;color:#92400e;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;text-align:left;">↩ Reset Categories to Defaults</button>
+                <button onclick="_resetThisDevice()" style="padding:8px 14px;border:1.5px solid #fca5a5;background:#fff5f5;color:#dc2626;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;text-align:left;">🔄 Reset This Device</button>
               </div>
             </div>
           </div>
@@ -6634,7 +6635,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.2.6';
+const APP_VERSION = '1.2.7';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -29763,6 +29764,20 @@ window._forceAppRefresh = async function() {
   setTimeout(function(){
     window.location.href = window.location.pathname + '?_r=' + Date.now();
   }, 300);
+};
+
+window._resetThisDevice = async function() {
+  var msg = "⚠️ Reset This Device?\n\nThis will clear this device's saved login, branch connection, and local cache. You will need to select your branch and log in again.\n\nThis does NOT affect any real invoice, payment, or customer data — nothing on the server is touched. Only this device's local settings are reset.\n\nContinue?";
+  if (!confirm(msg)) return;
+  localStorage.clear();
+  sessionStorage.clear();
+  try {
+    if (window.caches && caches.keys) {
+      var keys = await caches.keys();
+      await Promise.all(keys.map(function(k){ return caches.delete(k); }));
+    }
+  } catch(e) { console.warn('[_resetThisDevice] cache clear error:', e); }
+  window.location.reload(true);
 };
 
 (function() {
