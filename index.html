@@ -5454,19 +5454,39 @@ async function _flushCpPending() {
 async function _flushManualInvPending() {
   var _manualPending = JSON.parse(localStorage.getItem('manual_inv_pending') || '[]');
   if (!_manualPending.length || !sb) return;
-  var syncedCount = 0;
-  var remaining = [];
+  var synced = [];
   for (var i = 0; i < _manualPending.length; i++) {
     try {
-      await sb.from('invoices').upsert(_manualPending[i], { onConflict: 'id' });
-      syncedCount++;
-    } catch(e) {
-      console.warn('[manualInvPending]', e);
-      remaining.push(_manualPending[i]);
+      var entry = _manualPending[i];
+      var payload = {
+        customer_name:    entry.customer_name,
+        phone:            entry.phone,
+        order_num:        entry.order_num,
+        date:             entry.date,
+        total_bill:       entry.total_bill,
+        received:         entry.received,
+        bad_debt:         entry.bad_debt,
+        discount:         entry.discount,
+        remaining:        entry.remaining,
+        source:           entry.source,
+        received_entries: entry.received_entries
+      };
+      var { error } = await sb.from('excel_invoices').upsert(payload, { onConflict: 'order_num' });
+      if (error) throw error;
+      synced.push(entry.order_num);
+    } catch(e) { console.warn('[manualInvPending]', e); }
+  }
+  if (_manualPending.length) {
+    var remaining = _manualPending.filter(function(e) {
+      return !synced.includes(e.order_num);
+    });
+    localStorage.setItem('manual_inv_pending', JSON.stringify(remaining));
+    if (remaining.length) {
+      toast('☁ ' + synced.length + ' manual invoice(s) synced, ' + remaining.length + ' still pending');
+    } else {
+      toast('☁ ' + synced.length + ' manual invoice(s) synced');
     }
   }
-  localStorage.setItem('manual_inv_pending', JSON.stringify(remaining));
-  if (syncedCount) toast('☁ ' + syncedCount + ' manual invoice(s) synced');
 }
 
 function _hasPendingWork() {
@@ -6614,7 +6634,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.2.3';
+const APP_VERSION = '1.2.4';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -7079,6 +7099,11 @@ async function _adminEditSearchCustomers(query) {
       });
       var { data: invRows } = await sb.from('invoices').select('cust_name, phone').ilike('cust_name', '%' + q + '%').limit(10);
       (invRows || []).forEach(function(r) {
+        var key = (r.cust_name||'') + '|' + (r.phone||'');
+        if (!seen[key] && r.cust_name) { seen[key] = true; results.push({ name: r.cust_name, phone: r.phone || '' }); }
+      });
+      var { data: draftRows } = await sb.from('drafts').select('cust_name, phone').ilike('cust_name', '%' + q + '%').limit(10);
+      (draftRows || []).forEach(function(r) {
         var key = (r.cust_name||'') + '|' + (r.phone||'');
         if (!seen[key] && r.cust_name) { seen[key] = true; results.push({ name: r.cust_name, phone: r.phone || '' }); }
       });
@@ -21852,7 +21877,7 @@ function onDailyCatChange() {
       }
       // Check Supabase
       if (sb) {
-        amtInput.value = '…';
+        amtInput.value = '';
         if (info) { info.style.display=''; info.textContent='⏳ Loading saved entry…'; info.style.color='#64748b'; }
         sb.from('finance_ledger')
           .select('id,amount,note,source,ref_id,created_at')
