@@ -6636,7 +6636,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.2.8';
+const APP_VERSION = '1.2.9';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -27146,10 +27146,10 @@ function sOpenEdit(empId, ym){
   const emps=sEmps(), emp=emps.find(e=>e.id===empId);
   if(!emp){ toast('⚠️ Employee not found'); return; }
 
-  // Determine if selected month is locked — all months before current running month are locked
+  // Period lock — Admin always exempt, Manager exempt for current/open period only (_isPeriodLocked).
   const selectedYM = ym || sYM() || '';
-  const _todayYM2 = new Date().toISOString().slice(0,7);
-  const isLockedMonth = selectedYM && selectedYM < _todayYM2;
+  const _sessEdit = (typeof _authGetSession === 'function') ? _authGetSession() : null;
+  const isLockedMonth = !!(selectedYM && typeof _isPeriodLocked === 'function' && _isPeriodLocked(selectedYM+'-01', _sessEdit));
 
   // Get the correct basic salary for the selected month (from SAL_EXCEL_2025 or rec)
   let lockedBasic = 0;
