@@ -6636,7 +6636,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.2.9';
+const APP_VERSION = '1.3.0';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -16421,12 +16421,13 @@ async function renderCategoriesTab() {
   }).join('');
 }
 
-async function sCatAdd(type) {
-  const inp = document.getElementById('catNew_'+type);
-  const name = (inp ? inp.value.trim() : '');
-  if (!name) { toast('⚠️ Enter a category name'); return; }
+// Shared core: append `name` to FIN_CATEGORIES[type] (keeping 'Custom...' last)
+// and persist to localStorage + Supabase. No DOM references — callable from
+// any save path, not just the Settings tab. Returns false if `name` already
+// exists (case-insensitive), true if actually added.
+async function _addCategoryToMasterList(type, name) {
   const cats = (FIN_CATEGORIES[type] || []).filter(c => c !== 'Custom...');
-  if (cats.map(c=>c.toLowerCase()).includes(name.toLowerCase())) { toast('⚠️ "'+name+'" already exists in this type'); return; }
+  if (cats.map(c=>c.toLowerCase()).includes(name.toLowerCase())) return false;
   cats.push(name);
   cats.push('Custom...');
   FIN_CATEGORIES[type] = cats;
@@ -16434,6 +16435,15 @@ async function sCatAdd(type) {
   if (typeof sb !== 'undefined' && sb) {
     try { await sb.from('shop_settings').upsert([{ key: 'pcnc_fin_categories', value: JSON.stringify(FIN_CATEGORIES), updated_at: new Date().toISOString() }], { onConflict: 'key' }); } catch(e) { console.warn('Supabase sync failed:', e); }
   }
+  return true;
+}
+
+async function sCatAdd(type) {
+  const inp = document.getElementById('catNew_'+type);
+  const name = (inp ? inp.value.trim() : '');
+  if (!name) { toast('⚠️ Enter a category name'); return; }
+  const added = await _addCategoryToMasterList(type, name);
+  if (!added) { toast('⚠️ "'+name+'" already exists in this type'); return; }
   if (inp) inp.value = '';
   sCatRefreshApp();
   renderCategoriesTab();
@@ -23219,6 +23229,19 @@ async function _saveDailyEntryInner() {
   // 1. Save to localStorage immediately
   _finLedgerLocal.push(newEntry);
   _savefinLocal();
+  // If the user picked "Custom..." and typed a real name, promote it into the
+  // master category list so it's a first-class option next time, not stuck
+  // behind "Custom..." forever. Check the raw <select> value, not `cat` alone
+  // — getDailyCatValue() falls back to the literal string 'Custom...' when the
+  // text box was left empty, which must never be pushed into the list.
+  const rawSelectVal = (document.getElementById('dailyCat')||{}).value;
+  if (rawSelectVal === 'Custom...' && cat && cat !== 'Custom...') {
+    const existingCats = (FIN_CATEGORIES[type]||[]).filter(c=>c!=='Custom...');
+    if (!existingCats.map(c=>c.toLowerCase()).includes(cat.toLowerCase())) {
+      await _addCategoryToMasterList(type, cat);
+      if (typeof sCatRefreshApp === 'function') sCatRefreshApp();
+    }
+  }
   // Register in edit meta (track edit count + first save time)
   if (!editLocalId) _registerNewEntry(localId);
 
