@@ -6636,7 +6636,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.3.1';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -22997,6 +22997,22 @@ function _getFilteredCache(dateFrom, dateTo, type) {
   });
 }
 
+// Reset the Daily Entry form's auxiliary fields back to a fresh "new entry"
+// state: clears which entry is being edited, clears the note inputs, and
+// restores the Save button to its default green "Save Entry" label. Shared
+// by the normal post-save flow and the zero-amount/blank-note delete-on-edit
+// path — both need the same "nothing is being edited anymore" reset.
+function _resetDailyEntryForm() {
+  const amtEl = document.getElementById('dailyAmount');
+  if (amtEl) amtEl.dataset.editLocalId = '';
+  const _dn = document.getElementById('dailyNote'); if (_dn) _dn.value = '';
+  const _ds = document.getElementById('dailyNoteSelect'); if (_ds) _ds.value = '';
+  const overrideBox = document.getElementById('dailyOverrideNotice');
+  if (overrideBox) overrideBox.style.display = 'none';
+  const saveBtn = document.querySelector('button[onclick="saveDailyEntry()"]');
+  if (saveBtn) { saveBtn.textContent = '✅ Save Entry'; saveBtn.style.background = '#059669'; }
+}
+
 // ─── SAVE DAILY ENTRY (local-first) ───
 // Guard: prevents double-save from rapid clicks or accidental re-submission
 let _isSaving = false;
@@ -23102,6 +23118,28 @@ async function _saveDailyEntryInner() {
       }
       catch(e) { console.error('[_saveDailyEntryInner:finance_ledger delete]', e); _finDeleteQueue.push(editLocalId); _saveFinDelete(); }
     } else { _finDeleteQueue.push(editLocalId); _saveFinDelete(); }
+
+    // Zero amount + blank note on an edit means the user is clearing the
+    // entry, not saving a zero-value row — the delete above already removed
+    // it, so reset the form and stop here instead of falling through to
+    // re-insert. lockAmountAfterSave() (used in the normal save path below)
+    // doesn't apply here — there's no new entry to lock the field onto — so
+    // the amount input is unlocked/blanked directly instead of relocked.
+    if (amount === 0 && (!note || !note.trim())) {
+      _resetDailyEntryForm();
+      if (amtEl) {
+        amtEl.readOnly = false;
+        amtEl.value = '';
+        amtEl.style.background  = '';
+        amtEl.style.color       = '';
+        amtEl.style.fontWeight  = '';
+        amtEl.style.border      = '';
+        amtEl.style.borderColor = '';
+      }
+      toast('🗑️ Entry deleted');
+      if (typeof refreshAllFinanceViews === 'function') refreshAllFinanceViews();
+      return;
+    }
   } else {
     // Period-lock check — must run before ANY local state mutation, so a
     // rejected save leaves _finLedgerLocal/_finPendingSync untouched.
@@ -23246,13 +23284,7 @@ async function _saveDailyEntryInner() {
   if (!editLocalId) _registerNewEntry(localId);
 
   // 2. Clear auxiliary fields and editLocalId (amount stays — locked green after save)
-  amtEl.dataset.editLocalId = '';
-  const _dn=document.getElementById('dailyNote');if(_dn)_dn.value='';
-  const _ds=document.getElementById('dailyNoteSelect');if(_ds)_ds.value='';
-  const overrideBox = document.getElementById('dailyOverrideNotice');
-  if (overrideBox) overrideBox.style.display = 'none';
-  const saveBtn = document.querySelector('button[onclick="saveDailyEntry()"]');
-  if (saveBtn) { saveBtn.textContent = '✅ Save Entry'; saveBtn.style.background = '#059669'; }
+  _resetDailyEntryForm();
 
   // After save: lock amount field green and show pen edit button
   (function lockAmountAfterSave(savedAmount, savedLocalId) {
