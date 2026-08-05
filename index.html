@@ -1061,7 +1061,7 @@ body {
   .items-table td:nth-child(5)       { width: 8mm !important; min-width: 8mm !important; max-width: 8mm !important; padding: 3px 1px !important; }
   .items-table td:nth-child(3) input,
   .items-table td:nth-child(4) input,
-  .items-table td:nth-child(5) input { width: 7mm !important; font-size: 0.55rem !important; text-align: center !important; }
+  .items-table td:nth-child(5) input { width: 7mm !important; font-size: 0.85rem !important; font-weight: 700 !important; text-align: center !important; }
   /* × separator: col 6 */
   .items-table td:nth-child(6),
   .items-table thead th:nth-child(6) { width: 4mm !important; min-width: 4mm !important; max-width: 4mm !important; padding: 0 !important; }
@@ -1071,10 +1071,10 @@ body {
   .items-table td:nth-child(9)       { width: 8mm !important; min-width: 8mm !important; max-width: 8mm !important; padding: 3px 1px !important; }
   .items-table td:nth-child(7) input,
   .items-table td:nth-child(8) input,
-  .items-table td:nth-child(9) input { width: 7mm !important; font-size: 0.55rem !important; text-align: center !important; }
+  .items-table td:nth-child(9) input { width: 7mm !important; font-size: 0.85rem !important; font-weight: 700 !important; text-align: center !important; }
   /* KG: col 10 */
   .items-table td:nth-child(10)      { width: 9mm !important; }
-  .items-table td:nth-child(10) input{ width: 8mm !important; font-size: 0.55rem !important; text-align: center !important; }
+  .items-table td:nth-child(10) input{ width: 8mm !important; font-size: 0.85rem !important; font-weight: 700 !important; text-align: center !important; }
   /* Qty: col 11 */
   .items-table td:nth-child(11)      { width: 8mm !important; }
   /* Gauge: col 12 */
@@ -1106,8 +1106,8 @@ body {
 
   /* Customer */
   .cfield { padding: 5px 8px !important; }
-  .cfield label { font-size: 0.52rem !important; }
-  .cfield input { font-size: 0.72rem !important; }
+  .cfield label { font-size: 0.78rem !important; }
+  .cfield input { font-size: 1.272rem !important; }
   .delivery-row { display: none !important; }
 
   /* Totals */
@@ -2750,7 +2750,9 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
             style="border:2px solid var(--gold);border-radius:8px;padding:6px 10px;background:#fffdf6;font-size:1.05rem;font-family:Montserrat, sans-serif;color:var(--green);font-weight:700;width:100%;outline:none;transition:border .2s;"
             onfocus="this.style.borderColor='var(--navy)';this.style.background='#fff'"
             onblur="this.style.borderColor='var(--gold)';this.style.background='#fffdf6'">
-          <label style="font-size:0.78rem;font-weight:600;color:var(--navy2);text-transform:uppercase;letter-spacing:0.8px;display:block;margin-top:10px;margin-bottom:3px;">Discount (Rs.)</label>
+          <label style="font-size:0.78rem;font-weight:600;color:var(--navy2);text-transform:uppercase;letter-spacing:0.8px;display:block;margin-top:10px;margin-bottom:3px;">
+            Discount (Rs.) &nbsp;<span class="urdu-sm" style="font-size:0.98rem;text-transform:none;letter-spacing:0">(رعایت)</span>
+          </label>
           <input type="number" id="billDiscount" placeholder="Enter discount..." oninput="calcTotals()" min="0"
             style="border:2px solid #e67e22;border-radius:8px;padding:6px 10px;background:#fffbf2;font-size:1.05rem;font-family:Montserrat, sans-serif;color:#b7650a;font-weight:700;width:100%;outline:none;transition:border .2s;"
             onfocus="this.style.borderColor='#b7650a';this.style.background='#fff'"
@@ -6637,7 +6639,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.3.3';
+const APP_VERSION = '1.3.4';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -9728,14 +9730,14 @@ function _buildMainInvoicePrintHtml(data) {
 
   const itemRows = (data.items || []).filter(x => x.sizes || x.amt > 0).map((x, i) => {
     const fisInputs = x.mode === 'kg'
-      ? `<td>—</td><td>—</td><td style="border-right:2px solid #c9a84c">—</td>
+      ? `<td style="font-size:0.85rem;font-weight:700">—</td><td style="font-size:0.85rem;font-weight:700">—</td><td style="font-size:0.85rem;font-weight:700;border-right:2px solid #c9a84c">—</td>
          <td style="font-weight:700;color:#c9a84c;background:#fffbf0">×</td>
-         <td>—</td><td>—</td><td style="border-right:2px solid #c9a84c">—</td>
-         <td style="color:#8a5200;font-weight:600">${x.kg||0}</td>`
-      : `<td>${x.foot||0}</td><td>${x.inch||0}</td><td style="border-right:2px solid #c9a84c">${x.sooter||0}</td>
+         <td style="font-size:0.85rem;font-weight:700">—</td><td style="font-size:0.85rem;font-weight:700">—</td><td style="font-size:0.85rem;font-weight:700;border-right:2px solid #c9a84c">—</td>
+         <td style="font-size:0.85rem;font-weight:700;color:#8a5200">${x.kg||0}</td>`
+      : `<td style="font-size:0.85rem;font-weight:700">${x.foot||0}</td><td style="font-size:0.85rem;font-weight:700">${x.inch||0}</td><td style="font-size:0.85rem;font-weight:700;border-right:2px solid #c9a84c">${x.sooter||0}</td>
          <td style="font-weight:700;color:#c9a84c;background:#fffbf0">×</td>
-         <td>${x.foot2||0}</td><td>${x.inch2||0}</td><td style="border-right:2px solid #c9a84c">${x.sooter2||0}</td>
-         <td>—</td>`;
+         <td style="font-size:0.85rem;font-weight:700">${x.foot2||0}</td><td style="font-size:0.85rem;font-weight:700">${x.inch2||0}</td><td style="font-size:0.85rem;font-weight:700;border-right:2px solid #c9a84c">${x.sooter2||0}</td>
+         <td style="font-size:0.85rem;font-weight:700">—</td>`;
     const sqftVal = x.mode === 'kg'
       ? (x.kg||0).toFixed(2) + ' kg'
       : (x.sqft||0).toFixed(3) + ' ft²';
@@ -9812,16 +9814,16 @@ function _buildMainInvoicePrintHtml(data) {
   const customerGridHtml = `
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1.5px solid #d4c5a9;">
       <div style="padding:8px 12px;border-right:1px solid #d4c5a9;">
-        <div style="font-size:0.6rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Customer Name</div>
-        <div style="font-size:0.9rem;color:#0f1e45;font-weight:500;">${data.custName||'—'}</div>
+        <div style="font-size:0.62rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Customer Name</div>
+        <div style="font-size:1rem;color:#0f1e45;font-weight:600;">${data.custName||'—'}</div>
       </div>
       <div style="padding:8px 12px;border-right:1px solid #d4c5a9;">
-        <div style="font-size:0.6rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Phone</div>
-        <div style="font-size:0.9rem;color:#0f1e45;font-weight:500;">${displayPhone}</div>
+        <div style="font-size:0.62rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Phone</div>
+        <div style="font-size:1rem;color:#0f1e45;font-weight:600;">${displayPhone}</div>
       </div>
       <div style="padding:8px 12px;">
-        <div style="font-size:0.6rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Area / Address</div>
-        <div style="font-size:0.9rem;color:#0f1e45;font-weight:500;">${data.area||'—'}</div>
+        <div style="font-size:0.62rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Area / Address</div>
+        <div style="font-size:1rem;color:#0f1e45;font-weight:600;">${data.area||'—'}</div>
       </div>
     </div>`;
 
@@ -9836,9 +9838,9 @@ function _buildMainInvoicePrintHtml(data) {
   const totalsHtml = `
     <div style="border-top:2px solid #0f1e45;display:grid;grid-template-columns:1fr auto;">
       <div style="padding:10px 14px;border-right:1.5px solid #d4c5a9;">
-        <div style="font-size:0.65rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Bill Received</div>
+        <div style="font-size:0.65rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Bill Received (وصول شدہ)</div>
         <div style="font-size:0.92rem;font-family:Montserrat, sans-serif;color:#1a7a4a;font-weight:600;">Rs. ${Math.round(data.received||0).toLocaleString('en-PK')}</div>
-        <div style="font-size:0.65rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:3px;">Discount (Rs.)</div>
+        <div style="font-size:0.65rem;font-weight:700;color:#1a3166;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:3px;">Discount (Rs.) (رعایت)</div>
         <div style="font-size:0.92rem;font-family:Montserrat, sans-serif;color:#b7650a;font-weight:600;">Rs. ${Math.round(data.discount||0).toLocaleString('en-PK')}</div>
         ${_gaugeKgPanelHTML(data.items)}
       </div>
@@ -9849,11 +9851,11 @@ function _buildMainInvoicePrintHtml(data) {
         </div>
         ${extraChargesRowHtml}
         <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#fff8ee;border-bottom:1px solid #d4c5a9;">
-          <span style="font-size:0.7rem;font-weight:600;color:#b7650a;">Discount</span>
+          <span style="font-size:0.7rem;font-weight:600;color:#b7650a;">Discount (رعایت)</span>
           <span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:#b7650a;">Rs. ${Math.round(data.discount||0).toLocaleString('en-PK')}</span>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#f0faf4;border-bottom:1px solid #d4c5a9;">
-          <span style="font-size:0.7rem;font-weight:600;color:#1a7a4a;">After Discount</span>
+          <span style="font-size:0.7rem;font-weight:600;color:#1a7a4a;">After Discount (رعایت کے بعد)</span>
           <span style="font-family:Montserrat, sans-serif;font-size:0.88rem;font-weight:700;color:#1a7a4a;">Rs. ${Math.round(data.afterDiscount||0).toLocaleString('en-PK')}</span>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:#ebebeb;border-bottom:1px solid #d4c5a9;">
