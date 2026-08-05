@@ -1050,6 +1050,7 @@ body {
   .items-table td { padding: 4px 2px !important; font-size: 8pt !important; text-align: center !important; }
   .items-table td:nth-child(2) { text-align: center !important; }
 
+  .items-table tbody td:first-child { font-size: 0.85rem !important; font-weight: 700 !important; }
   .items-table td:first-child,
   .items-table thead th:first-child  { width: 5mm !important; }
   .items-table td:nth-child(2),
@@ -1077,18 +1078,36 @@ body {
   .items-table td:nth-child(10) input{ width: 8mm !important; font-size: 0.85rem !important; font-weight: 700 !important; text-align: center !important; }
   /* Qty: col 11 */
   .items-table td:nth-child(11)      { width: 8mm !important; }
-  /* Gauge: col 12 */
-  .items-table td:nth-child(12)      { width: 9mm !important; }
-  .gauge-sel                         { width: 8mm !important; font-size: 0.55rem !important; }
+  /* Gauge: col 12 — widened 9mm→12mm / select 8mm→11mm: real overflow measured for "Other" at 0.85rem/700 */
+  .items-table td:nth-child(12)      { width: 12mm !important; }
+  .gauge-sel                         { width: 11mm !important; font-size: 0.85rem !important; font-weight: 700 !important; }
+  /* "Other" gauge reveals a separate #gaugeCustom input in place of the hidden select — needs its own override */
+  .items-table td:nth-child(12) input[type="text"] { font-size: 0.85rem !important; font-weight: 700 !important; }
   /* Rate: col 13 */
   .items-table td:nth-child(13)      { width: 13mm !important; }
-  .items-table td:nth-child(13) input{ width: 12mm !important; font-size: 0.58rem !important; text-align: center !important; }
-  /* Sq.Ft: col 14 */
-  .items-table td:nth-child(14)      { width: 18mm !important; }
-  .sqft-cell                         { font-size: 0.55rem !important; min-width: unset !important; }
+  .items-table td:nth-child(13) input{ width: 12mm !important; font-size: 0.85rem !important; font-weight: 700 !important; text-align: center !important; }
+  /* Sq.Ft: col 14 — widened 18mm→22mm: real overflow measured above ~50 ft² at 0.85rem/700 (20mm still clipped by 2px at 100 ft²) */
+  .items-table td:nth-child(14)      { width: 22mm !important; }
+  /* td.sqft-cell (not just .sqft-cell): plain .sqft-cell loses to the higher-specificity ".items-table td{font-size:8pt!important}" rule above — found via live print-emulation test, not visible from static CSS reading */
+  .items-table td.sqft-cell          { font-size: 0.85rem !important; font-weight: 700 !important; min-width: unset !important; }
   /* Amount: col 15 */
   .items-table td:nth-child(15)      { width: 22mm !important; }
-  .amt-cell                          { font-size: 0.62rem !important; white-space: nowrap !important; text-align: center !important; }
+  .items-table td.amt-cell           { font-size: 0.85rem !important; font-weight: 700 !important; white-space: nowrap !important; text-align: center !important; }
+
+  /* Header row 1 has colspan="3" on both dim-group <th>s, which shifts every later
+     <th>'s nth-child position off from the body <td>'s (e.g. header nth-child(6) is
+     actually کلو, not the × separator). table-layout:fixed elects column widths from
+     the header row, so any column whose header <th> never gets an explicit width is
+     treated as "auto" and silently shares leftover space equally — overriding the
+     body <td> width rules above. Found via real print-emulation rendering (visible
+     text overlap in sqft/amount), not visible from reading the CSS alone. This fixes
+     the 4 columns actually needed here (گیج/Rate/مربع/رقم = real header position
+     8/9/10/11); the pre-existing کلو mismatch is out of scope for this fix.
+  */
+  .items-table thead tr:first-child th:nth-child(8)  { width: 12mm !important; }
+  .items-table thead tr:first-child th:nth-child(9)  { width: 13mm !important; }
+  .items-table thead tr:first-child th:nth-child(10) { width: 22mm !important; }
+  .items-table thead tr:first-child th:nth-child(11) { width: 22mm !important; }
 
   .items-table tbody tr { break-inside: avoid; page-break-inside: avoid; }
   .items-table tbody tr.empty-row { display: none !important; }
@@ -6639,7 +6658,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.3.4';
+const APP_VERSION = '1.3.5';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -9742,14 +9761,14 @@ function _buildMainInvoicePrintHtml(data) {
       ? (x.kg||0).toFixed(2) + ' kg'
       : (x.sqft||0).toFixed(3) + ' ft²';
     return `<tr style="background:${i%2===0?'#fdf8f0':'#f5ede0'}">
-      <td style="color:#888;font-family:Montserrat, sans-serif;text-align:center;padding:5px 4px">${i+1}</td>
+      <td style="color:#888;font-family:Montserrat, sans-serif;text-align:center;padding:5px 4px;font-size:0.85rem;font-weight:700">${i+1}</td>
       <td style="text-align:center;font-weight:500;padding:5px 4px">${x.sizes||'—'}</td>
       ${fisInputs}
       <td style="text-align:center;padding:5px 2px">${x.qty||0}</td>
-      <td style="font-family:Montserrat, sans-serif;text-align:center;padding:5px 2px">${x.gauge||'—'}</td>
-      <td style="font-family:Montserrat, sans-serif;text-align:center;padding:5px 2px">${x.rate||0}</td>
-      <td style="background:#f0faf4;font-weight:600;color:#1a7a4a;font-family:Montserrat, sans-serif;text-align:center;padding:5px 4px">${sqftVal}</td>
-      <td style="font-weight:700;color:#0f1e45;font-family:Montserrat, sans-serif;text-align:right;padding:5px 6px">Rs.${Math.round(x.amt||0).toLocaleString('en-PK')}</td>
+      <td style="font-family:Montserrat, sans-serif;text-align:center;padding:5px 2px;font-size:0.85rem;font-weight:700">${x.gauge||'—'}</td>
+      <td style="font-family:Montserrat, sans-serif;text-align:center;padding:5px 2px;font-size:0.85rem;font-weight:700">${x.rate||0}</td>
+      <td style="background:#f0faf4;font-weight:700;color:#1a7a4a;font-family:Montserrat, sans-serif;text-align:center;padding:5px 4px;font-size:0.85rem">${sqftVal}</td>
+      <td style="font-weight:700;color:#0f1e45;font-family:Montserrat, sans-serif;text-align:right;padding:5px 6px;font-size:0.85rem">Rs.${Math.round(x.amt||0).toLocaleString('en-PK')}</td>
     </tr>`;
   }).join('');
 
@@ -13483,14 +13502,14 @@ async function viewInvoice(idx) {
       ? (x.kg||0).toFixed(2) + ' kg'
       : (x.sqft||0).toFixed(3) + ' ft²';
     return `<tr style="background:${i%2===0?'#fdf8f0':'#f5ede0'}">
-      <td style="color:#888;font-family:Montserrat, sans-serif">${i+1}</td>
+      <td style="color:#888;font-family:Montserrat, sans-serif;font-size:0.85rem;font-weight:700">${i+1}</td>
       <td style="text-align:center;font-weight:500">${x.sizes||'—'}</td>
       ${fisInputs}
       <td>${x.qty||0}</td>
-      <td style="font-family:Montserrat, sans-serif">${x.gauge||'—'}</td>
-      <td style="font-family:Montserrat, sans-serif">${x.rate||0}</td>
-      <td style="background:#f0faf4;font-weight:600;color:#1a7a4a;font-family:Montserrat, sans-serif">${sqftVal}</td>
-      <td style="font-weight:700;color:#0f1e45;font-family:Montserrat, sans-serif">Rs.${Math.round(x.amt||0).toLocaleString('en-PK')}</td>
+      <td style="font-family:Montserrat, sans-serif;font-size:0.85rem;font-weight:700">${x.gauge||'—'}</td>
+      <td style="font-family:Montserrat, sans-serif;font-size:0.85rem;font-weight:700">${x.rate||0}</td>
+      <td style="background:#f0faf4;font-weight:700;color:#1a7a4a;font-family:Montserrat, sans-serif;font-size:0.85rem">${sqftVal}</td>
+      <td style="font-weight:700;color:#0f1e45;font-family:Montserrat, sans-serif;font-size:0.85rem">Rs.${Math.round(x.amt||0).toLocaleString('en-PK')}</td>
     </tr>`;
   }).join('');
 
@@ -13678,9 +13697,9 @@ ${_printHeaderHtml(_ps,
 
 <div class="totals-section">
   <div class="totals-left">
-    <label>Bill Received (Rs.)</label>
+    <label>Bill Received (Rs.) (وصول شدہ)</label>
     <div class="tval">Rs. ${Math.round(inv.received||0).toLocaleString('en-PK')}</div>
-    <label>Discount (Rs.)</label>
+    <label>Discount (Rs.) (رعایت)</label>
     <div class="tval">Rs. ${Math.round(inv.discount||0).toLocaleString('en-PK')}</div>
     ${_gaugeKgPanelHTML(inv.items)}
   </div>
@@ -13707,11 +13726,11 @@ ${_printHeaderHtml(_ps,
       <span class="tv" style="color:#4c1d95;font-weight:700">Rs. ${Math.round(_gross).toLocaleString('en-PK')}</span>
     </div>` : ''}
     <div class="total-row" style="background:#fff8ee">
-      <span class="tl" style="color:#b7650a">Discount</span>
+      <span class="tl" style="color:#b7650a">Discount (رعایت)</span>
       <span class="tv" style="color:#b7650a">Rs. ${Math.round(inv.discount||0).toLocaleString('en-PK')}</span>
     </div>
     <div class="total-row" style="background:#f0faf4">
-      <span class="tl" style="color:#1a7a4a">After Discount</span>
+      <span class="tl" style="color:#1a7a4a">After Discount (رعایت کے بعد)</span>
       <span class="tv" style="color:#1a7a4a">Rs. ${Math.round(afterDisc||0).toLocaleString('en-PK')}</span>
     </div>
     <div class="total-row" style="background:#ebebeb">
@@ -13744,19 +13763,20 @@ ${_buildPrintFooterHtml(_ps)}
     background:white;z-index:99999;overflow-y:auto;display:block;
   `;
 
+  const _viOrient = _getPageOrientation(html);
+  const _viHtml = html.replace(/@page\s*\{[^}]*\}/g, '@page{size:A4 '+_viOrient+';margin:10mm;}');
+
   const pdfBtn = overlay.querySelector('.p-btn');
   if (pdfBtn) {
     pdfBtn.onclick = function() {
       var _fname = (inv.invNum || 'Invoice') + '-' + (inv.custName || 'Customer') + '.pdf';
-      _silentPDFFromHtml(html, _fname);
+      _silentPDFFromHtml(_viHtml, _fname);
     };
   }
 
   const printBtn2 = overlay.querySelector('.p-btn2');
   if (printBtn2) {
     printBtn2.onclick = () => {
-      var _viOrient = _getPageOrientation(html);
-      var _viHtml = html.replace(/@page\s*\{[^}]*\}/g, '@page{size:A4 '+_viOrient+';margin:10mm;}');
       if (typeof navigator !== 'undefined' && /Electron\//.test(navigator.userAgent)) {
         _electronPrintHtml(_viHtml);
         return;
