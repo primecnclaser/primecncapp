@@ -6636,7 +6636,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.3.1';
+const APP_VERSION = '1.3.2';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -15220,8 +15220,25 @@ async function onCustRateFieldBlur(el, dbCol) {
   }
 
   if (!window._custRateResolved) {
-    if (statusEl && el.value !== '') { statusEl.textContent = '⚠️ Enter customer name + phone first'; statusEl.style.color = '#dc2626'; }
-    return;
+    // Confirmed-new-customer bootstrap: real identity info is present, the
+    // user just typed an actual rate (not blurring an empty box), and no
+    // existing customer matches — a genuine new customer setting their
+    // first custom rate, not a case of missing info. Same >=7-digit
+    // validity threshold used by _resolveAndPopulateCustRates/
+    // _resolveCustRateIdentity elsewhere in this file. Flips resolved with
+    // no row id yet, so the proven insert branch in _saveCustRateField()
+    // (already exercised today for any existing customer's first-ever
+    // rate save) creates the row on this exact blur.
+    var _validPhone = digits.length >= 7;
+    var _hasRealIdentity = name && (_validPhone || !digits);
+    var _confirmedNew = _hasRealIdentity && !_findIdentityMatch(name, digits);
+    if (el.value !== '' && _confirmedNew) {
+      window._custRateResolved = true;
+      console.log('[IdentityMatch] onCustRateFieldBlur — bootstrapping new customer:', name, digits || '(no phone)');
+    } else {
+      if (statusEl && el.value !== '') { statusEl.textContent = '⚠️ Enter customer name + phone first'; statusEl.style.color = '#dc2626'; }
+      return;
+    }
   }
   if (!name) return;
 
