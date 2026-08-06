@@ -31813,7 +31813,7 @@ function _authInjectSettingsTab() {
     if(tab === 'users') {
       document.querySelectorAll('#setSubTabs .fin-sub-tab').forEach(function(t){ t.classList.remove('active'); });
       if(el) el.classList.add('active');
-      ['setCategories','setInvoice','setPartners','setData','setDragEditor','setWatermark','setTemplates'].forEach(function(id){
+      ['setCategories','setInvoice','setPartners','setData','setDragEditor','setWatermark','setTemplates','setEditAccess'].forEach(function(id){
         var p=document.getElementById(id); if(p) p.style.display='none';
       });
       if(usersPanel) usersPanel.style.display = '';
@@ -31823,7 +31823,7 @@ function _authInjectSettingsTab() {
     if(tab === 'cashcustody') {
       document.querySelectorAll('#setSubTabs .fin-sub-tab').forEach(function(t){ t.classList.remove('active'); });
       if(el) el.classList.add('active');
-      ['setCategories','setInvoice','setPartners','setData','setDragEditor','setWatermark','setTemplates'].forEach(function(id){
+      ['setCategories','setInvoice','setPartners','setData','setDragEditor','setWatermark','setTemplates','setEditAccess'].forEach(function(id){
         var p=document.getElementById(id); if(p) p.style.display='none';
       });
       if(ccPanel2) ccPanel2.style.display = '';
@@ -31833,7 +31833,7 @@ function _authInjectSettingsTab() {
     if(tab === 'auditlog') {
       document.querySelectorAll('#setSubTabs .fin-sub-tab').forEach(function(t){ t.classList.remove('active'); });
       if(el) el.classList.add('active');
-      ['setCategories','setInvoice','setPartners','setData','setDragEditor','setWatermark','setTemplates'].forEach(function(id){
+      ['setCategories','setInvoice','setPartners','setData','setDragEditor','setWatermark','setTemplates','setEditAccess'].forEach(function(id){
         var p=document.getElementById(id); if(p) p.style.display='none';
       });
       if(alPanel2) alPanel2.style.display = '';
