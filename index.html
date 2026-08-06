@@ -29925,11 +29925,42 @@ if (window._pwaDeferredPrompt) _pwaShowInstallButton();
 })();
 
 /* 5. Register the service worker — file already existed and was already
-      deployed (sw.js returns 200 live), it was simply never registered. */
-if ('serviceWorker' in navigator) {
+      deployed (sw.js returns 200 live), it was simply never registered.
+      Desktop (Electron) builds don't need a browser service worker at all —
+      matches the original registration's intent from this app's history. */
+var EXPECTED_SW_CACHE = 'primecnc-v' + APP_VERSION; // auto-derived from the
+  // real APP_VERSION constant — only sw.js's own CACHE_NAME needs a
+  // deliberate manual bump each release, matching this same convention.
+if ('serviceWorker' in navigator && !/Electron/.test(navigator.userAgent)) {
   window.addEventListener('load', function() {
     try {
-      navigator.serviceWorker.register('/sw.js').catch(function(e) {
+      navigator.serviceWorker.register('/sw.js').then(function(reg) {
+        // Self-healing check: detect a genuinely orphaned old service worker
+        // (e.g. one registered before mid-2026, when SW registration was
+        // briefly removed from this app for ~5 weeks — confirmed via git
+        // history) still controlling this page. Confirmed via a real
+        // round-trip query of the controller's actual CACHE_NAME — never a
+        // guess. Fires at most once per distinct mismatch (tracked in
+        // localStorage), so it cannot loop even if a device stays stuck.
+        var ctrl = navigator.serviceWorker.controller;
+        if (!ctrl) return;
+        var channel = new MessageChannel();
+        channel.port1.onmessage = function(ev) {
+          var reported = ev.data && ev.data.cacheName;
+          if (!reported || reported === EXPECTED_SW_CACHE) return;
+          if (localStorage.getItem('sw_last_mismatch_handled') === reported) {
+            console.warn('[SW self-heal] mismatch already handled once (', reported, ') — not retrying, to avoid a reload loop');
+            return;
+          }
+          localStorage.setItem('sw_last_mismatch_handled', reported);
+          console.warn('[SW self-heal] orphaned service worker detected (', reported, '), forcing update + reload');
+          reg.update().catch(function(){});
+          navigator.serviceWorker.addEventListener('controllerchange', function() {
+            window.location.reload();
+          }, { once: true });
+        };
+        try { ctrl.postMessage({ type: 'GET_CACHE_NAME' }, [channel.port2]); } catch(e2) {}
+      }).catch(function(e) {
         console.warn('[PWA] service worker registration failed:', e);
       });
     } catch(e) { console.warn('[PWA] service worker registration failed:', e); }
