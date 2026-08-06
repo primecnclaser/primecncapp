@@ -1492,6 +1492,9 @@ body {
   /* ── Fix 4: Receive Payment customer-detail grids — 5-card stat row and both 2-column tables shared the same overflow-with-no-scroll pattern as the search row (Fix 3); "Received", "Payment History" clipped, Discount/Bad Debt not currently overflowing but same fragile pattern ── */
   .rp-stat-grid, .rp-invpay-grid, .rp-discbd-grid { grid-template-columns: 1fr !important; }
 
+  /* ── Fix 5: Tap targets under 44×44 — grow the hit box via min-width/min-height, not the icon/text itself ── */
+  .tap-44, .db-icon-btn { min-width: 44px !important; min-height: 44px !important; display: flex !important; align-items: center !important; justify-content: center !important; }
+
   /* ── Summary tab — overflow protection ── */
   #summaryTab { overflow-x: hidden; }
   #summaryTab .db-panel { width: 100% !important; box-sizing: border-box !important; }
@@ -1971,7 +1974,7 @@ body {
         <input type="password" id="authPassword" placeholder="Enter password"
                autocomplete="current-password"
                onkeydown="if(event.key==='Enter')_authDoLogin()">
-        <button class="auth-pw-eye" type="button" id="authPwEye"
+        <button class="auth-pw-eye tap-44" type="button" id="authPwEye"
                 onclick="_authTogglePw('authPassword','authPwEye')" title="Show/hide password">👁</button>
       </div>
     </div>
@@ -2646,11 +2649,11 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
   <div id="invoiceTab" style="display:none">
     <!-- New Invoice sub-tab bar -->
     <div id="invSubTabs" style="display:flex;gap:4px;padding:4px 4px 0;background:#f1f5f9;border-radius:10px 10px 0 0;border:1px solid #e2e8f0;border-bottom:none;margin-bottom:0;">
-      <button id="invTabFull" onclick="switchInvTab('full')"
+      <button id="invTabFull" class="tap-44" onclick="switchInvTab('full')"
         style="flex:1;padding:9px 16px;border:none;border-radius:7px 7px 0 0;cursor:pointer;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.85rem;letter-spacing:0.3px;transition:all .2s;background:#1e293b;color:#f59e0b;box-shadow:0 2px 8px rgba(30,41,59,0.2);">
         📄 Full Invoice
       </button>
-      <button id="invTabManual" onclick="switchInvTab('manual')"
+      <button id="invTabManual" class="tap-44" onclick="switchInvTab('manual')"
         style="flex:1;padding:9px 16px;border:none;border-radius:7px 7px 0 0;cursor:pointer;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.85rem;letter-spacing:0.3px;transition:all .2s;background:transparent;color:#64748b;">
         📜 Manual Invoice
       </button>
@@ -3138,7 +3141,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         </div>
         <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;">
           <input type="date" id="rpDateLookup" value="" onchange="rpLookupByDate(this.value)" style="padding:10px 14px; border:2px solid #93c5fd; border-radius:10px; font-family:Montserrat,sans-serif; font-size:0.85rem; background:#fff; color:#1e40af; outline:none;">
-          <button onclick="rpLookupByDate(document.getElementById('rpDateLookup').value)" style="padding:10px 18px; background:#1e40af; color:#fff; border:none; border-radius:10px; font-family:Montserrat,sans-serif; font-weight:700; font-size:0.82rem; cursor:pointer;">View</button>
+          <button class="tap-44" onclick="rpLookupByDate(document.getElementById('rpDateLookup').value)" style="padding:10px 18px; background:#1e40af; color:#fff; border:none; border-radius:10px; font-family:Montserrat,sans-serif; font-weight:700; font-size:0.82rem; cursor:pointer;">View</button>
         </div>
         <div id="rpDateLookupResults"></div>
       </div>
@@ -4278,7 +4281,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
           <option value="processing">⚙️ In Process</option>
           <option value="ready">✅ Order Ready</option>
         </select>
-        <button onclick="renderProductionTab()" style="padding:7px 14px;background:#1e293b;color:#f59e0b;border:none;border-radius:8px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;">🔄 Refresh</button>
+        <button class="tap-44" onclick="renderProductionTab()" style="padding:7px 14px;background:#1e293b;color:#f59e0b;border:none;border-radius:8px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;">🔄 Refresh</button>
       </div>
     </div>
     <div style="margin-bottom:12px;padding:8px 14px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;font-size:0.72rem;color:#64748b;font-family:Montserrat,sans-serif;">
@@ -24259,6 +24262,7 @@ async function renderLedger() {
         const b = document.createElement('button');
         b.textContent = p;
         b.style.cssText = `padding:4px 10px;border-radius:6px;border:1.5px solid ${p===_ledgerPage?'#059669':'#e2e8f0'};background:${p===_ledgerPage?'#059669':'#fff'};color:${p===_ledgerPage?'#fff':'#334155'};cursor:pointer;font-family:'Montserrat',sans-serif;font-size:0.78rem;font-weight:700;`;
+        b.classList.add('tap-44');
         b.onclick = () => { _ledgerPage = p; renderLedger(); };
         pag.appendChild(b);
       }
@@ -26059,9 +26063,9 @@ function sCard(emp,ym){
         <select onchange="sCardMonthChange('${emp.id}', this.value)" title="View this employee's breakdown for a different month" style="padding:5px 8px;border-radius:7px;border:1.5px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.12);color:#fff;font-family:'Montserrat',sans-serif;font-size:0.68rem;font-weight:700;cursor:pointer;outline:none;">
           ${sCardMonthOptions(emp, ym)}
         </select>
-        <button onclick="sPdfOne('${emp.id}','pdf')" style="padding:5px 10px;border-radius:7px;border:1.5px solid rgba(165,180,252,0.7);background:rgba(99,102,241,0.2);color:#c7d2fe;font-family:'Montserrat',sans-serif;font-size:0.68rem;font-weight:700;cursor:pointer;">💾 Save as PDF</button>
-        <button onclick="sPdfOne('${emp.id}','print')" style="padding:5px 10px;border-radius:7px;border:1.5px solid rgba(255,255,255,0.35);background:transparent;color:#fff;font-family:'Montserrat',sans-serif;font-size:0.68rem;font-weight:700;cursor:pointer;">🖨️ Print</button>
-        <button onclick="sOpenEdit('${emp.id}','${ym}')" style="padding:5px 12px;border-radius:7px;border:1.5px solid rgba(255,255,255,0.35);background:transparent;color:#fff;font-family:'Montserrat',sans-serif;font-size:0.7rem;font-weight:700;cursor:pointer;">✏️ Edit</button>
+        <button onclick="sPdfOne('${emp.id}','pdf')" style="padding:5px 10px;border-radius:7px;border:1.5px solid rgba(165,180,252,0.7);background:rgba(99,102,241,0.2);color:#c7d2fe;font-family:'Montserrat',sans-serif;font-size:0.68rem;font-weight:700;cursor:pointer;min-width:44px;">💾 Save as PDF</button>
+        <button class="tap-44" onclick="sPdfOne('${emp.id}','print')" style="padding:5px 10px;border-radius:7px;border:1.5px solid rgba(255,255,255,0.35);background:transparent;color:#fff;font-family:'Montserrat',sans-serif;font-size:0.68rem;font-weight:700;cursor:pointer;">🖨️ Print</button>
+        <button class="tap-44" onclick="sOpenEdit('${emp.id}','${ym}')" style="padding:5px 12px;border-radius:7px;border:1.5px solid rgba(255,255,255,0.35);background:transparent;color:#fff;font-family:'Montserrat',sans-serif;font-size:0.7rem;font-weight:700;cursor:pointer;">✏️ Edit</button>
       </div>
     </div>
 
