@@ -29884,11 +29884,10 @@ function _mobHideMore() {
 
 /* 3. Install prompt — button shown in the More tray once beforeinstallprompt
       fires (captured early in <head>, see top of file). Never shown if
-      already running as an installed app, or if the user already installed
-      via this button before. */
+      already running as an installed app (live matchMedia check, not a
+      stored flag — correctly re-shows if the app is later uninstalled). */
 function _pwaShowInstallButton() {
   if (window.matchMedia('(display-mode: standalone)').matches) return; // already installed
-  if (localStorage.getItem('pwa_install_dismissed') === '1') return;
   var btn = document.getElementById('mmtInstallBtn');
   if (btn) btn.style.display = '';
 }
@@ -29899,7 +29898,6 @@ async function _pwaInstallClick() {
   try {
     var choice = await evt.userChoice;
     if (choice.outcome === 'accepted') {
-      localStorage.setItem('pwa_install_dismissed', '1');
       var btn = document.getElementById('mmtInstallBtn');
       if (btn) btn.style.display = 'none';
     }
