@@ -46,11 +46,20 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="/logo.png">
 <link rel="shortcut icon" href="/favicon.ico">
-<link rel="apple-touch-icon" href="/logo.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <meta name="theme-color" content="#1e293b">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Prime CNC">
+
+<!-- ── PWA: capture install prompt as early as possible, before any user interaction ── -->
+<script>
+  window.addEventListener('beforeinstallprompt', function(e) {
+    e.preventDefault();
+    window._pwaDeferredPrompt = e;
+    if (typeof _pwaShowInstallButton === 'function') _pwaShowInstallButton();
+  });
+</script>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <!-- ║  SECTION 2 — CSS STYLES                            ║ -->
@@ -29787,6 +29796,10 @@ setInterval(function() {
       <span style="font-size:1.3rem;">📦</span>
       <span>Inventory</span>
     </button>
+    <button class="mmt-row" id="mmtInstallBtn" onclick="_pwaInstallClick();" style="display:none;">
+      <span style="font-size:1.3rem;">📲</span>
+      <span>Install App</span>
+    </button>
   </div>
 
 <script>
@@ -29868,6 +29881,62 @@ function _mobHideMore() {
     }).from(el).save();
   };
 })();
+
+/* 3. Install prompt — button shown in the More tray once beforeinstallprompt
+      fires (captured early in <head>, see top of file). Never shown if
+      already running as an installed app, or if the user already installed
+      via this button before. */
+function _pwaShowInstallButton() {
+  if (window.matchMedia('(display-mode: standalone)').matches) return; // already installed
+  if (localStorage.getItem('pwa_install_dismissed') === '1') return;
+  var btn = document.getElementById('mmtInstallBtn');
+  if (btn) btn.style.display = '';
+}
+async function _pwaInstallClick() {
+  var evt = window._pwaDeferredPrompt;
+  if (!evt) return;
+  evt.prompt();
+  try {
+    var choice = await evt.userChoice;
+    if (choice.outcome === 'accepted') {
+      localStorage.setItem('pwa_install_dismissed', '1');
+      var btn = document.getElementById('mmtInstallBtn');
+      if (btn) btn.style.display = 'none';
+    }
+  } catch(e) { console.warn('[PWA install] prompt error:', e); }
+  window._pwaDeferredPrompt = null;
+}
+// Pick up an install prompt that may have already fired before this script ran
+if (window._pwaDeferredPrompt) _pwaShowInstallButton();
+
+/* 4. iOS/Safari fallback — beforeinstallprompt never fires there, so there's
+      no button to show. No existing dismissible-hint pattern exists in this
+      codebase (checked), so this uses a minimal one-off localStorage flag,
+      consistent in style with other simple flags already used elsewhere
+      (app_version, rp_name, etc.). */
+(function() {
+  function isIOS() { return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream; }
+  function isStandalone() { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; }
+  if (!isIOS() || isStandalone() || localStorage.getItem('pwa_ios_tip_dismissed') === '1') return;
+  var tip = document.createElement('div');
+  tip.id = 'pwaIosTip';
+  tip.style.cssText = 'position:fixed;left:12px;right:12px;bottom:70px;z-index:9998;background:#1e293b;color:#fff;padding:10px 14px;border-radius:10px;font-family:Montserrat,sans-serif;font-size:0.78rem;display:flex;align-items:center;gap:10px;box-shadow:0 4px 16px rgba(0,0,0,0.25);';
+  tip.innerHTML = '<span style="flex:1;">📲 Tap <strong>Share</strong> → then \'Add to Home Screen\' to install this app.</span>'
+    + '<button onclick="localStorage.setItem(\'pwa_ios_tip_dismissed\',\'1\');document.getElementById(\'pwaIosTip\').remove();" style="background:none;border:none;color:#fff;font-size:1rem;cursor:pointer;padding:2px 6px;">✕</button>';
+  document.body.appendChild(tip);
+})();
+
+/* 5. Register the service worker — file already existed and was already
+      deployed (sw.js returns 200 live), it was simply never registered. */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    try {
+      navigator.serviceWorker.register('/sw.js').catch(function(e) {
+        console.warn('[PWA] service worker registration failed:', e);
+      });
+    } catch(e) { console.warn('[PWA] service worker registration failed:', e); }
+  });
+}
 
 /* Force-refresh: unregister SW, clear all caches, hard reload */
 window._forceAppRefresh = async function() {
