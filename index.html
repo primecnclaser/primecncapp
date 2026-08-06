@@ -416,6 +416,9 @@ body {
   border: 1px solid #e2e8f0;
 }
 
+/* ─── RECEIVE PAYMENT SEARCH ROW ─── */
+.rp-search-row { display:flex; gap:10px; }
+
 /* ─── INVOICE HEADER ─── */
 /* Initial shell only — background, grid columns, and logo box dimensions are
    overridden at runtime by applyHeaderToInvoice() / applyHeaderSettings(). */
@@ -1481,6 +1484,10 @@ body {
   /* db-btn inside table must not inherit the 44px touch-target height */
   .db-table .btn { min-height: unset !important; }
   .db-table .db-btn { min-height: unset !important; padding: 4px 6px !important; font-size: 0.6rem !important; }
+
+  /* ── Fix 3: Receive Payment search row — 3 inputs + Clear button overflowed the panel with no scroll; invoice-number box and Clear button were fully clipped and unreachable ── */
+  .rp-search-row { flex-direction: column !important; }
+  .rp-search-row > * { width: 100% !important; flex: none !important; }
 
   /* ── Summary tab — overflow protection ── */
   #summaryTab { overflow-x: hidden; }
@@ -3112,7 +3119,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
     <div class="panel" style="max-width:1100px;margin:0 auto;">
       <h2 style="font-family:Montserrat,sans-serif;font-size:1.1rem;color:#1e293b;margin-bottom:16px;">💰 Receive Payment</h2>
 
-      <div style="display:flex;gap:10px;margin-bottom:16px;background:#f8fafc;padding:12px;border-radius:12px;border:1px solid #e2e8f0;">
+      <div class="rp-search-row" style="margin-bottom:16px;background:#f8fafc;padding:12px;border-radius:12px;border:1px solid #e2e8f0;">
         <input type="text" id="rpSearchName" autocomplete="new-password" placeholder="🔍 Search by customer name" oninput="sessionStorage.setItem('rp_name',this.value);rpSearchByName(this.value)" onfocus="this.style.borderColor='#059669'" onblur="this.style.borderColor='#6ee7b7'" style="flex:1; padding:10px 14px; border:2px solid #6ee7b7; border-radius:10px; font-family:Montserrat,sans-serif; font-size:0.85rem; background:linear-gradient(135deg,#ecfdf5,#d1fae5); color:#065f46; outline:none;">
         <input type="text" id="rpSearchPhone" autocomplete="new-password" maxlength="11" placeholder="🔍 Search by phone number" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,11);sessionStorage.setItem('rp_phone',this.value);rpSearchByPhone(this.value)" onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#93c5fd'" style="flex:1; padding:10px 14px; border:2px solid #93c5fd; border-radius:10px; font-family:Montserrat,sans-serif; font-size:0.85rem; background:linear-gradient(135deg,#eff6ff,#dbeafe); color:#1e40af; outline:none;">
         <input type="text" id="rpSearchInv" autocomplete="new-password" placeholder="🔍 Search by invoice number" oninput="this.value=this.value.replace(/[^0-9]/g,'');sessionStorage.setItem('rp_inv',this.value);rpSearchByInv(this.value)" onfocus="this.style.borderColor='#7c3aed'" onblur="this.style.borderColor='#c4b5fd'" style="flex:1; padding:10px 14px; border:2px solid #c4b5fd; border-radius:10px; font-family:Montserrat,sans-serif; font-size:0.85rem; background:linear-gradient(135deg,#f5f3ff,#ede9fe); color:#5b21b6; outline:none;">
