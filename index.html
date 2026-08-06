@@ -1440,7 +1440,7 @@ body {
   #custListTitle { font-size: 1rem !important; }
 
   /* ── Fix 1: Urdu invoice header — canvas element contains the rendered Urdu shop name ── */
-  #dragEditorCanvas { max-height: 100px !important; overflow: hidden !important; }
+  #dragEditorCanvas { max-height: 250px !important; overflow: hidden !important; }
 
   /* ── Fix 2: Database table — consistent row heights on mobile ── */
   div#dbTableWrap { display: block !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch; overflow-y: visible !important; }
@@ -28755,12 +28755,13 @@ function _updateDragCanvasScale() {
   if (!wrapper) return;
   var ww = wrapper.offsetWidth;
   if (!ww) return;
-  var scale = ww / 794;
+  var scale = Math.max(ww / 794, 0.6);
   canvas.style.width = '794px';
   canvas.style.transform = 'scale(' + scale + ')';
   canvas.style.transformOrigin = 'top left';
   wrapper.style.height = Math.round(canvas.offsetHeight * scale) + 'px';
-  wrapper.style.overflow = 'hidden';
+  wrapper.style.overflowX = 'auto';
+  wrapper.style.overflowY = 'hidden';
 }
 
 // Apply extended element controls directly to rendered DOM elements
