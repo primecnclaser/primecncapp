@@ -1489,6 +1489,9 @@ body {
   .rp-search-row { flex-direction: column !important; }
   .rp-search-row > * { width: 100% !important; flex: none !important; }
 
+  /* ── Fix 4: Receive Payment customer-detail grids — 5-card stat row and both 2-column tables shared the same overflow-with-no-scroll pattern as the search row (Fix 3); "Received", "Payment History" clipped, Discount/Bad Debt not currently overflowing but same fragile pattern ── */
+  .rp-stat-grid, .rp-invpay-grid, .rp-discbd-grid { grid-template-columns: 1fr !important; }
+
   /* ── Summary tab — overflow protection ── */
   #summaryTab { overflow-x: hidden; }
   #summaryTab .db-panel { width: 100% !important; box-sizing: border-box !important; }
@@ -19345,7 +19348,7 @@ async function rpRenderCustomerPanel(name, phone) {
     '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:14px;">' +
       '<div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.95rem;color:#1e293b;margin-bottom:6px;">' + name + (phone ? ' <span style="font-weight:400;color:#64748b;font-size:0.78rem;">📞 ' + phone + '</span>' : '') + '</div>' +
       (function(){ var _s=_authGetSession(); if(_s&&_s.role==='admin') return ''; var _enc=encodeURIComponent(name); var _encPh=encodeURIComponent(phone||''); return '<div style="margin-bottom:10px;"><button onclick="document.getElementById(\'rpIcrForm_'+_enc+'\').style.display=\'\';this.style.display=\'none\';" style="padding:5px 12px;background:rgba(245,158,11,0.1);color:#92400e;border:1.5px solid rgba(245,158,11,0.4);border-radius:7px;font-family:Montserrat,sans-serif;font-weight:700;font-size:0.72rem;cursor:pointer;">📨 Request Name/Phone Change</button><div id="rpIcrForm_'+_enc+'" style="display:none;margin-top:8px;background:#fffbeb;border:1.5px solid #fde68a;border-radius:8px;padding:10px;"><input type="text" id="rpIcrNewName" placeholder="New name (optional)" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.76rem;margin-bottom:6px;"><input type="text" id="rpIcrNewPhone" maxlength="10" placeholder="New phone (optional)" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.76rem;margin-bottom:6px;"><input type="text" id="rpIcrReason" placeholder="Reason" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.76rem;margin-bottom:6px;"><button onclick="rpSubmitIcrRequest(\''+_enc+'\',\''+_encPh+'\')" style="padding:5px 12px;background:#059669;color:#fff;border:none;border-radius:6px;font-size:0.72rem;cursor:pointer;">Submit</button></div></div>'; })() +
-      '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">' +
+      '<div class="rp-stat-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">' +
         '<div style="background:#f8fafc;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Total Billed</div><div style="font-size:1.1rem;font-weight:700;color:#1e293b;">Rs.' + fmt(totalBilled) + '</div></div>' +
         '<div style="background:#f5f3ff;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Discount</div><div style="font-size:1.1rem;font-weight:700;color:#7c3aed;">Rs.' + fmt(totalDiscount) + '</div></div>' +
         '<div style="background:#f0fdf4;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;">Received</div><div style="font-size:1.1rem;font-weight:700;color:#059669;">Rs.' + fmt(totalPaid) + '</div></div>' +
@@ -19355,7 +19358,7 @@ async function rpRenderCustomerPanel(name, phone) {
       (advanceCredit > 0 ? '<div style="margin-top:10px;background:#ede9fe;border-radius:8px;padding:10px;"><div style="font-size:0.65rem;color:#6d28d9;text-transform:uppercase;">Advance Credit</div><div style="font-size:1.1rem;font-weight:700;color:#6d28d9;">Rs.' + fmt(advanceCredit) + '</div></div>' : '') +
     '</div>' +
 
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
+    '<div class="rp-invpay-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
       '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;">' +
         '<div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.8rem;color:#475569;margin-bottom:10px;">📋 All Invoices (' + (newInvs.length+exInvs.length) + ')</div>' +
         '<div style="max-height:220px;overflow-y:auto;"><table style="width:100%;border-collapse:collapse;">' + (invRows || '<tr><td style="padding:10px;color:#94a3b8;font-size:0.78rem;">No invoices found.</td></tr>') + '</table></div>' +
@@ -19367,7 +19370,7 @@ async function rpRenderCustomerPanel(name, phone) {
       '</div>' +
     '</div>' +
 
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
+    '<div class="rp-discbd-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
       '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;">' +
         '<div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:0.8rem;color:#7c3aed;margin-bottom:10px;">🏷️ Discount Entries (' + (payments.filter(function(p){return p.type==='discount';}).length + exInvs.filter(function(r){var _ref='INV-'+String(r.order_num).replace(/^INV-/i,'');return parseFloat(r.discount||0)>0 && !payments.some(function(p){return p.type==='discount'&&p.invoice_ref===_ref;});}).length) + ')</div>' +
         '<div style="max-height:200px;overflow-y:auto;"><table style="width:100%;border-collapse:collapse;">' + (_exDiscRows + discRows || '<tr><td style="padding:10px;color:#94a3b8;font-size:0.78rem;">No discount entries.</td></tr>') + '</table></div>' +
