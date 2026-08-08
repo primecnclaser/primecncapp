@@ -4788,6 +4788,7 @@ function _pmApplyPhoto(dataUrl, imgId, iniId) {
         <div style="background:#fff;border-radius:16px;padding:26px;max-width:460px;width:92%;box-shadow:0 24px 60px rgba(0,0,0,0.25);max-height:90vh;overflow-y:auto;">
           <h3 style="margin:0 0 16px;font-size:0.95rem;color:#1e293b;" id="salEmpModalTitle">Employee</h3>
           <input type="hidden" id="salEmpId">
+          <input type="hidden" id="salEmpEditYM">
           <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">
             <div class="fin-field"><label>Name</label><input type="text" id="salEmpName" placeholder="Full name"></div>
             <div class="fin-field"><label>Title / Role</label><input type="text" id="salEmpTitle" placeholder="e.g. Operator, Helper..."></div>
@@ -6682,7 +6683,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.4.3';
+const APP_VERSION = '1.4.4';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -14548,15 +14549,25 @@ async function renderEmployeeRequestsPanel() {
     var emps = sEmps();
     pendingEl.innerHTML = pending.map(function(r) {
       var staffName = (r.app_users && r.app_users.display_name) || 'Unknown';
-      var currentEmp = emps.find(function(e){ return e.id === r.record_key; });
+      var isForwardFill = r.table_name === 'salaries';
+      var recordEmpId = isForwardFill ? (r.old_data && r.old_data.employee_id) : r.record_key;
+      var currentEmp = emps.find(function(e){ return e.id === recordEmpId; });
       var empName = (currentEmp && currentEmp.name) || (r.old_data && r.old_data.name) || 'Unknown Employee';
-      var oldBase = (r.old_data && r.old_data.base != null) ? r.old_data.base : '—';
-      var newBase = (r.proposed_new_data && r.proposed_new_data.base != null) ? r.proposed_new_data.base : '—';
+      var oldBase, newBase, effLine;
+      if(isForwardFill){
+        oldBase = (r.old_data && r.old_data.base_sal_override != null) ? r.old_data.base_sal_override : '—';
+        newBase = (r.proposed_new_data && r.proposed_new_data.base_sal_override != null) ? r.proposed_new_data.base_sal_override : '—';
+        effLine = ' (effective '+((r.proposed_new_data&&r.proposed_new_data.ym)||'—')+' onward)';
+      } else {
+        oldBase = (r.old_data && r.old_data.base != null) ? r.old_data.base : '—';
+        newBase = (r.proposed_new_data && r.proposed_new_data.base != null) ? r.proposed_new_data.base : '—';
+        effLine = '';
+      }
 
       return '<div style="background:#fff;border-radius:8px;padding:10px 12px;margin-bottom:8px;">'
         + '<div style="font-family:Montserrat,sans-serif;font-size:0.78rem;">'
-        + '<strong>' + staffName + '</strong> requests: <strong>' + empName + '</strong>\'s base rate '
-        + 'Rs.' + oldBase + ' → Rs.' + newBase
+        + '<strong>' + staffName + '</strong> requests: <strong>' + empName + '</strong>\'s '+(isForwardFill?'basic pay':'base rate')+' '
+        + 'Rs.' + oldBase + ' → Rs.' + newBase + effLine
         + (r.reason ? '<div style="color:#64748b;font-size:0.72rem;margin-top:2px;">"' + r.reason + '"</div>' : '')
         + '<div style="color:#94a3b8;font-size:0.68rem;margin-top:2px;">' + new Date(r.created_at).toLocaleString() + '</div>'
         + '</div>'
@@ -14578,24 +14589,34 @@ async function approveEmployeeRequest(requestId) {
     if (!reqRows || !reqRows.length) { toast('⚠ Request not found'); return; }
     var req = reqRows[0];
 
-    var emps = sEmps();
-    var idx = emps.findIndex(function(e){ return e.id === req.record_key; });
-    if (idx > -1) emps[idx] = req.proposed_new_data; else emps.push(req.proposed_new_data);
-    await sSaveEmps(emps, req.record_key);
+    if(req.table_name === 'salaries'){
+      await salForwardFillBase(
+        req.proposed_new_data.employee_id,
+        req.proposed_new_data.ym,
+        req.proposed_new_data.base_sal_override,
+        req.old_data.base_sal_override,
+        sess
+      );
+    } else {
+      var emps = sEmps();
+      var idx = emps.findIndex(function(e){ return e.id === req.record_key; });
+      if (idx > -1) emps[idx] = req.proposed_new_data; else emps.push(req.proposed_new_data);
+      await sSaveEmps(emps, req.record_key);
 
-    try {
-      await sb.from('audit_log').insert({
-        table_name: 'employee_roster',
-        record_key: req.record_key,
-        action: 'update',
-        old_data: req.old_data,
-        new_data: req.proposed_new_data,
-        changed_by: sess.id,
-        changed_by_username: sess.username,
-        source: 'app'
-      });
-    } catch(auditErr) {
-      console.warn('[approveEmployeeRequest] audit_log insert failed', auditErr);
+      try {
+        await sb.from('audit_log').insert({
+          table_name: 'employee_roster',
+          record_key: req.record_key,
+          action: 'update',
+          old_data: req.old_data,
+          new_data: req.proposed_new_data,
+          changed_by: sess.id,
+          changed_by_username: sess.username,
+          source: 'app'
+        });
+      } catch(auditErr) {
+        console.warn('[approveEmployeeRequest] audit_log insert failed', auditErr);
+      }
     }
 
     await sb.from('employee_change_requests').update({
@@ -27245,6 +27266,7 @@ function salToggleLeft(){
 
 function salOpenAdd(){
   document.getElementById('salEmpModalTitle').textContent='👷 Add Employee';
+  const _ymEl=document.getElementById('salEmpEditYM'); if(_ymEl) _ymEl.value='';
   ['salEmpId','salEmpName','salEmpTitle','salEmpBase','salEmpNight','salEmpDay'].forEach(id=>{
     const el=document.getElementById(id); if(el){el.value='';el.removeAttribute('disabled');el.style.opacity='1';el.style.cursor='';}
   });
@@ -27275,12 +27297,14 @@ function sOpenEdit(empId, ym){
   const _sessEdit = (typeof _authGetSession === 'function') ? _authGetSession() : null;
   const isLockedMonth = !!(selectedYM && typeof _isPeriodLocked === 'function' && _isPeriodLocked(selectedYM+'-01', _sessEdit));
 
-  // Get the correct basic salary for the selected month (from SAL_EXCEL_2025 or rec)
-  let lockedBasic = 0;
+  // Effective basic pay for the month being edited — always computed via
+  // sCalcV2 (same source every other screen reads), never raw emp.base.
+  // Once a forward-fill has run for this employee, emp.base is frozen and
+  // no longer reflects what's actually in effect for a given month — this
+  // field must show the real month-effective value, not the stale default.
+  const rec = sGetRec(emp.id, selectedYM);
+  const effectiveBasic = sCalcV2(emp, rec, emp.id, selectedYM).basic;
   if(isLockedMonth){
-    const rec = sGetRec(emp.id, selectedYM);
-    const c = sCalcV2(emp, rec, emp.id, selectedYM);
-    lockedBasic = c.basic;
     const [ly,lm] = selectedYM.split('-').map(Number);
     const monthName = new Date(ly,lm-1,1).toLocaleString('default',{month:'long'})+' '+ly;
     document.getElementById('salEmpModalTitle').textContent='🔒 Locked — '+emp.name+' ('+monthName+')';
@@ -27289,6 +27313,7 @@ function sOpenEdit(empId, ym){
   }
 
   document.getElementById('salEmpId').value     = emp.id;
+  document.getElementById('salEmpEditYM').value  = selectedYM;
 
   // Lock or unlock all employee detail fields
   const lockableFields = ['salEmpName','salEmpTitle','salEmpJoin','salEmpBase','salEmpDailyRate','salEmpNight','salEmpDay','salEmpTaxPct','salEmpMess','salEmpRoom','salEmpStatus'];
@@ -27310,7 +27335,7 @@ function sOpenEdit(empId, ym){
   document.getElementById('salEmpTitle').value  = emp.title||'';
   document.getElementById('salEmpJoin').value   = (emp.periods&&emp.periods[0]?emp.periods[0].joinDate:emp.joinDate)||'';
   // For locked months show the correct basic salary for that month (read-only)
-  document.getElementById('salEmpBase').value   = isLockedMonth ? lockedBasic : (emp.base||'');
+  document.getElementById('salEmpBase').value   = isLockedMonth ? effectiveBasic : (effectiveBasic||'');
   const drEditEl = document.getElementById('salEmpDailyRate'); if(drEditEl) drEditEl.value = emp.dailyRate||'';
   const taxPctEl = document.getElementById('salEmpTaxPct'); if(taxPctEl) taxPctEl.value = emp.taxPct||'';
   salToggleWageType(emp.wageType||'monthly');
@@ -27354,6 +27379,67 @@ function sOpenEdit(empId, ym){
   document.getElementById('salEmpModal').style.display='flex';
 }
 
+// Forward-fill a monthly-wage employee's basic pay from the edited month
+// through a generous bounded horizon (15 years / 180 months). Writes
+// rec.baseSalOverride into every one of those months in ONE atomic
+// server-side merge (never ~180 sequential calls — a network failure
+// can't leave some future months updated and others not, matching this
+// project's snapshot-before-mutate / no-partial-failure discipline).
+// Mirrors the identical value into the real `salaries` table
+// (base_sal_override column) via a second single-statement bulk upsert,
+// then logs exactly ONE audit_log entry for the whole action.
+const SAL_FORWARDFILL_MONTHS = 180; // 15 years
+
+async function salForwardFillBase(empId, fromYM, newValue, oldValue, sess){
+  const [fy, fm] = fromYM.split('-').map(Number);
+  const cutoffDate = new Date(fy, fm-1 + SAL_FORWARDFILL_MONTHS - 1, 1);
+  const cutoffYM = cutoffDate.getFullYear()+'-'+String(cutoffDate.getMonth()+1).padStart(2,'0');
+  const monthList = sMonthRange(fromYM+'-01', cutoffYM+'-01'); // inclusive, fromYM..cutoffYM
+  const subkeys = monthList.map(ym => sKey(empId, ym));
+
+  // Local cache: mirror the same merge so this session's UI reflects it
+  // immediately, without waiting on a reload.
+  const monBlob = sMons();
+  monthList.forEach(ym=>{
+    const k = sKey(empId, ym);
+    monBlob[k] = Object.assign({}, monBlob[k]||{}, { baseSalOverride: newValue });
+  });
+  localStorage.setItem(S_MON, JSON.stringify(monBlob));
+
+  if (typeof sb === 'undefined' || !sb) {
+    toast('⚠️ Offline — basic pay saved locally only, will sync when reconnected');
+    return;
+  }
+
+  try {
+    const { error: blobErr } = await sb.rpc('merge_shop_setting_field_bulk', {
+      p_key: 'pcnc_mon_v4', p_subkeys: subkeys, p_field: 'baseSalOverride', p_value: newValue
+    });
+    if (blobErr) throw blobErr;
+
+    const { error: rowErr } = await sb.rpc('bulk_set_salary_base_override', {
+      p_employee_id: empId, p_start_year: fy, p_start_month: fm,
+      p_months: SAL_FORWARDFILL_MONTHS, p_value: newValue
+    });
+    if (rowErr) throw rowErr;
+
+    const { error: auditErr } = await sb.from('audit_log').insert({
+      table_name: 'salaries',
+      record_key: empId+'|forward_fill_from_'+fromYM,
+      action: 'update',
+      old_data: { employee_id: empId, effective_from: fromYM, base_sal_override: oldValue },
+      new_data: { employee_id: empId, effective_from: fromYM, base_sal_override: newValue, months_affected: monthList.length, cutoff_ym: cutoffYM },
+      changed_by: sess ? sess.id : null,
+      changed_by_username: sess ? sess.username : null,
+      source: 'app'
+    });
+    if (auditErr) throw auditErr;
+  } catch(err) {
+    console.warn('[salForwardFillBase] sync failed for '+empId+' from '+fromYM+':', err);
+    toast('⚠️ Basic pay saved locally but cloud sync failed — will retry on next connection');
+  }
+}
+
 async function salSaveEmp(){
   const id=document.getElementById('salEmpId').value.trim();
   const name=document.getElementById('salEmpName').value.trim();
@@ -27364,6 +27450,7 @@ async function salSaveEmp(){
   const emps=sEmps();
   const existingEmp=id?emps.find(e=>e.id===id):null;
   const sess=(typeof _authGetSession==='function')?_authGetSession():null;
+  const editYM=(document.getElementById('salEmpEditYM')||{}).value||'';
   let periods=existingEmp
     ?JSON.parse(JSON.stringify(existingEmp.periods||[{joinDate:existingEmp.joinDate||'',leftDate:existingEmp.leftDate||''}]))
     :[{joinDate,leftDate:''}];
@@ -27380,12 +27467,32 @@ async function salSaveEmp(){
     periods[0].joinDate=joinDate;
   }
   const _savedWageType = (document.getElementById('salEmpWageType')||{}).value||'monthly';
+  const _enteredBase = parseFloat(document.getElementById('salEmpBase').value)||0;
+
+  // Forward-fill applies only to an EXISTING monthly-wage employee, edited
+  // from a specific month's card (editYM present). New hires and
+  // daily-wage employees keep the direct emp.base path — a brand-new
+  // employee has no month-scoped history yet to preserve.
+  const _canForwardFill = !!(existingEmp && editYM && _savedWageType!=='daily');
+  let _oldEffectiveBasic = 0;
+  if(_canForwardFill){
+    const _oldRec = sGetRec(existingEmp.id, editYM);
+    _oldEffectiveBasic = sCalcV2(existingEmp, _oldRec, existingEmp.id, editYM).basic;
+  }
+
   const emp={
     id:id||'e_'+Date.now(), name,
     title:document.getElementById('salEmpTitle').value.trim(),
     joinDate:periods[0].joinDate,
     leftDate:status==='left'?leftDate:'',
-    base:_savedWageType==='daily'?0:(parseFloat(document.getElementById('salEmpBase').value)||0),
+    // Existing employees: base is FROZEN — this button no longer writes
+    // the shared profile field; it only ever changes via forward-fill
+    // below. New hires still get their initial base set directly here —
+    // it's the bootstrap default sCalcV2 falls back to for any month
+    // that's never been explicitly forward-filled.
+    base:_savedWageType==='daily' ? 0
+        : existingEmp ? existingEmp.base
+        : _enteredBase,
     wageType:_savedWageType,
     dailyRate:_savedWageType==='daily'?(parseFloat(document.getElementById('salEmpDailyRate').value)||0):0,
     nR:parseFloat(document.getElementById('salEmpNight').value)||0,
@@ -27396,28 +27503,29 @@ async function salSaveEmp(){
     status:isRejoin?'active':status,
     periods,
   };
-  // Manager base-rate change gate: a base-rate change on an EXISTING
-  // employee by a non-Admin must go through Admin approval instead of
-  // saving directly — mirrors the amendment_requests pattern already
-  // proven for finance_ledger. Admin, an unchanged base, or a brand-new
-  // employee (existingEmp null) all bypass this and save normally below.
-  if(existingEmp && sess && sess.role!=='admin' && parseFloat(existingEmp.base)!==parseFloat(emp.base)){
-    const reason=prompt('This changes '+name+'\'s base rate from Rs.'+existingEmp.base+' to Rs.'+emp.base+'.\nAn Admin must approve this change. Why is it needed?');
+  // Manager basic-pay change gate: a basic-pay change on an EXISTING
+  // monthly-wage employee by a non-Admin must go through Admin approval —
+  // mirrors the amendment_requests pattern already proven for
+  // finance_ledger. Now anchored to the MONTH-EFFECTIVE value (what's
+  // actually in effect for editYM), not the old frozen profile field,
+  // since emp.base no longer changes for existing employees.
+  if(_canForwardFill && sess && sess.role!=='admin' && parseFloat(_oldEffectiveBasic)!==parseFloat(_enteredBase)){
+    const reason=prompt('This changes '+name+'\'s basic pay from Rs.'+_oldEffectiveBasic+' to Rs.'+_enteredBase+', effective '+editYM+' onward.\nAn Admin must approve this change. Why is it needed?');
     if(reason===null) return; // cancelled — no save, no request submitted
     if(typeof sb==='undefined'||!sb){ toast('⚠️ This requires being online — try again when connected'); return; }
     try{
       const res=await sb.from('employee_change_requests').insert({
-        table_name:'employee_roster',
-        record_key: emp.id,
-        action:'update',
-        old_data: existingEmp,
-        proposed_new_data: emp,
+        table_name:'salaries',
+        record_key: emp.id+'|'+editYM,
+        action:'forward_fill',
+        old_data: { employee_id: emp.id, ym: editYM, base_sal_override: _oldEffectiveBasic },
+        proposed_new_data: { employee_id: emp.id, ym: editYM, base_sal_override: _enteredBase, months: SAL_FORWARDFILL_MONTHS },
         requested_by: sess.id,
         status:'pending',
         reason: reason
       });
       if(res.error) throw res.error;
-      toast('✅ Base-rate change submitted for Admin approval');
+      toast('✅ Basic-pay change submitted for Admin approval');
     } catch(reqErr){
       console.warn('[salSaveEmp] employee_change_requests insert failed', reqErr);
       toast('❌ Failed to submit request — try again');
@@ -27425,7 +27533,6 @@ async function salSaveEmp(){
     return; // never reaches the real save
   }
 
-  // (Month-wise base salary overrides removed — values come from SAL_EXCEL_2026)
   if(id){const idx=emps.findIndex(e=>e.id===id);if(idx>-1)emps[idx]=emp;else emps.push(emp);}
   else emps.push(emp);
   sSaveEmps(emps, emp.id).then(async function(){
@@ -27446,6 +27553,11 @@ async function salSaveEmp(){
       console.warn('[salSaveEmp] audit_log insert failed', auditErr);
     }
   });
+
+  if(_canForwardFill && parseFloat(_oldEffectiveBasic)!==parseFloat(_enteredBase)){
+    await salForwardFillBase(emp.id, editYM, _enteredBase, _oldEffectiveBasic, sess);
+  }
+
   document.getElementById('salEmpModal').style.display='none';
   salRender(); toast('✅ Employee saved');
 }
