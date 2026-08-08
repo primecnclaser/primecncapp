@@ -6682,7 +6682,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.4.2';
+const APP_VERSION = '1.4.3';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -8590,7 +8590,7 @@ function calcTotals() {
       label = kg.toFixed(2) + '\u00a0kg';
     } else if (sqft > 0) {
       calcBase = sqft;
-      label = sqft.toFixed(3) + '\u00a0ft²';
+      label = (sqft * (qty || 1)).toFixed(3) + '\u00a0ft²';
     }
 
     // Amount = sqft * rate * qty  (for sq.ft mode)  or  kg * rate  (for kg mode)
@@ -8846,7 +8846,7 @@ function sendQuote(mode) {
   var _shopPhone = localStorage.getItem('inv_shopphone') || '';
   var _shopName = localStorage.getItem('inv_shopname_en') || ('Prime CNC Laser Works – ' + (_branchCfg || _JAUHARABAD_DEFAULTS).branchName);
   var _quoteRef = 'Q-' + new Date().getFullYear() + '-' + Date.now().toString().slice(-4);
-  var _sqft = data.items.reduce(function(s,it){ return s+(parseFloat(it.sqft)||0); }, 0);
+  var _sqft = data.items.reduce(function(s,it){ return s+(parseFloat(it.sqft)||0)*(parseFloat(it.qty)||1); }, 0);
   var _kg   = data.items.reduce(function(s,it){ return s+(parseFloat(it.kg)||0); }, 0);
 
   if (mode === 'whatsapp') {
@@ -9783,7 +9783,7 @@ function _buildMainInvoicePrintHtml(data) {
          <td style="font-size:0.85rem;font-weight:700">—</td>`;
     const sqftVal = x.mode === 'kg'
       ? (x.kg||0).toFixed(2) + ' kg'
-      : (x.sqft||0).toFixed(3) + ' ft²';
+      : ((x.sqft||0) * (x.qty||1)).toFixed(3) + ' ft²';
     return `<tr style="background:${i%2===0?'#fdf8f0':'#f5ede0'}">
       <td style="color:#888;font-family:Montserrat, sans-serif;text-align:center;padding:5px 4px;font-size:0.85rem;font-weight:700">${i+1}</td>
       <td style="text-align:center;font-weight:500;padding:5px 4px">${x.sizes||'—'}</td>
@@ -13527,7 +13527,7 @@ async function viewInvoice(idx) {
          <td>—</td>`;
     const sqftVal = x.mode === 'kg'
       ? (x.kg||0).toFixed(2) + ' kg'
-      : (x.sqft||0).toFixed(3) + ' ft²';
+      : ((x.sqft||0) * (x.qty||1)).toFixed(3) + ' ft²';
     return `<tr style="background:${i%2===0?'#fdf8f0':'#f5ede0'}">
       <td style="color:#888;font-family:Montserrat, sans-serif;font-size:0.85rem;font-weight:700">${i+1}</td>
       <td style="text-align:center;font-weight:500">${x.sizes||'—'}</td>
@@ -21128,7 +21128,7 @@ function openInlinePreview(idx) {
          <td>—</td>`;
     const sqftVal = x.mode === 'kg'
       ? (x.kg||0).toFixed(2) + ' kg'
-      : (x.sqft||0).toFixed(3) + ' ft²';
+      : ((x.sqft||0) * (x.qty||1)).toFixed(3) + ' ft²';
     return `<tr style="background:${i%2===0?'#fdf8f0':'#f5ede0'}">
       <td style="color:#888;font-family:Montserrat, sans-serif;text-align:center;padding:5px 4px">${i+1}</td>
       <td style="text-align:center;font-weight:500;padding:5px 4px">${x.sizes||'—'}</td>
@@ -21292,7 +21292,7 @@ function openSearchInlinePreview(idx) {
          <td style="font-weight:700;color:#c9a84c;background:#fffbf0">×</td>
          <td>${x.foot2||0}</td><td>${x.inch2||0}</td><td style="border-right:2px solid #c9a84c">${x.sooter2||0}</td>
          <td>—</td>`;
-    const sqftVal = x.mode === 'kg' ? (x.kg||0).toFixed(2) + ' kg' : (x.sqft||0).toFixed(3) + ' ft²';
+    const sqftVal = x.mode === 'kg' ? (x.kg||0).toFixed(2) + ' kg' : ((x.sqft||0) * (x.qty||1)).toFixed(3) + ' ft²';
     return `<tr style="background:${i%2===0?'#fdf8f0':'#f5ede0'}">
       <td style="color:#888;font-family:Montserrat, sans-serif;text-align:center;padding:5px 4px">${i+1}</td>
       <td style="text-align:center;font-weight:500;padding:5px 4px">${x.sizes||'—'}</td>
