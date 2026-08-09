@@ -6683,7 +6683,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.4.5';
+const APP_VERSION = '1.4.6';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -25498,7 +25498,7 @@ function sCalcV2(emp,rec,eid,ym){
     arrears = sPrevRemainingAcrossPeriods(emp, ym);
   }
     // ── Fast path: historic month with complete Excel data — skip all further computation ──
-  if (_excelComplete) {
+  if (_excelComplete && rec.baseSalOverride === undefined) {
     const gross    = _excelRec.grossSal;
     const net      = _excelRec.netSal;
     const advance  = _excelRec.advance!==undefined ? _excelRec.advance : (rec.advance||0);
