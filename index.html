@@ -6683,7 +6683,7 @@ window._checkSupabaseConnection = async function() {
 };
 setInterval(window._checkSupabaseConnection, 30000);
 
-const APP_VERSION = '1.4.4';
+const APP_VERSION = '1.4.5';
 
 // Version badge — defaults to APP_VERSION (web/browser), overridden with the
 // real installed version when running in Electron (package.json's version,
@@ -25733,6 +25733,22 @@ function salOnMonthChange(){
   salRender();
 }
 
+// Point the page-level month selector at a specific month before a
+// render — used after saving an employee so the resulting view shows
+// the exact month just edited, not wherever the page happened to be
+// set. salMonthSel's options are rebuilt per-year (sBuildMonthDropdown),
+// so the target year must be selected and that dropdown rebuilt first,
+// or the target month may not exist as an option yet.
+function salShowMonth(ym){
+  if(!ym) return;
+  const [y] = ym.split('-');
+  const yrSel = document.getElementById('salYearSel');
+  if(yrSel) yrSel.value = y;
+  sBuildMonthDropdown();
+  const mSel = document.getElementById('salMonthSel');
+  if(mSel) mSel.value = ym;
+}
+
 function sYM(){
   const mSel = document.getElementById('salMonthSel');
   return (mSel||{}).value||'';
@@ -27557,6 +27573,12 @@ async function salSaveEmp(){
   if(_canForwardFill && parseFloat(_oldEffectiveBasic)!==parseFloat(_enteredBase)){
     await salForwardFillBase(emp.id, editYM, _enteredBase, _oldEffectiveBasic, sess);
   }
+
+  // Show the exact month just edited, not wherever the page happened to
+  // be — a card can be viewing a different month than the page-level
+  // selector via its own picker (sCardMonthChange), and without this the
+  // full-grid rebuild below would snap back to the page's own month.
+  if(editYM) salShowMonth(editYM);
 
   document.getElementById('salEmpModal').style.display='none';
   salRender(); toast('✅ Employee saved');
